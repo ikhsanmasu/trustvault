@@ -18,7 +18,7 @@ export async function GET(): Promise<
   const { user, supabase } = auth;
 
   // Get the user's tenant
-  const tenantId = await getUserTenantId(supabase);
+  const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
       { error: "User profile not found", code: "NOT_FOUND" },

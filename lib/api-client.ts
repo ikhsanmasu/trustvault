@@ -76,22 +76,13 @@ export interface BulkUploadResult {
   failed: number;
 }
 
+// Matches backend GET /api/dashboard response
 export interface DashboardStats {
-  totalDocuments: number;
-  projectsCount: number;
-  storageUsedBytes: number;
-  recentActivity: RecentActivityItem[];
+  project_count: number;
+  document_count: number;
+  total_storage_bytes: number;
+  recent_documents: Document[];
 }
-
-export interface RecentActivityItem {
-  documentId: string;
-  documentName: string;
-  projectName: string;
-  fileType: string;
-  uploadedAt: string;
-}
-
-// ---- Request types ---------------------------------------------------------
 
 export interface CreateProjectRequest {
   name: string;
@@ -117,8 +108,8 @@ export interface UpdateProfileRequest {
 }
 
 export interface ChangePasswordRequest {
-  currentPassword: string;
-  newPassword: string;
+  current_password: string;
+  new_password: string;
 }
 
 export interface UpdateTenantRequest {
@@ -273,13 +264,13 @@ export async function updateProfile(
 }
 
 /**
- * POST /api/profile/password — change password.
+ * PATCH /api/password — change password.
  */
 export async function changePassword(
   data: ChangePasswordRequest,
 ): Promise<{ updated: boolean }> {
-  const response = await fetch("/api/profile/password", {
-    method: "POST",
+  const response = await fetch("/api/password", {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });

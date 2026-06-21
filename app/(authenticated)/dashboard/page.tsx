@@ -147,51 +147,48 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatsCard
               label="Total Documents"
-              value={stats.totalDocuments.toLocaleString()}
+              value={stats.document_count.toLocaleString()}
               icon={<IconDocuments />}
               description="Across all projects"
             />
             <StatsCard
               label="Projects"
-              value={stats.projectsCount.toLocaleString()}
+              value={stats.project_count.toLocaleString()}
               icon={<IconProjects />}
               description="Active projects"
             />
             <StatsCard
               label="Storage Used"
-              value={formatBytes(stats.storageUsedBytes)}
+              value={formatBytes(stats.total_storage_bytes)}
               icon={<IconStorage />}
               description="Total file size"
             />
             <StatsCard
               label="Recent Activity"
-              value={`${stats.recentActivity.length} uploads`}
+              value={`${stats.recent_documents.length} uploads`}
               icon={<IconActivity />}
               description="Last uploads"
             />
           </div>
 
           {/* Recent activity */}
-          {stats.recentActivity.length > 0 && (
+          {stats.recent_documents.length > 0 && (
             <div>
               <h2 className="text-lg font-semibold mb-3">Recent Activity</h2>
               <div className="space-y-2">
-                {stats.recentActivity.map((item) => (
+                {stats.recent_documents.map((item) => (
                   <div
-                    key={item.documentId}
+                    key={item.id}
                     className="flex items-center gap-3 rounded-lg border px-4 py-3 text-sm"
                   >
                     <div className="min-w-0 flex-1">
-                      <span className="font-medium">{item.documentName}</span>
-                      <span className="text-muted-foreground ml-2">
-                        in {item.projectName}
-                      </span>
+                      <span className="font-medium">{item.name}</span>
                     </div>
                     <Badge variant="outline" className="text-[10px] shrink-0">
-                      {getFileTypeLabel(item.fileType)}
+                      {getFileTypeLabel(item.file_type)}
                     </Badge>
                     <span className="text-xs text-muted-foreground shrink-0 w-36 text-right">
-                      {formatDate(item.uploadedAt)}
+                      {formatDate(item.created_at)}
                     </span>
                   </div>
                 ))}

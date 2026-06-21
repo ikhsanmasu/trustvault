@@ -7,6 +7,7 @@ import {
   computeBinaryHash,
   computeTextHash,
   extractFileText,
+  isAllowedMimeType,
 } from "@/lib/core";
 import { requireAuth } from "@/lib/supabase/auth";
 import type {
@@ -302,6 +303,13 @@ export async function POST(
       return NextResponse.json(
         { error: "Uploaded file is empty", code: "EMPTY_FILE" },
         { status: 400 },
+      );
+    }
+
+    if (!isAllowedMimeType(file.type)) {
+      return NextResponse.json(
+        { error: `Unsupported file type: ${file.type}`, code: "INVALID_CONTENT_TYPE" },
+        { status: 415 },
       );
     }
 

@@ -178,8 +178,8 @@ function ProfileTab() {
 // ---- Password Tab -----------------------------------------------------------
 
 function PasswordTab() {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [current_password, setCurrentPassword] = useState("");
+  const [new_password, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,22 +190,22 @@ function PasswordTab() {
     setError(null);
     setSuccess(false);
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    if (!current_password || !new_password || !confirmPassword) {
       setError("All fields are required.");
       return;
     }
-    if (newPassword.length < 6) {
+    if (new_password.length < 6) {
       setError("New password must be at least 6 characters.");
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (new_password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
 
     setIsSaving(true);
     try {
-      await changePassword({ currentPassword, newPassword });
+      await changePassword({ current_password, new_password });
       setSuccess(true);
       setCurrentPassword("");
       setNewPassword("");
@@ -237,7 +237,7 @@ function PasswordTab() {
               id="current-password"
               type="password"
               placeholder="Enter current password"
-              value={currentPassword}
+              value={current_password}
               onChange={(e) => setCurrentPassword(e.target.value)}
               disabled={isSaving}
             />
@@ -248,7 +248,7 @@ function PasswordTab() {
               id="new-password"
               type="password"
               placeholder="Enter new password (min 6 characters)"
-              value={newPassword}
+              value={new_password}
               onChange={(e) => setNewPassword(e.target.value)}
               disabled={isSaving}
             />

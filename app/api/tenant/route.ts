@@ -23,9 +23,9 @@ export async function GET(): Promise<
 > {
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
 
-  const tenantId = await getUserTenantId(supabase);
+  const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
       { error: "User profile not found", code: "NOT_FOUND" },
@@ -60,9 +60,9 @@ export async function PATCH(
 ): Promise<NextResponse<UpdateTenantResponse | ErrorResponse>> {
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
 
-  const tenantId = await getUserTenantId(supabase);
+  const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
       { error: "User profile not found", code: "NOT_FOUND" },

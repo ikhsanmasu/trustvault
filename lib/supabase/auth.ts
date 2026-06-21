@@ -139,10 +139,12 @@ export async function requireProjectRole(
  */
 export async function getUserTenantId(
   supabase: SupabaseClient,
+  userId: string,
 ): Promise<string | null> {
   const { data: profile, error } = await supabase
     .from("profiles")
     .select("tenant_id")
+    .eq("id", userId)
     .single();
 
   if (error || !profile) {

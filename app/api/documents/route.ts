@@ -144,7 +144,7 @@ export async function POST(
   if (!roleCheck.ok) return roleCheck.response;
 
   // -- 9. Get user's tenant_id ----------------------------------------------
-  const tenantId = await getUserTenantId(supabase);
+  const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
       { error: "User profile not found", code: "NOT_FOUND" },

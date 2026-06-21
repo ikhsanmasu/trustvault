@@ -35,42 +35,50 @@ export async function PATCH(
     );
   }
 
-  // Validate password
-  if (!body.password || typeof body.password !== "string") {
+  // Validate fields
+  if (!body.current_password || typeof body.current_password !== "string") {
     return NextResponse.json(
-      { error: "password is required", code: "MISSING_PASSWORD" },
+      { error: "current_password is required", code: "MISSING_PASSWORD" },
+      { status: 400 },
+    );
+  }
+  if (!body.new_password || typeof body.new_password !== "string") {
+    return NextResponse.json(
+      { error: "new_password is required", code: "MISSING_PASSWORD" },
+      { status: 400 },
+    );
+  }
+  if (body.new_password.length < MIN_PASSWORD_LENGTH) {
+    return NextResponse.json(
+      { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, code: "PASSWORD_TOO_SHORT" },
+      { status: 400 },
+    );
+  }
+  if (body.new_password.length > MAX_PASSWORD_LENGTH) {
+    return NextResponse.json(
+      { error: `Password must not exceed ${MAX_PASSWORD_LENGTH} characters`, code: "PASSWORD_TOO_LONG" },
       { status: 400 },
     );
   }
 
-  if (body.password.length < MIN_PASSWORD_LENGTH) {
-    return NextResponse.json(
-      {
-        error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-        code: "PASSWORD_TOO_SHORT",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (body.password.length > MAX_PASSWORD_LENGTH) {
-    return NextResponse.json(
-      {
-        error: `Password must not exceed ${MAX_PASSWORD_LENGTH} characters`,
-        code: "PASSWORD_TOO_LONG",
-      },
-      { status: 400 },
-    );
-  }
-
-  // Update the password via Supabase Auth
+  // Update password via Supabase Auth
   const { error } = await supabase.auth.updateUser({
-    password: body.password,
+    password: body.new_password,
   });
 
   if (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[password] updateUser error:", (error as Error).message);
+    }
     return NextResponse.json(
-      { error: error.message, code: "AUTH_ERROR" },
+      { error: "Failed to update password", code: "AUTH_ERROR" },
+      { status: 400 },
+    );
+  }
+
+  if (error) {
+    return NextResponse.json(
+      { error: String(error), code: "AUTH_ERROR" },
       { status: 400 },
     );
   }

@@ -52,7 +52,8 @@ export interface UpdateTenantRequest {
 
 /** P3: request body for changing the user's password. */
 export interface ChangePasswordRequest {
-  password: string;
+  current_password: string;
+  new_password: string;
 }
 
 // ---------------------------------------------------------------------------

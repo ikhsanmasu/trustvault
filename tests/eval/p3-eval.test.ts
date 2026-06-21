@@ -692,36 +692,36 @@ describe("P3: Password endpoint contracts", () => {
   });
 
   it("password is required (MISSING_PASSWORD)", () => {
-    // Route handler: if (!body.password || typeof body.password !== "string")
+    // Route handler: if (!body.new_password || typeof body.new_password !== "string")
     //   => 400 MISSING_PASSWORD
     const missingCases = [
-      { password: undefined },
-      { password: null },
-      { password: 12345 },
-      { password: true },
+      { new_password: undefined },
+      { new_password: null },
+      { new_password: 12345 },
+      { new_password: true },
     ];
 
     for (const body of missingCases) {
       const isValid =
-        body.password !== undefined &&
-        body.password !== null &&
-        typeof body.password === "string";
+        body.new_password !== undefined &&
+        body.new_password !== null &&
+        typeof body.new_password === "string";
       expect(isValid).toBe(false);
     }
   });
 
   it("invalid JSON body returns INVALID_REQUEST", () => {
-    // Route handler: try/catch around request.json() => 400 INVALID_REQUEST
     const parseError = true;
     expect(parseError).toBe(true);
   });
 
   it("valid password shape matches ChangePasswordRequest type", () => {
     const body: ChangePasswordRequest = {
-      password: "securePassword123",
+      current_password: "oldpass",
+      new_password: "securePassword123",
     };
-    expect(body.password).toBe("securePassword123");
-    expect(typeof body.password).toBe("string");
+    expect(body.new_password).toBe("securePassword123");
+    expect(typeof body.new_password).toBe("string");
   });
 
   it("requires auth (401 if no session)", () => {

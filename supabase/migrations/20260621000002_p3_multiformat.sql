@@ -23,18 +23,19 @@ CREATE INDEX IF NOT EXISTS documents_file_type_idx ON public.documents (file_typ
 -- The bucket name is retained for backward compatibility.
 UPDATE storage.buckets
 SET allowed_mime_types = ARRAY[
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/json',
-  'text/csv',
   'text/plain',
+  'text/csv',
   'text/html',
   'text/markdown',
   'text/xml',
+  'application/json',
   'application/xml',
-  'image/png',
-  'image/jpeg',
-  'image/webp'
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/msword',
+  'application/rtf',
+  'application/vnd.oasis.opendocument.text'
 ]
 WHERE id = 'pdf-uploads';
