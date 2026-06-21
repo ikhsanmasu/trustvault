@@ -230,22 +230,22 @@ CREATE TRIGGER on_auth_user_created
 -- --- tenants ---
 ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "tenants_select_own" ON public.tenants
+CREATE POLICY IF NOT EXISTS "tenants_select_own" ON public.tenants
   FOR SELECT
   USING (id = public.get_user_tenant_id());
 
-CREATE POLICY "tenants_insert_auth" ON public.tenants
+CREATE POLICY IF NOT EXISTS "tenants_insert_auth" ON public.tenants
   FOR INSERT
   WITH CHECK (public.is_authenticated());
 
 -- --- profiles ---
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "profiles_select_own" ON public.profiles
+CREATE POLICY IF NOT EXISTS "profiles_select_own" ON public.profiles
   FOR SELECT
   USING (id = auth.uid());
 
-CREATE POLICY "profiles_update_own" ON public.profiles
+CREATE POLICY IF NOT EXISTS "profiles_update_own" ON public.profiles
   FOR UPDATE
   USING (id = auth.uid())
   WITH CHECK (id = auth.uid());
@@ -253,21 +253,21 @@ CREATE POLICY "profiles_update_own" ON public.profiles
 -- --- projects ---
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "projects_select_member" ON public.projects
+CREATE POLICY IF NOT EXISTS "projects_select_member" ON public.projects
   FOR SELECT
   USING (public.is_project_member(projects.id, auth.uid()));
 
 -- App-layer route handler sets correct tenant_id via getUserTenantId().
 -- Keep the RLS check simple to avoid helper-function issues in policy context.
-CREATE POLICY "projects_insert_auth" ON public.projects
+CREATE POLICY IF NOT EXISTS "projects_insert_auth" ON public.projects
   FOR INSERT
   WITH CHECK (public.is_authenticated());
 
-CREATE POLICY "projects_update_admin" ON public.projects
+CREATE POLICY IF NOT EXISTS "projects_update_admin" ON public.projects
   FOR UPDATE
   USING (public.has_project_role(projects.id, auth.uid(), 'admin'));
 
-CREATE POLICY "projects_delete_admin" ON public.projects
+CREATE POLICY IF NOT EXISTS "projects_delete_admin" ON public.projects
   FOR DELETE
   USING (public.has_project_role(projects.id, auth.uid(), 'admin'));
 
@@ -275,30 +275,30 @@ CREATE POLICY "projects_delete_admin" ON public.projects
 ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
 
 -- Use helper functions to avoid infinite recursion (policy self-referencing)
-CREATE POLICY "project_members_select_peer" ON public.project_members
+CREATE POLICY IF NOT EXISTS "project_members_select_peer" ON public.project_members
   FOR SELECT
   USING (public.is_project_member(project_id, auth.uid()));
 
-CREATE POLICY "project_members_insert_admin" ON public.project_members
+CREATE POLICY IF NOT EXISTS "project_members_insert_admin" ON public.project_members
   FOR INSERT
   WITH CHECK (public.has_project_role(project_id, auth.uid(), 'admin'));
 
-CREATE POLICY "project_members_update_admin" ON public.project_members
+CREATE POLICY IF NOT EXISTS "project_members_update_admin" ON public.project_members
   FOR UPDATE
   USING (public.has_project_role(project_id, auth.uid(), 'admin'));
 
-CREATE POLICY "project_members_delete_admin" ON public.project_members
+CREATE POLICY IF NOT EXISTS "project_members_delete_admin" ON public.project_members
   FOR DELETE
   USING (public.has_project_role(project_id, auth.uid(), 'admin'));
 
 -- --- documents ---
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "documents_select_member" ON public.documents
+CREATE POLICY IF NOT EXISTS "documents_select_member" ON public.documents
   FOR SELECT
   USING (public.is_project_member(documents.project_id, auth.uid()));
 
-CREATE POLICY "documents_insert_editor" ON public.documents
+CREATE POLICY IF NOT EXISTS "documents_insert_editor" ON public.documents
   FOR INSERT
   WITH CHECK (
     (public.has_project_role(documents.project_id, auth.uid(), 'admin')
@@ -314,11 +314,11 @@ CREATE POLICY "documents_insert_editor" ON public.documents
 -- needs RLS policies granting authenticated users access. App-layer route
 -- handlers enforce project membership before upload/download.
 
-CREATE POLICY "storage_pdf_select_auth" ON storage.objects
+CREATE POLICY IF NOT EXISTS "storage_pdf_select_auth" ON storage.objects
   FOR SELECT
   USING (bucket_id = 'pdf-uploads' AND auth.role() = 'authenticated');
 
-CREATE POLICY "storage_pdf_insert_auth" ON storage.objects
+CREATE POLICY IF NOT EXISTS "storage_pdf_insert_auth" ON storage.objects
   FOR INSERT
   WITH CHECK (bucket_id = 'pdf-uploads' AND auth.role() = 'authenticated');
 
