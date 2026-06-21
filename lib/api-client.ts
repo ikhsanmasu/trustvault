@@ -572,6 +572,12 @@ export async function deleteDocument(id: string): Promise<{ document: Document }
   return handleResponse<{ document: Document }>(response);
 }
 
+/** PATCH /api/anchor/batch — anchor all eligible un-anchored documents. */
+export async function anchorAllDocuments(): Promise<{ anchored: number; skipped: number; failed: number; errors: string[] }> {
+  const response = await fetch("/api/anchor/batch", { method: "PATCH" });
+  return handleResponse(response);
+}
+
 /** PATCH /api/documents/:id — restore a soft-deleted document. */
 export async function restoreDocument(id: string): Promise<{ document: Document }> {
   const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {

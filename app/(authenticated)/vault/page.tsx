@@ -18,7 +18,7 @@ import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/compon
 import { useDocuments } from "@/hooks/use-documents";
 import { useProjects } from "@/hooks/use-projects";
 import type { Document } from "@/lib/api-client";
-import { deleteDocument, restoreDocument } from "@/lib/api-client";
+import { deleteDocument, restoreDocument, anchorAllDocuments } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -223,6 +223,24 @@ export default function VaultPage() {
               >
                 <IconRefresh className="h-4 w-4 mr-1.5" />
                 Refresh
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const r = await anchorAllDocuments();
+                    setToast(`Anchored ${r.anchored} document${r.anchored !== 1 ? "s" : ""}${r.failed > 0 ? `, ${r.failed} failed` : ""}`);
+                    setTimeout(() => setToast(null), 4000);
+                    refresh();
+                  } catch { setToast("Anchor failed"); setTimeout(() => setToast(null), 4000); }
+                }}
+                className="transition-all duration-200 rounded-xl"
+                title="Anchor all un-anchored documents"
+                aria-label="Anchor all documents"
+              >
+                <IconShield className="h-4 w-4 mr-1.5" />
+                Anchor All
               </Button>
             </div>
           </div>

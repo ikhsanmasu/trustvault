@@ -147,3 +147,66 @@ export async function POST(
     { status: 201 },
   );
 }
+
+// ---------------------------------------------------------------------------
+// POST /api/anchor/batch — Anchor all eligible documents
+// ---------------------------------------------------------------------------
+
+export async function PATCH(
+  request: NextRequest,
+): Promise<NextResponse<{ anchored: number; skipped: number; failed: number; errors: string[] } | ErrorResponse>> {
+  const auth = await requireAuth();
+  if (!auth.ok) return auth.response;
+  const { user, supabase } = auth;
+
+  // Fetch all active (non-deleted) documents the user has editor/admin access to
+  const { data: memberships } = await supabase
+    .from("project_members")
+    .select("project_id")
+    .eq("user_id", user.id)
+    .in("role", ["admin", "editor"]);
+
+  if (!memberships?.length) {
+    return NextResponse.json({ anchored: 0, skipped: 0, failed: 0, errors: [] });
+  }
+
+  const projectIds = memberships.map((m: { project_id: string }) => m.project_id);
+  const { data: docs } = await supabase
+    .from("documents")
+    .select("id, name, binary_hash, text_hash, fingerprint, deleted_at")
+    .in("project_id", projectIds)
+    .is("deleted_at", null)
+    .is("fingerprint", null); // Only un-anchored
+
+  if (!docs?.length) {
+    return NextResponse.json({ anchored: 0, skipped: 0, failed: 0, errors: [] });
+  }
+
+  let anchoredCount = 0;
+  let failedCount = 0;
+  const errors: string[] = [];
+
+  try {
+    const { service, chainName } = getAnchorService();
+
+    for (const doc of docs) {
+      try {
+        const fingerprint = computeFingerprint(doc.binary_hash, doc.text_hash);
+        const { txHash, anchoredAt } = await service.anchor(fingerprint);
+        const dt = new Date(anchoredAt * 1000).toISOString();
+        await supabase.from("documents").update({
+          fingerprint, chain: chainName, tx_hash: txHash, anchored_at: dt,
+        }).eq("id", doc.id);
+        anchoredCount++;
+      } catch (err: unknown) {
+        failedCount++;
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        errors.push(`${doc.name}: ${msg}`);
+      }
+    }
+  } catch {
+    return NextResponse.json({ error: "Anchor service unavailable", code: "ANCHOR_RPC_ERROR" }, { status: 500 });
+  }
+
+  return NextResponse.json({ anchored: anchoredCount, skipped: 0, failed: failedCount, errors });
+}
