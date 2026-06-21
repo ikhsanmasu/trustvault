@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { ZodError } from "zod";
 import { buildComparePrompt, parseAIResponse } from "@/lib/core";
-import { supabase } from "@/lib/supabase/client";
+import { requireAuth } from "@/lib/supabase/auth";
 import type {
   CompareRequest,
   CompareResponse,
@@ -28,13 +28,18 @@ const deepseek = new OpenAI({
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/compare
+// POST /api/compare (P2: auth required + cross-project block)
 // ---------------------------------------------------------------------------
 
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<CompareResponse | ErrorResponse>> {
-  // ── Parse request body ────────────────────────────────────────────────
+  // ── 1. requireAuth ─────────────────────────────────────────────────────
+  const auth = await requireAuth();
+  if (!auth.ok) return auth.response;
+  const { supabase } = auth;
+
+  // ── 2. Parse request body ──────────────────────────────────────────────
   let body: CompareRequest;
   try {
     body = (await request.json()) as CompareRequest;
@@ -47,7 +52,7 @@ export async function POST(
 
   const { docAId, docBId } = body;
 
-  // ── Validate docAId ───────────────────────────────────────────────────
+  // ── 3. Validate docAId ─────────────────────────────────────────────────
   if (!docAId || typeof docAId !== "string" || !UUID_RE.test(docAId)) {
     return NextResponse.json(
       { error: "docAId must be a valid UUID", code: "INVALID_DOC_A_ID" },
@@ -55,7 +60,7 @@ export async function POST(
     );
   }
 
-  // ── Validate docBId ───────────────────────────────────────────────────
+  // ── 4. Validate docBId ─────────────────────────────────────────────────
   if (!docBId || typeof docBId !== "string" || !UUID_RE.test(docBId)) {
     return NextResponse.json(
       { error: "docBId must be a valid UUID", code: "INVALID_DOC_B_ID" },
@@ -63,7 +68,7 @@ export async function POST(
     );
   }
 
-  // ── Check for same document ───────────────────────────────────────────
+  // ── 5. Check for same document ─────────────────────────────────────────
   if (docAId === docBId) {
     return NextResponse.json(
       {
@@ -74,7 +79,7 @@ export async function POST(
     );
   }
 
-  // ── Fetch document A ──────────────────────────────────────────────────
+  // ── 6. Fetch document A (user-scoped client, RLS-enforced) ─────────────
   const { data: rowA, error: errorA } = await supabase
     .from("documents")
     .select("*")
@@ -89,7 +94,7 @@ export async function POST(
   }
   const docA = rowA as unknown as Document;
 
-  // ── Fetch document B ──────────────────────────────────────────────────
+  // ── 7. Fetch document B (user-scoped client, RLS-enforced) ─────────────
   const { data: rowB, error: errorB } = await supabase
     .from("documents")
     .select("*")
@@ -104,7 +109,18 @@ export async function POST(
   }
   const docB = rowB as unknown as Document;
 
-  // ── Step 1: Binary hash check ─────────────────────────────────────────
+  // ── 8. Cross-project check (P2: both docs must be in the same project) ─
+  if (docA.project_id !== docB.project_id) {
+    return NextResponse.json(
+      {
+        error: "Documents belong to different projects — cross-project comparison is not supported",
+        code: "CROSS_PROJECT_COMPARE",
+      },
+      { status: 400 },
+    );
+  }
+
+  // ── Step 1: Binary hash check ──────────────────────────────────────────
   if (docA.binary_hash === docB.binary_hash) {
     return NextResponse.json({
       docAId,
@@ -116,7 +132,7 @@ export async function POST(
     } satisfies CompareResponse);
   }
 
-  // ── Step 2: Text hash check ───────────────────────────────────────────
+  // ── Step 2: Text hash check ────────────────────────────────────────────
   if (docA.text_hash === docB.text_hash) {
     return NextResponse.json({
       docAId,
@@ -128,7 +144,7 @@ export async function POST(
     } satisfies CompareResponse);
   }
 
-  // ── Step 3: AI compare (only reachable if text hashes differ) ─────────
+  // ── Step 3: AI compare (only reachable if text hashes differ) ──────────
   const prompt = buildComparePrompt(docA.extracted_text, docB.extracted_text);
 
   let completion: OpenAI.Chat.Completions.ChatCompletion;
@@ -150,7 +166,7 @@ export async function POST(
     );
   }
 
-  // ── Extract content from the response ─────────────────────────────────
+  // ── Extract content from the response ──────────────────────────────────
   const content = completion.choices[0]?.message?.content;
   if (!content) {
     return NextResponse.json(
@@ -159,7 +175,7 @@ export async function POST(
     );
   }
 
-  // ── Parse and validate the JSON response ──────────────────────────────
+  // ── Parse and validate the JSON response ───────────────────────────────
   let parsed: unknown;
   try {
     parsed = JSON.parse(content) as unknown;

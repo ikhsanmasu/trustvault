@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase/client";
+import { requireAuth } from "@/lib/supabase/auth";
 import type {
   GetDocumentResponse,
   ErrorResponse,
@@ -10,20 +10,25 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Loosely validates that a string looks like a UUID. */
+/** Validates that a string is a properly formatted UUID (v4/hex). */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
-// GET /api/documents/:id
+// GET /api/documents/:id (P2: auth required, RLS enforces access)
 // ---------------------------------------------------------------------------
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<GetDocumentResponse | ErrorResponse>> {
+  // ── 1. requireAuth ─────────────────────────────────────────────────────
+  const auth = await requireAuth();
+  if (!auth.ok) return auth.response;
+  const { supabase } = auth;
+
   const { id } = await params;
 
-  // ── Validate UUID format ──────────────────────────────────────────────
+  // ── 2. Validate UUID format ────────────────────────────────────────────
   if (!UUID_RE.test(id)) {
     return NextResponse.json(
       { error: "Invalid document ID format", code: "INVALID_ID" },
@@ -31,7 +36,7 @@ export async function GET(
     );
   }
 
-  // ── Fetch from database ───────────────────────────────────────────────
+  // ── 3. Fetch from database (user-scoped client, RLS-enforced) ──────────
   const { data, error } = await supabase
     .from("documents")
     .select("*")

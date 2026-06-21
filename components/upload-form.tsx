@@ -12,10 +12,11 @@ import { uploadDocument, type Document, ApiClientError } from "@/lib/api-client"
 import { formatBytes, formatDate, truncateHash } from "@/lib/utils";
 
 interface UploadFormProps {
+  projectId: string;
   onSuccess?: (document: Document) => void;
 }
 
-export default function UploadForm({ onSuccess }: UploadFormProps) {
+export default function UploadForm({ projectId, onSuccess }: UploadFormProps) {
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -53,7 +54,7 @@ export default function UploadForm({ onSuccess }: UploadFormProps) {
 
     setIsUploading(true);
     try {
-      const result = await uploadDocument(file, name.trim());
+      const result = await uploadDocument(file, name.trim(), projectId);
       setUploadedDocument(result.document);
       onSuccess?.(result.document);
       // Reset form
@@ -76,7 +77,7 @@ export default function UploadForm({ onSuccess }: UploadFormProps) {
       <CardHeader>
         <CardTitle>Upload Document</CardTitle>
         <CardDescription>
-          Upload a PDF to compute integrity hashes and extract text.
+          Upload a PDF to this project. Hashes are computed automatically.
         </CardDescription>
       </CardHeader>
       <CardContent>

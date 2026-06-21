@@ -8,6 +8,10 @@ import {
   ApiClientError,
 } from "@/lib/api-client";
 
+interface UseDocumentsParams {
+  projectId: string;
+}
+
 interface UseDocumentsReturn {
   documents: Document[];
   total: number;
@@ -18,15 +22,13 @@ interface UseDocumentsReturn {
   refresh: () => void;
 }
 
-export function useDocuments(): UseDocumentsReturn {
+export function useDocuments({ projectId }: UseDocumentsParams): UseDocumentsReturn {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  // Debounce timer
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Actual API search term (debounced)
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Debounce search input
@@ -45,6 +47,7 @@ export function useDocuments(): UseDocumentsReturn {
     setError(null);
     try {
       const result: ListDocumentsResponse = await listDocuments({
+        project_id: projectId,
         search: debouncedSearch || undefined,
         limit: 50,
       });
@@ -52,7 +55,11 @@ export function useDocuments(): UseDocumentsReturn {
       setTotal(result.total);
     } catch (err) {
       if (err instanceof ApiClientError) {
-        setError(err.message);
+        if (err.status === 401) {
+          setError("Please log in to view documents.");
+        } else {
+          setError(err.message);
+        }
       } else {
         setError("Failed to load documents.");
       }
@@ -61,7 +68,7 @@ export function useDocuments(): UseDocumentsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [debouncedSearch]);
+  }, [projectId, debouncedSearch]);
 
   useEffect(() => {
     fetchDocuments();

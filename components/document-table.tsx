@@ -27,6 +27,9 @@ interface DocumentTableProps {
   search: string;
   onSearchChange: (search: string) => void;
   onRefresh: () => void;
+  projectId?: string;
+  projectName?: string;
+  userRole?: "admin" | "editor" | "viewer" | null;
 }
 
 export default function DocumentTable({
@@ -37,6 +40,9 @@ export default function DocumentTable({
   search,
   onSearchChange,
   onRefresh,
+  projectId,
+  projectName,
+  userRole,
 }: DocumentTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -60,6 +66,7 @@ export default function DocumentTable({
 
   const selectedArray = Array.from(selected);
   const canCompare = selectedArray.length === 2;
+  const canUpload = userRole === "admin" || userRole === "editor";
 
   return (
     <Card>
@@ -68,7 +75,9 @@ export default function DocumentTable({
           <div>
             <CardTitle>Documents</CardTitle>
             <CardDescription>
-              {total} document{total !== 1 ? "s" : ""} uploaded
+              {projectName
+                ? `${total} document${total !== 1 ? "s" : ""} in ${projectName}`
+                : `${total} document${total !== 1 ? "s" : ""} uploaded`}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -103,15 +112,12 @@ export default function DocumentTable({
             <p className="text-sm text-muted-foreground">
               {search
                 ? "No documents match your search."
-                : "No documents uploaded yet."}
+                : "No documents in this project yet."}
             </p>
-            {!search && (
-              <Link
-                href="/"
-                className={buttonVariants({ variant: "link" }) + " mt-2"}
-              >
-                Upload your first document
-              </Link>
+            {!search && canUpload && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Use the upload form above to add documents.
+              </p>
             )}
           </div>
         ) : (
@@ -193,7 +199,7 @@ export default function DocumentTable({
               <span>{documents.find((d) => d.id === selectedArray[1])?.name}</span>
             </div>
             <Link
-              href={`/compare?docA=${selectedArray[0]}&docB=${selectedArray[1]}`}
+              href={`/compare?docA=${selectedArray[0]}&docB=${selectedArray[1]}${projectId ? `&projectId=${projectId}` : ""}`}
               className={buttonVariants({ variant: "default" })}
             >
               Compare Selected
