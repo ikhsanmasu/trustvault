@@ -703,4 +703,53 @@ describe("core pipeline integration", () => {
     expect(prompt.user).toContain("Document A (baseline)");
     expect(prompt.user).toContain("Document B (new version)");
   });
+
+  it("P2: multi-document scenario — different projects, identical text => text hashes match", () => {
+    // Simulate two documents from different projects with identical text.
+    // The hashing is project-agnostic — same text always produces same hash.
+    const project1Text = "Payment Terms: Net 30 days. Amount: $5,000.";
+    const project2Text = "Payment Terms: Net 30 days. Amount: $5,000.";
+    expect(computeTextHash(project1Text)).toBe(computeTextHash(project2Text));
+  });
+
+  it("P2: multi-document scenario — same project, slightly different amounts => text hashes differ", () => {
+    const original = "Invoice #INV-001\nAmount: $10,000\nDue: 2026-07-01";
+    const updated = "Invoice #INV-001\nAmount: $12,500\nDue: 2026-07-01";
+    expect(computeTextHash(original)).not.toBe(computeTextHash(updated));
+
+    // Verify prompt is buildable and AI response parsing works
+    const prompt = buildComparePrompt(original, updated);
+    expect(prompt.user).toContain("$10,000");
+    expect(prompt.user).toContain("$12,500");
+
+    const aiResponse = {
+      verdict: "MATERIAL" as const,
+      confidence: "HIGH" as const,
+      reasoning: "The invoice amount changed from $10,000 to $12,500, which materially alters the financial obligation.",
+    };
+    const parsed = parseAIResponse(aiResponse);
+    expect(parsed.verdict).toBe("MATERIAL");
+    expect(parsed.confidence).toBe("HIGH");
+  });
+
+  it("P2: empty text in one document => AI compare still possible", () => {
+    // One document has text, the other is a scanned/corrupt PDF with no extractable text
+    const textA = "Contract between Company X and Company Y.";
+    const textB = "";
+
+    expect(computeTextHash(textA)).not.toBe(computeTextHash(textB));
+
+    const prompt = buildComparePrompt(textA, textB);
+    expect(prompt.user).toContain("Contract between Company X and Company Y.");
+    expect(prompt.user).toContain("Document B (new version)");
+
+    const aiResponse = {
+      verdict: "MATERIAL" as const,
+      confidence: "MEDIUM" as const,
+      reasoning: "Document B contains no extractable text while Document A has content — this represents a significant discrepancy.",
+    };
+    const parsed = parseAIResponse(aiResponse);
+    expect(parsed.verdict).toBe("MATERIAL");
+    expect(parsed.confidence).toBe("MEDIUM");
+  });
 });
