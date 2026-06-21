@@ -1831,4 +1831,77 @@ describe("P5: computeFingerprint", () => {
       "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321";
     expect(computeFingerprint(bh, th)).toBe(direct(bh, th));
   });
+
+  it("produces different fingerprint when binary_hash and text_hash are swapped", () => {
+    // abi.encodePacked order matters: [bh, th] !== [th, bh]
+    const bh = "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111";
+    const th = "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222";
+    const fpNormal = computeFingerprint(bh, th);
+    const fpSwapped = computeFingerprint(th, bh);
+    expect(fpNormal).not.toBe(fpSwapped);
+    // Both remain valid format
+    expect(fpNormal).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(fpSwapped).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("produces same fingerprint when hashes contain uppercase hex characters", () => {
+    // The computeFingerprint prepends 0x to raw hashes, so mixed-case
+    // inputs still produce valid bytes32 values. However, the output
+    // keccak256 is always lowercase.
+    const bhLower =
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const bhUpper = bhLower.toUpperCase();
+    const th =
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    // Lowercase vs uppercase input — both are valid hex
+    const fpLower = computeFingerprint(bhLower, th);
+    const fpUpper = computeFingerprint(bhUpper, th);
+    // Uppercase vs lowercase hex should produce the SAME result because
+    // 0x + hex string represents the same bytes32 value regardless of case
+    expect(fpLower).toBe(fpUpper);
+  });
+
+  it("fingerprint built from real pipeline hashes is deterministic", () => {
+    // Full pipeline: buffer -> binary_hash, text -> text_hash, both -> fingerprint
+    const buffer = Buffer.from("Real document content for anchoring");
+    const text = "This is the extracted text of the document.";
+    const bh = computeBinaryHash(buffer);
+    const th = computeTextHash(text);
+
+    // Run 5 times — always identical
+    for (let i = 0; i < 5; i++) {
+      const fp = computeFingerprint(bh, th);
+      expect(fp).toHaveLength(66);
+      expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+      // Every iteration produces the same result
+      expect(fp).toBe(computeFingerprint(bh, th));
+    }
+  });
+
+  it("fingerprint built from empty buffer and empty text hashes is valid", () => {
+    const bh = computeBinaryHash(Buffer.alloc(0));
+    const th = computeTextHash("");
+    expect(bh).toHaveLength(64);
+    expect(th).toHaveLength(64);
+    const fp = computeFingerprint(bh, th);
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+    // The empty fingerprint is deterministic
+    expect(computeFingerprint(bh, th)).toBe(fp);
+  });
+
+  it("fingerprint changes when a single byte in the source buffer changes", () => {
+    const buf1 = Buffer.from("The contract amount is $500,000.");
+    const buf2 = Buffer.from("The contract amount is $500,001.");
+    const th = computeTextHash("generic extracted text");
+
+    const bh1 = computeBinaryHash(buf1);
+    const bh2 = computeBinaryHash(buf2);
+
+    const fp1 = computeFingerprint(bh1, th);
+    const fp2 = computeFingerprint(bh2, th);
+
+    expect(bh1).not.toBe(bh2);
+    expect(fp1).not.toBe(fp2);
+  });
 });
