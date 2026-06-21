@@ -1,207 +1,347 @@
-# TrustVault — Security Model (P1)
+# TrustVault -- Security Model (P2)
 
-This document is a **contract** for the `security` audit agent and a reference for `backend` and `deployment`. It defines the accepted threat model for P1 and the controls in place.
-
----
-
-## 1. P1 Threat Model
-
-TrustVault P1 is a **single-tenant, unauthenticated** system. There is no login, no user identity, and no access control beyond "can reach the server". This is intentional for P1 but carries explicit risk that must be documented and mitigated where practical.
-
-### What P1 is
-
-- A local or privately deployed tool for a single operator.
-- Exposed only to trusted users (the developer or a small demo audience).
-- Not designed for public internet exposure without additional controls (e.g. a reverse proxy with IP allowlist).
-
-### What P1 is not
-
-- A multi-user SaaS with user-level isolation.
-- A system with any authentication or authorisation.
-- A system designed to be safe with arbitrary public traffic.
-
-### Risk acceptance for P1
-
-| Risk | Accepted? | Mitigation |
-|---|---|---|
-| Any user can upload documents | Yes (by design) | File type + size validation; no executable content stored |
-| Any user can view all documents | Yes (by design) | No PII in the demo dataset; P2 will add auth |
-| Any user can trigger AI compare (cost) | Yes (limited) | Rate limiting is NOT in P1 scope; deploy behind network controls |
-| Stored PDFs are accessible to anyone with the service-role key | N/A | Service-role key is server-side only; bucket is private |
-| DeepSeek API key exposure | No | Key lives only in server env vars; never in client code |
+This document is a **contract** for the `security` audit agent and a reference for `backend` and `deployment`. It defines the accepted threat model for P2 and the controls in place. P1 sections that remain valid are noted as preserved.
 
 ---
 
-## 2. Secret Management
+## 1. P2 Threat Model
 
-### Required environment variables
+TrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was unauthenticated and single-operator), P2 introduces user identity, tenant scoping, project-based access control, and role-based permissions. The threat model shifts from "trusted local operator" to "authenticated users who must not see each other's data."
 
-| Variable | Sensitivity | Location |
+### What P2 protects against
+
+| Threat | Control |
+|---|---|
+| Unauthenticated access to any API endpoint | All API endpoints require a valid Supabase session. 401 returned if missing. |
+| Cross-tenant data access (user A sees tenant B's documents) | RLS policies on all data tables filter by tenant. Even a buggy route handler cannot leak data. |
+| Cross-project data access within a tenant (user A sees project B's documents without membership) | RLS on `documents` checks project membership. |
+| Unauthorised write operations (viewer uploads a document) | Route handler checks role before insert. RLS on `documents` INSERT policy requires `admin` or `editor`. |
+| Privilege escalation (editor makes themselves admin) | RLS on `project_members` UPDATE/DELETE policies require `admin` role. |
+| Session hijacking | HTTP-only cookies prevent JavaScript access to session tokens. `@supabase/ssr` uses `SameSite=Lax` cookies. |
+| AI prompt injection via crafted PDF text | System prompt isolation + Zod schema validation on AI output (preserved from P1). |
+| DeepSeek API key exposure | Key lives only in server-side env vars; never in client bundles. |
+| Service-role key misuse | Service-role client is restricted to admin-only operations (profile creation trigger). All user-facing queries use user-scoped JWT. |
+
+### What P2 does NOT protect against (accepted risks)
+
+| Risk | Accepted? | Rationale |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Low (public) | `.env.local` for dev; Vercel env var for prod |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Low (public) | `.env.local` for dev; Vercel env var for prod |
-| `SUPABASE_SERVICE_ROLE_KEY` | **HIGH — never expose to browser** | `.env.local` for dev; Vercel env var (server-only) for prod |
-| `DEEPSEEK_API_KEY` | **HIGH — never expose to browser** | `.env.local` for dev; Vercel env var (server-only) for prod |
-
-### Rules
-
-1. `.env.local` is listed in `.gitignore` and must never be committed.
-2. `SUPABASE_SERVICE_ROLE_KEY` and `DEEPSEEK_API_KEY` must only be accessed in server-side code (Next.js route handlers). They must never appear in any file under `app/` that is rendered client-side, and must never be referenced with the `NEXT_PUBLIC_` prefix.
-3. No secret values may appear anywhere in the repository — not in code, not in comments, not in test fixtures.
-4. GitHub Actions CI must not log secret values. Secrets are passed via GitHub Actions Secrets and referenced as `${{ secrets.NAME }}`.
-
-### Verification checklist (for `security` agent)
-
-- [ ] `git grep -r "SUPABASE_SERVICE_ROLE_KEY"` finds references only in server files (route handlers, migration scripts).
-- [ ] `git grep -r "DEEPSEEK_API_KEY"` finds references only in server files.
-- [ ] No `NEXT_PUBLIC_` prefix on either high-sensitivity variable.
-- [ ] `.env.local` is not tracked by git (`git ls-files .env.local` returns nothing).
+| Rate limiting on API endpoints | Yes | Left to deployment layer (Vercel WAF or reverse proxy). Not in application scope. |
+| Brute-force login attempts | Partial | Supabase Auth has built-in rate limiting. Additional rate limiting on the Next.js server is a deployment concern. |
+| Admin removes themselves as last admin | No | Blocked at application layer (see api-spec.md, `LAST_ADMIN` error). |
+| Admin deletes project and all documents | Accepted | This is a feature, not a bug -- admins have full control of their projects. A confirmation UI mitigates accidental deletion. |
+| OAuth provider attacks | N/A | OAuth is not in P2 scope (email/password only). |
+| Denial of service via bulk upload | Partial | Max 10 files per request, 20 MB per file. Additional rate limiting at deployment layer. |
+| Stored XSS in document names or extracted text | Mitigated | All rendering in React escapes by default. Extracted text is plain text, not HTML. |
 
 ---
 
-## 3. API Security for P1
+## 2. Authentication Architecture
 
-### No authentication
+### 2a. Auth Provider
 
-P1 has no auth. All four API endpoints are open. This is accepted for P1 (see Section 1). The following compensating controls apply:
+**Supabase Auth** with email/password. The user's identity is represented by a row in `auth.users` (managed by Supabase). The session is a JWT stored in an HTTP-only cookie.
 
-- Deploy behind a trusted network or local access only.
-- No destructive endpoints (no DELETE, no overwrite of existing documents).
-- Document data has no PII in the demo dataset.
+### 2b. Token Handling
 
-### What is protected
+| Property | Detail |
+|---|---|
+| Token type | Supabase-issued JWT (signed, short-lived) |
+| Token storage | HTTP-only cookie managed by `@supabase/ssr` |
+| Cookie name | `sb-{project-ref}-auth-token` (Supabase naming convention) |
+| Cookie flags | `HttpOnly`, `Secure` (in production), `SameSite=Lax` |
+| Token refresh | `middleware.ts` calls `getSession()` on every request to refresh expired tokens |
+| Token exposure to JavaScript | None -- HTTP-only prevents `document.cookie` access |
+| Token in API calls | Sent automatically via cookie on same-origin requests. No manual `Authorization` header needed. |
 
-- **Service-role key:** never sent to the browser; used only in route handlers.
-- **DeepSeek API key:** never sent to the browser.
-- **Supabase Storage bucket:** private; no public read access; accessible only via service-role.
-- **Uploaded files:** stored in a private bucket; not returned as raw bytes by any API endpoint (only metadata and extracted text).
+### 2c. Next.js Middleware
 
-### What will change in P2
+`middleware.ts` (project root):
 
-- All endpoints will require a valid Supabase Auth session token.
-- RLS will enforce tenant isolation at the database layer so a misconfigured route handler cannot leak cross-tenant data.
-- The service-role key will be used only for admin-level operations; per-user operations will use user-scoped Supabase clients derived from the session JWT.
+- Runs on every request to the Next.js server.
+- Creates a Supabase server client and calls `supabase.auth.getSession()`.
+- This refreshes the cookie if the access token has expired (using the refresh token in the cookie).
+- Does **NOT** perform redirects or role checks -- those happen in route handlers.
+- Does **NOT** expose the session to the client (the cookie stays HTTP-only).
 
----
+**Security consideration:** If `@supabase/ssr`'s `getSession()` fails (expired refresh token), the cookie is effectively invalid. The next route handler call to `getUser()` will return `null` and the handler will return 401.
 
-## 4. Input Validation
+### 2d. Route Handler Auth Pattern
 
-Every API endpoint must validate all inputs before processing. The backend agent must implement these checks before any business logic or database access.
-
-### POST /api/documents
-
-| Input | Validation | Error |
-|---|---|---|
-| `file` field | Must be present in multipart form | 400 `MISSING_FILE` |
-| `file` MIME type | Must be exactly `application/pdf` | 415 `INVALID_FILE_TYPE` |
-| `file` size | Must be ≤ 20,971,520 bytes (20 MB) | 413 `FILE_TOO_LARGE` |
-| `name` field | Must be present, non-empty string | 400 `MISSING_NAME` |
-| `name` length | Must be ≤ 255 characters | 400 `NAME_TOO_LONG` |
-
-**File type check:** Validate both the `Content-Type` header of the form field AND perform a magic-byte check on the first 4 bytes of the file (`%PDF` = `25 50 44 46`). A file renamed to `.pdf` with a non-PDF content type must be rejected.
-
-### GET /api/documents
-
-| Input | Validation | Error |
-|---|---|---|
-| `limit` | If provided: must be a positive integer ≤ 200 | 400 `INVALID_LIMIT` |
-| `offset` | If provided: must be a non-negative integer | 400 `INVALID_OFFSET` |
-| `search` | Sanitised before use in ILIKE (use parameterised query — no string concatenation) | — |
-
-### GET /api/documents/[id]
-
-| Input | Validation | Error |
-|---|---|---|
-| `id` | Must match UUID format: `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i` | 400 `INVALID_ID` |
-
-### POST /api/compare
-
-| Input | Validation | Error |
-|---|---|---|
-| `docAId` | Must be a valid UUID | 400 `INVALID_DOC_A_ID` |
-| `docBId` | Must be a valid UUID | 400 `INVALID_DOC_B_ID` |
-| `docAId !== docBId` | Must not be the same value | 400 `SAME_DOCUMENT` |
-
----
-
-## 5. SQL Injection Prevention
-
-All database queries must use the Supabase JS client's parameterised methods (`.select()`, `.insert()`, `.eq()`, etc.). **No raw SQL string concatenation with user input is permitted.** The Supabase client handles parameterisation automatically when using its query builder.
-
-The one case where text is used in a query is the `search` parameter in `ILIKE`. This must be passed as a bound parameter:
+Every protected route handler must follow this pattern:
 
 ```ts
-// CORRECT — parameterised
-.ilike('name', `%${search}%`)
-
-// WRONG — never do this
-.filter('name', 'ilike', `%${search}%`)  // only wrong if search is unsanitised string concat
+// lib/auth.ts -- pseudocode (do not implement from docs)
+export async function requireAuth(request: NextRequest) {
+  const { supabase, response } = createServerClient(request);
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) {
+    return { user: null, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+  return { user, response };
+}
 ```
 
-The Supabase client's `.ilike()` method binds the value safely. Do not construct raw SQL strings.
+The route handler calls `requireAuth()` as its first operation. If `user` is null, it immediately returns the 401 response. No business logic runs before auth is verified.
 
 ---
 
-## 6. AI Prompt Injection Risks
+## 3. RLS Policy Design
 
-The compare endpoint embeds user-controlled content (extracted PDF text) into the DeepSeek prompt. An adversary could craft a PDF whose text attempts to override the system prompt or extract confidential information.
+### 3a. Design Principles
 
-### Mitigations in P1
+1. **Defence in depth:** RLS is the last line of defence. Application code checks permissions first (for clear error messages), and RLS catches any application bugs.
+2. **User identity via `auth.uid()`:** All RLS policies use `auth.uid()` to identify the current user. This function returns the UUID of the authenticated user from the JWT. It returns `NULL` for anon requests.
+3. **Helper functions:** `get_user_tenant_id()` and `get_project_role(project_id)` encapsulate the profile and membership lookups so policies are readable and the lookup logic is in one place.
+4. **Service role bypass:** The `SUPABASE_SERVICE_ROLE_KEY` bypasses all RLS. This is intentional for admin operations (profile creation trigger, migration backfills). Application code must restrict service-role usage to those cases only.
 
-1. **System prompt is prepended and fixed.** The system prompt is a hardcoded string in `lib/core.ts`. User content is placed only in the user message, not the system message.
-2. **Schema validation on AI output.** The response is validated with a Zod schema. Any response that does not conform (including injected instructions masquerading as verdicts) is rejected with `AI_PARSE_ERROR`.
-3. **Text truncation.** Input text is truncated to 40,000 characters maximum. This limits the attack surface for long injected payloads.
-4. **No confidential data in the prompt.** The prompt contains only the two document texts and a fixed instruction. There are no API keys, session tokens, or sensitive config values in the prompt.
-5. **Output is treated as data, not instructions.** The `reasoning` field is displayed as text in the UI. It is never executed or interpreted as code.
+### 3b. Policy Coverage Matrix
 
-### Residual risk
+| Table | Operation | Policy Name | Who can do this |
+|---|---|---|---|
+| `tenants` | SELECT | `tenants_select_own` | Users who belong to the tenant |
+| `tenants` | INSERT | `tenants_insert_auth` | Any authenticated user (during sign-up) |
+| `profiles` | SELECT | `profiles_select_own` | The profile owner |
+| `profiles` | UPDATE | `profiles_update_own` | The profile owner |
+| `projects` | SELECT | `projects_select_member` | Project members |
+| `projects` | INSERT | `projects_insert_auth` | Authenticated users (must match own tenant) |
+| `projects` | UPDATE | `projects_update_admin` | Project admins |
+| `projects` | DELETE | `projects_delete_admin` | Project admins |
+| `project_members` | SELECT | `project_members_select_peer` | Members of the same project |
+| `project_members` | INSERT | `project_members_insert_admin` | Project admins |
+| `project_members` | UPDATE | `project_members_update_admin` | Project admins |
+| `project_members` | DELETE | `project_members_delete_admin` | Project admins |
+| `documents` | SELECT | `documents_select_member` | Project members |
+| `documents` | INSERT | `documents_insert_editor` | Project admins or editors, must match `uploaded_by` |
 
-A sophisticated prompt injection could cause the AI to return a wrong `verdict` (e.g. claim NOT_MATERIAL when the change is MATERIAL). This is a correctness risk, not a confidentiality or integrity risk — the system's deterministic hash check is unaffected. Users must treat AI verdicts as advisory for high-stakes decisions.
+### 3c. RLS Verification (for `security` agent)
+
+The security agent must verify these scenarios:
+
+| Test | Expected result |
+|---|---|
+| Anon user queries `documents` | Zero rows returned |
+| User A queries their own documents | Returns only A's documents |
+| User A queries with a `project_id` they are NOT a member of | Zero rows (or empty list) |
+| User A (viewer) tries to INSERT into `documents` | Insert rejected by RLS |
+| User A (editor) tries to UPDATE `project_members` | Update rejected by RLS |
+| User A (admin) tries to INSERT into another tenant's project | Insert rejected by RLS (`tenant_id` mismatch) |
+| Service-role client queries `documents` with no auth | All rows returned (expected -- service role bypass) |
+
+The security agent should test these using the Supabase JS client with different auth states (anon, user A JWT, user B JWT, service-role key).
 
 ---
 
-## 7. Empty and Corrupt PDF Handling
+## 4. RBAC Enforcement
 
-`extractPdfText()` in `lib/core.ts` must never throw. If the PDF is corrupt, empty, encrypted, or otherwise unreadable, the function returns an empty string `""`. The upstream route handler:
+### 4a. Role Definitions
 
-- Stores `extracted_text = ""` in the database.
-- Computes `text_hash = SHA-256("")` (a fixed known hash).
-- Returns 201 normally — the document is stored, but its text could not be extracted.
+| Role | Create docs | View docs | Trigger compare | Manage members | Edit project | Delete project |
+|---|---|---|---|---|---|---|
+| **admin** | Yes | Yes | Yes | Yes | Yes | Yes |
+| **editor** | Yes | Yes | Yes | No | No | No |
+| **viewer** | No | Yes | Yes | No | No | No |
 
-On compare: if both documents have the same `text_hash` (e.g. both empty), the pipeline returns `TEXT_MATCH` / `BINARY_DIFF_ONLY` (or `BINARY_MATCH` if also identical binaries). The AI is never called when extracted text is empty for both documents (because their text hashes will be equal).
+### 4b. Enforcement Layers
 
-**Special case:** If doc A has empty text and doc B has non-empty text (or vice versa), the text hashes differ and the AI WILL be called. The AI will see one empty text and one populated text. This is correct behaviour — the change is likely material.
+1. **UI layer** (frontend): Hides buttons/actions the user cannot perform. Not a security control -- pure UX. A malicious user can craft HTTP requests directly.
+2. **Route handler layer** (backend): Checks the user's role in the target project before performing the operation. Returns 403 with a clear `code` if the role is insufficient.
+3. **RLS layer** (database): Postgres policies reject INSERT/UPDATE/DELETE operations that do not match the required role. This is the guaranteed enforcement -- even if the route handler is buggy, the database rejects.
+
+### 4c. Role Check Pattern in Route Handlers
+
+```ts
+// lib/auth.ts -- pseudocode
+export async function requireProjectRole(
+  supabase: SupabaseClient,
+  userId: string,
+  projectId: string,
+  allowedRoles: Role[]
+): Promise<Role | null> {
+  const { data: member } = await supabase
+    .from('project_members')
+    .select('role')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .single();
+
+  if (!member || !allowedRoles.includes(member.role as Role)) {
+    return null;
+  }
+  return member.role as Role;
+}
+```
+
+### 4d. Last Admin Protection
+
+When an admin attempts to demote themselves or leave a project, the route handler checks whether other admins exist. If this is the last admin, the operation is blocked with `LAST_ADMIN`. This is enforced at the application layer (not RLS) because it requires a COUNT query across `project_members`.
 
 ---
 
-## 8. Never-Do List
+## 5. Tenant Isolation Verification
 
-These must never happen in any phase, including P1:
+### 5a. Isolation Guarantee
 
-1. **Never commit `.env.local`** or any file containing secret values.
-2. **Never use `NEXT_PUBLIC_` prefix on `SUPABASE_SERVICE_ROLE_KEY` or `DEEPSEEK_API_KEY`.**
-3. **Never call the DeepSeek API before the binary and text hash checks** (would violate the core pipeline invariant and incur unnecessary cost).
-4. **Never build SQL queries by string concatenation with user input** (SQL injection).
-5. **Never serve raw PDF file bytes from Supabase Storage directly to the browser** in an unauthenticated endpoint (would expose all uploaded documents publicly).
-6. **Never store secret values in Vercel environment variables as "plain" (non-secret)** — use Vercel's "Sensitive" flag for `SUPABASE_SERVICE_ROLE_KEY` and `DEEPSEEK_API_KEY`.
-7. **Never log full request bodies** in production — they may contain file contents or extracted text.
-8. **Never execute or `eval` any content from extracted PDF text or AI responses.**
+Every document is assigned a `tenant_id` at upload time (from the uploading user's `profiles.tenant_id`). The RLS policy on `documents` checks this value. Once set, `tenant_id` never changes. There is no API endpoint that moves a document between tenants.
+
+### 5b. Verification Scenarios (for `security` agent)
+
+| Scenario | Expected outcome |
+|---|---|
+| User in tenant A creates a project | Project has tenant A's `tenant_id` |
+| User in tenant A uploads a document to their project | Document has tenant A's `tenant_id` and the project's `project_id` |
+| User in tenant B queries all documents (no project filter) | Only sees documents in tenant B's projects (because of the project membership join in RLS) |
+| User in tenant B tries to guess a document UUID from tenant A and calls `GET /api/documents/:id` | 404 (RLS filters out the row) |
+| Admin in tenant A adds user from tenant B to their project | Blocked at app layer: `USER_NOT_IN_TENANT` error |
+| A buggy route handler forgets to filter by tenant_id | RLS catches it -- `documents_select_member` policy only returns rows in projects the user belongs to |
+
+### 5c. Data at Rest
+
+All tenant data lives in the same Postgres database and the same Storage bucket. Isolation is logical (RLS, tenant_id column), not physical (separate databases per tenant). This is acceptable for P2 scope. For high-security deployments, separate Supabase projects per tenant or schema-level isolation could be added in a future phase.
 
 ---
 
-## 9. What Changes in P2
+## 6. Secret Management (Updated for P2)
 
-P2 is the hardening phase for multi-tenancy. The following changes will be made:
+### 6a. Environment Variables
 
-| Control | P1 State | P2 Target |
+| Variable | Sensitivity | Location | P2 Change |
+|---|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Low (public) | `.env.local`, Vercel | No change |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Low (public) | `.env.local`, Vercel | Now used by browser Supabase client for auth (was server-only in P1). Still safe to expose. |
+| `SUPABASE_SERVICE_ROLE_KEY` | **HIGH** | `.env.local`, Vercel (Sensitive) | **P2: Usage restricted** to admin ops only (profile creation trigger, backfill). Must NOT be used for user-facing queries. |
+| `DEEPSEEK_API_KEY` | **HIGH** | `.env.local`, Vercel (Sensitive) | No change |
+
+### 6b. P2 Rules (in addition to P1 rules)
+
+1. The service-role client must only be instantiated in `lib/supabase/client.ts` via `createServiceClient()`.
+2. No route handler may accept a `useServiceRole: boolean` parameter -- the choice of client is determined by the operation, not the request.
+3. The anon key is now used by the browser Supabase client for `signUp()`, `signInWithPassword()`, etc. This is safe -- the anon key identifies the project but does not grant data access (RLS prevents anon access to all user-data tables).
+4. All P1 secret rules still apply (no commits, no `NEXT_PUBLIC_` on sensitive vars).
+
+### 6c. Supabase JWT Secret
+
+The JWT signing secret is managed by Supabase and never leaves their infrastructure. The application never sees it. This is a security advantage of using Supabase Auth over a self-managed auth system.
+
+---
+
+## 7. AI Prompt Injection Risks (Unchanged from P1)
+
+The risks and mitigations from P1 Section 6 apply identically in P2. The compare endpoint still embeds user-controlled PDF text into the DeepSeek prompt. P2 mitigations:
+
+1. System prompt is fixed and prepended. User content goes in the user message only.
+2. Zod schema validation on the AI response rejects non-conforming outputs.
+3. Text truncation at 40,000 characters.
+4. No secrets in the prompt.
+5. Output treated as data, never executed.
+
+P2 does NOT add new prompt injection vectors -- auth credentials are never placed in prompts, and the user identity is not passed to DeepSeek.
+
+---
+
+## 8. Input Validation (Updated for P2)
+
+All P1 validation rules apply (file type magic-byte check, UUID format, size limits, parameterised queries). P2 adds:
+
+### New Validations
+
+| Endpoint | Input | Validation | Error |
+|---|---|---|---|
+| All | Session | Must have valid Supabase session | 401 |
+| POST /api/projects | `name` | Non-empty, <= 255 chars | 400 |
+| PATCH /api/projects/[id] | `name` | If provided, non-empty, <= 255 chars | 400 |
+| POST /api/projects/[id]/members | `user_id` | Valid UUID | 400 |
+| POST /api/projects/[id]/members | `role` | Must be `admin`, `editor`, or `viewer` | 400 |
+| POST /api/documents | `project_id` | Valid UUID | 400 |
+| GET /api/documents | `project_id` | Required, valid UUID | 400 |
+| POST /api/documents/bulk | `files` | 1-10 files, each <= 20 MB | 400 |
+| POST /api/documents/bulk | `names` | If provided, valid JSON array of strings | 400 |
+| POST /api/compare | Cross-project | Both docs must have same `project_id` | 400 |
+
+### SQL Injection Prevention (Unchanged)
+
+All queries use the Supabase JS client's parameterised methods. No raw SQL string concatenation with user input. The `ILIKE` search parameter is bound via `.ilike('name', `%${search}%`)` which handles escaping.
+
+---
+
+## 9. Rate Limiting (P2 Guidance)
+
+P2 does not implement application-level rate limiting. This is deferred to the deployment layer. Recommendations for the `deployment` agent:
+
+| Endpoint group | Suggested limit | Rationale |
 |---|---|---|
-| Authentication | None | Supabase Auth (email/password or OAuth) |
-| Authorisation | None | RLS on all tables; roles: admin/editor/viewer |
-| Tenant isolation | Single tenant; no isolation needed | `tenant_id` RLS policy on `documents` |
-| Service-role key usage | All server operations | Admin ops only; user ops use user-scoped JWT |
-| API endpoint access | Open | Require valid session token on all endpoints |
-| Storage access | Service-role only | Per-tenant Storage path prefix + RLS |
+| `/api/auth/*` | 20 req/min per IP | Supabase Auth handles brute-force internally; this is a secondary layer |
+| `/api/documents/bulk` | 5 req/min per user | Bulk uploads are expensive (multiple Storage + DB writes) |
+| `/api/compare` | 10 req/min per user | Each compare may trigger a paid AI API call |
+| `/api/*` (general) | 60 req/min per IP | General baseline |
 
-P1 code should not make assumptions that prevent these additions. In particular:
-- Do not hard-code `tenant_id = NULL` in queries (use `null` as a value that will later be a real UUID).
-- Do not cache or memoize user identity (there is none in P1; P2 will add it per-request).
+These limits can be implemented via Vercel WAF rules or a reverse proxy. They are not enforced in application code for P2.
+
+---
+
+## 10. Empty and Corrupt PDF Handling (Unchanged)
+
+The behaviour from P1 Section 7 applies identically. `extractPdfText()` never throws; returns `""` for corrupt/empty PDFs. The compare pipeline handles this correctly via hash comparison.
+
+---
+
+## 11. Never-Do List (Updated for P2)
+
+All P1 "Never-Do" items remain in effect. P2 adds:
+
+9. **Never use the service-role client for user-facing queries.** It bypasses RLS and destroys tenant isolation.
+10. **Never create a Supabase client with `auth: { persistSession: false }` in the browser** -- it would prevent the session cookie from being set and break auth.
+11. **Never pass `user.id` from the client as a trusted parameter.** Always derive the user ID from the session JWT in the route handler via `supabase.auth.getUser()`. A malicious client could send someone else's ID.
+12. **Never skip the cross-project check in `/api/compare`.** Comparing documents across projects would leak information about document count/existence in other projects via the error message.
+13. **Never log session tokens or cookies.**
+14. **Never expose `SUPABASE_SERVICE_ROLE_KEY` in any client-side code or env var with `NEXT_PUBLIC_` prefix.**
+
+---
+
+## 12. P1 Baseline (Preserved)
+
+All P1 security rules (Sections 1-8 from the P1 document) that do not conflict with P2 additions remain valid. In particular:
+- Secret management rules (Section 2 of P1).
+- Input validation patterns (Section 4 of P1, extended above).
+- SQL injection prevention (Section 5 of P1).
+- AI prompt injection mitigations (Section 6 of P1).
+- Empty/corrupt PDF handling (Section 7 of P1).
+- Original "Never-Do" items 1-8 (Section 8 of P1).
+
+---
+
+## 13. Security Audit Checklist (for `security` agent)
+
+The P2 security audit must verify:
+
+### Auth
+- [ ] All API endpoints (except Supabase-managed auth) return 401 when called without a valid session.
+- [ ] `middleware.ts` refreshes the session cookie and does not expose it to client code.
+- [ ] `lib/supabase/client.ts` never creates a service-role client from request context (only user-scoped).
+- [ ] `SUPABASE_SERVICE_ROLE_KEY` is only referenced in `createServiceClient()`.
+
+### RLS & Tenant Isolation
+- [ ] RLS is enabled on all tables: `tenants`, `profiles`, `projects`, `project_members`, `documents`.
+- [ ] Anon queries to any table return zero rows.
+- [ ] User A cannot see user B's documents or projects.
+- [ ] User A cannot insert documents into a project they are not a member of.
+- [ ] A viewer cannot upload a document (insert rejected by RLS).
+- [ ] An editor cannot change project members (update rejected by RLS).
+
+### RBAC
+- [ ] Viewer can GET documents and compare but cannot POST documents.
+- [ ] Editor can GET and POST documents but cannot PATCH project or manage members.
+- [ ] Admin can perform all project operations.
+- [ ] Last admin cannot be removed or demoted.
+
+### Secret Safety
+- [ ] `git grep "SUPABASE_SERVICE_ROLE_KEY"` finds only server-side files and docs.
+- [ ] `git grep "DEEPSEEK_API_KEY"` finds only server-side files and docs.
+- [ ] No `NEXT_PUBLIC_` prefix on sensitive variables.
+- [ ] `.env.local` is gitignored.
+
+### Input Validation
+- [ ] All endpoints validate UUID format on path parameters.
+- [ ] File upload validates magic bytes (`%PDF`).
+- [ ] Cross-project comparison is blocked with a clear error.
+- [ ] SQL queries use parameterised methods (no raw string concat).
