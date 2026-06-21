@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ALLOWED_MIME_TYPES } from "@/lib/core";
 import {
   Card,
   CardContent,
@@ -41,12 +42,8 @@ export default function BulkUpload({ projectId, onComplete }: BulkUploadProps) {
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
-    const pdfFiles = selected.filter((f) => f.type === "application/pdf");
-    if (pdfFiles.length !== selected.length) {
-      // Some non-PDF files were selected — they'll be rejected server-side
-    }
-    addFiles(pdfFiles);
-    // Reset input so the same files can be re-selected
+    const allowed = selected.filter((f) => (ALLOWED_MIME_TYPES as readonly string[]).includes(f.type));
+    addFiles(allowed);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -55,8 +52,8 @@ export default function BulkUpload({ projectId, onComplete }: BulkUploadProps) {
       e.preventDefault();
       setDragOver(false);
       const dropped = Array.from(e.dataTransfer.files);
-      const pdfFiles = dropped.filter((f) => f.type === "application/pdf");
-      addFiles(pdfFiles);
+      const allowed = dropped.filter((f) => (ALLOWED_MIME_TYPES as readonly string[]).includes(f.type));
+      addFiles(allowed);
     },
     [addFiles],
   );
@@ -80,7 +77,7 @@ export default function BulkUpload({ projectId, onComplete }: BulkUploadProps) {
           <div>
             <CardTitle>Bulk Upload</CardTitle>
             <CardDescription>
-              Upload up to 10 PDF files at once. Each file can have a custom display name.
+              Upload up to 10 files at once. Each file can have a custom display name.
             </CardDescription>
           </div>
           {files.length > 0 && (
@@ -106,12 +103,13 @@ export default function BulkUpload({ projectId, onComplete }: BulkUploadProps) {
           onDrop={handleDrop}
         >
           <p className="text-sm text-muted-foreground mb-2">
-            Drag and drop PDF files here, or click to browse.
+            Drag and drop files here, or click to browse.
           </p>
+          <label htmlFor="bulk-file-input" className="sr-only">Select files</label>
           <Input
             ref={fileInputRef}
             type="file"
-            accept="application/pdf"
+            accept={ALLOWED_MIME_TYPES.join(",")}
             multiple
             onChange={handleFileSelect}
             disabled={isUploading}
@@ -127,7 +125,7 @@ export default function BulkUpload({ projectId, onComplete }: BulkUploadProps) {
             Browse Files
           </Button>
           <p className="text-xs text-muted-foreground mt-2">
-            Max 10 files, 20 MB each. PDF only.
+            Max 10 files, 20 MB each. 14 formats supported.
           </p>
         </div>
 

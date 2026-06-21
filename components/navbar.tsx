@@ -13,6 +13,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { IconBrand } from "@/components/icons";
 
 function getInitials(email: string | undefined): string {
   if (!email) return "U";
@@ -33,32 +35,48 @@ export function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto max-w-7xl flex h-14 items-center justify-between px-4">
+    <nav className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <div className="flex h-14 items-center justify-between px-4 sm:px-6">
         {/* Left side: logo + nav links */}
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-6">
           <Link
             href="/projects"
-            className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2.5 font-semibold tracking-tight hover:opacity-80 transition-opacity"
           >
-            TrustVault
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <IconBrand className="h-4 w-4" />
+            </div>
+            <span className="text-sm hidden sm:inline">TrustVault</span>
           </Link>
-          <div className="hidden sm:flex items-center gap-4">
+
+          {/* Desktop nav links */}
+          <div className="hidden sm:flex items-center gap-1">
             <Link
               href="/projects"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-muted"
             >
               Projects
+            </Link>
+            <Link
+              href="/dashboard"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-muted"
+            >
+              Dashboard
             </Link>
           </div>
         </div>
 
-        {/* Right side: user menu */}
-        <div className="flex items-center gap-3">
+        {/* Right side: theme toggle + user menu */}
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" className="flex items-center gap-2 rounded-full hover:ring-2 hover:ring-ring transition-all">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-full hover:ring-2 hover:ring-ring transition-all"
+                >
                   <Avatar size="sm">
                     <AvatarFallback initials={getInitials(user.email)} />
                   </Avatar>
@@ -77,11 +95,17 @@ export function Navbar() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+                  Dashboard
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push("/projects")}>
                   Projects
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/compare")}>
-                  Compare
+                <DropdownMenuItem onClick={() => router.push("/vault")}>
+                  My Vault
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/settings")}>
+                  Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

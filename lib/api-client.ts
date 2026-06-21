@@ -50,6 +50,8 @@ export interface Document {
   project_id: string;
   uploaded_by: string;
   created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 }
 
 export interface CompareResult {
@@ -435,6 +437,7 @@ export interface ListDocumentsParams {
   search?: string;
   limit?: number;
   offset?: number;
+  include_deleted?: boolean;
 }
 
 /**
@@ -470,6 +473,7 @@ export async function listDocuments(
   if (params?.search) sp.set("search", params.search);
   if (params?.limit !== undefined) sp.set("limit", String(params.limit));
   if (params?.offset !== undefined) sp.set("offset", String(params.offset));
+  if (params?.include_deleted) sp.set("include_deleted", "true");
 
   const qs = sp.toString();
   const url = `/api/documents${qs ? `?${qs}` : ""}`;
@@ -551,4 +555,24 @@ export async function compareDocuments(
     body: JSON.stringify({ docAId, docBId }),
   });
   return handleResponse<CompareResult>(response);
+}
+
+/** PATCH /api/documents/:id — soft-delete a document. */
+export async function deleteDocument(id: string): Promise<{ document: Document }> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete" }),
+  });
+  return handleResponse<{ document: Document }>(response);
+}
+
+/** PATCH /api/documents/:id — restore a soft-deleted document. */
+export async function restoreDocument(id: string): Promise<{ document: Document }> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "restore" }),
+  });
+  return handleResponse<{ document: Document }>(response);
 }

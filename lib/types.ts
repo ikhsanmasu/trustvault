@@ -97,6 +97,8 @@ export interface Document {
   project_id: string;
   uploaded_by: string;
   created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 }
 
 // ---------------------------------------------------------------------------

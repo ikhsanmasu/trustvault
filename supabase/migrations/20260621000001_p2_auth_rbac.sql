@@ -240,6 +240,8 @@ DROP POLICY IF EXISTS "documents_select_member" ON public.documents;
 CREATE POLICY "documents_select_member" ON public.documents FOR SELECT USING (true);
 DROP POLICY IF EXISTS "documents_insert_editor" ON public.documents;
 CREATE POLICY "documents_insert_editor" ON public.documents FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "documents_update" ON public.documents;
+CREATE POLICY "documents_update" ON public.documents FOR UPDATE USING (true);
 
 -- --- storage ---
 DROP POLICY IF EXISTS "storage_pdf_select_auth" ON storage.objects;
