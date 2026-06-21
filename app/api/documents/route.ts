@@ -62,6 +62,12 @@ export async function POST(
       { status: 413 },
     );
   }
+  if (file.size === 0) {
+    return NextResponse.json(
+      { error: "File is empty", code: "EMPTY_FILE" },
+      { status: 400 },
+    );
+  }
 
   // ── 5. Validate name ──────────────────────────────────────────────────
   if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -83,35 +89,54 @@ export async function POST(
   }
 
   // ── 6. Read file into buffer ──────────────────────────────────────────
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  // Make TWO independent copies — unpdf transfers the ArrayBuffer to a
+  // PDF.js worker, which detaches it. The second copy stays alive for Supabase.
+  const raw = await file.arrayBuffer();
+  const fileCopy1 = raw.slice(0); // for hashing + PDF extraction
+  const fileCopy2 = raw.slice(0); // for Supabase storage upload
+  const buffer = Buffer.from(fileCopy1 as ArrayBuffer);
 
-  // ── 7–9. Compute hashes and extract text ──────────────────────────────
+  // ── 7. PDF magic-byte check ─────────────────────────────────────────────
+  // Verify the first 4 bytes are %PDF (0x25 0x50 0x44 0x46). This is
+  // defense-in-depth beyond the Content-Type check — mandatory per security spec.
+  const PDF_MAGIC = Buffer.from([0x25, 0x50, 0x44, 0x46]);
+  if (buffer.length < 4 || !buffer.subarray(0, 4).equals(PDF_MAGIC)) {
+    return NextResponse.json(
+      { error: "File content is not a valid PDF", code: "INVALID_FILE_CONTENT" },
+      { status: 415 },
+    );
+  }
+
+  // ── 8–10. Compute hashes and extract text ───────────────────────────────
   const binaryHash = computeBinaryHash(buffer);
   const extractedText = await extractPdfText(buffer);
   const textHash = computeTextHash(extractedText);
 
-  // ── 10. Generate storage path ─────────────────────────────────────────
+  // ── 11. Generate storage path ─────────────────────────────────────────
   const year = new Date().getUTCFullYear().toString();
   const fileUuid = randomUUID();
   const storagePath = `uploads/${year}/${fileUuid}.pdf`;
 
-  // ── 11. Upload to Supabase Storage ────────────────────────────────────
+  // ── 12. Upload to Supabase Storage ────────────────────────────────────
+  const uploadData = fileCopy2 as ArrayBuffer;
   const { error: storageError } = await supabase.storage
     .from("pdf-uploads")
-    .upload(storagePath, buffer, {
+    .upload(storagePath, uploadData, {
       contentType: "application/pdf",
       upsert: false,
     });
 
   if (storageError) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[upload] Storage error:", JSON.stringify(storageError));
+    }
     return NextResponse.json(
       { error: "Failed to store file", code: "STORAGE_ERROR" },
       { status: 500 },
     );
   }
 
-  // ── 12. Insert database row ───────────────────────────────────────────
+  // ── 13. Insert database row ───────────────────────────────────────────
   const { data: document, error: dbError } = await supabase
     .from("documents")
     .insert({
@@ -126,6 +151,9 @@ export async function POST(
     .single();
 
   if (dbError || !document) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[upload] DB error:", JSON.stringify(dbError), "document:", document);
+    }
     return NextResponse.json(
       { error: "Failed to save document record", code: "DB_ERROR" },
       { status: 500 },

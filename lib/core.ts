@@ -50,13 +50,13 @@ export async function extractPdfText(buffer: Buffer): Promise<string> {
   try {
     // `unpdf` is marked as a server-external package — it is loaded at runtime
     // in the Node.js server environment (route handlers).
-    // unpdf v0.4.x exports `decodePDFText`, which accepts ArrayBuffer.
-    const { decodePDFText } = await import("unpdf");
-    const result = await decodePDFText(buffer.buffer as ArrayBuffer, {
+    // unpdf v1.x exports `extractText`, which accepts ArrayBuffer.
+    const { extractText } = await import("unpdf");
+    const result = await extractText(buffer.buffer as ArrayBuffer, {
       mergePages: true,
     });
     // When mergePages: true, `text` is a single string per the contract.
-    return result.text as string;
+    return result.text;
   } catch {
     return "";
   }

@@ -30,6 +30,10 @@ CREATE INDEX IF NOT EXISTS documents_binary_hash_idx
 CREATE INDEX IF NOT EXISTS documents_tenant_id_idx
   ON public.documents (tenant_id);
 
+-- Grant permissions (service_role should have full access)
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.documents TO service_role;
+GRANT USAGE ON SCHEMA public TO service_role;
+
 -- Create the storage bucket (idempotent)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
