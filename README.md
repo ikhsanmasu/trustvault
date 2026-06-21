@@ -13,45 +13,37 @@ Anchor fingerprint on-chain → Verify integrity anytime
 ```
 
 - **14 file formats**: PDF, DOCX, XLSX, JSON, CSV, TXT, HTML, Markdown, XML, RTF, DOC, ODT
-- **3-step pipeline**: Binary hash → Text hash → Intelligent analysis (only when content changes)
-- **Blockchain anchoring**: Anchor fingerprints to EVM chains (Anvil local, any L2 for prod)
-- **Soft delete**: Remove files while preserving integrity hashes for audit
+- **3-step pipeline**: Binary hash → Text hash → Intelligent analysis
+- **Blockchain anchoring**: EVM-compatible (Anvil local, any L2 for prod)
+- **Soft delete**: Remove files while preserving integrity hashes
 - **Multi-tenant**: Projects, roles (admin/editor/viewer), tenant isolation
 - **Dark mode**: Full theme support with toggle
+- **481 tests** across 7 test files
 
 ## Quick Start
 
-### Option A: Local dev (recommended)
+### Option A: One command
 
 ```bash
-git clone https://github.com/ikhsanmasu/trustvault.git
-cd trustvault
-cp .env.example .env.local
-# Edit .env.local — add your DEEPSEEK_API_KEY
-
-npx supabase start                # Start Supabase (DB + Auth + Storage)
-npm install
-npx supabase db reset             # Apply migrations + seed SQL
-npx tsx scripts/seed-demo.ts      # Create demo user + upload sample files
-npm run dev                       # Start Next.js
-
-open http://localhost:3000
-# Login: demo@trustvault.dev / demo123456
-# 16 documents ready across 7 file types
+./start.sh
 ```
 
-### Option B: Docker (blockchain anchoring)
+This runs: install deps → start Supabase → apply migrations → seed demo data → start Next.js.
+Open http://localhost:3000 — login: `demo@trustvault.dev` / `demo123456`.
+
+### Option B: With Docker (blockchain anchoring)
 
 ```bash
-# After Supabase is running (npx supabase start):
-docker compose up -d
-# Starts Anvil + deploys anchor contract + runs Next.js
+./start-docker.sh
 ```
 
-### Option C: Production (Vercel + Supabase Cloud)
+Same as Option A, but runs Next.js + Anvil in Docker containers.
+Requires Docker installed.
+
+### Option C: Production
 
 1. Connect Vercel + Supabase Cloud
-2. Set env vars (see .env.example)
+2. Set env vars (see `.env.example`)
 3. Connect Supabase GitHub integration for auto-migrations
 4. Deploy anchor contract: `npx tsx scripts/deploy-anchor.ts`
 5. PR to main → auto-deploy
@@ -76,35 +68,22 @@ npm run dev           # Dev server
 npm run build         # Production build
 npm run test          # 481 tests (7 files)
 npm run lint          # ESLint
-bash scripts/verify.sh  # Full check: lint + tsc + tests
+bash scripts/verify.sh  # Full check
 ```
 
 ## Structure
 
 ```
-app/                     # Next.js App Router (pages + API)
-components/              # UI components (ui/, landing/, app)
-lib/                     # Core logic (hashing, anchor, types, api-client)
+app/                     # Next.js App Router
+components/              # UI components
+lib/                     # Core logic
 hooks/                   # React hooks
 supabase/migrations/     # SQL migrations (P1-P5)
-contracts/               # Solidity smart contracts
-scripts/                 # deploy-anchor.ts, seed-demo.ts, verify.sh
-docker/                  # Dockerfiles (Anvil)
-docs/                    # Architecture, API spec, security, roadmap
-tests/eval/              # Eval suites (P1-P5)
-```
-
-## Tests
-
-```
-481 tests · 7 files
-├── lib/core.test.ts (173)
-├── lib/explorers.test.ts (13)
-├── tests/eval/eval.test.ts (11)
-├── tests/eval/p2-eval.test.ts (64)
-├── tests/eval/p3-eval.test.ts (109)
-├── tests/eval/p4-eval.test.ts (64)
-└── tests/eval/p5-eval.test.ts (47)
+contracts/               # Solidity
+scripts/                 # CLI scripts
+docker/                  # Dockerfiles
+docs/                    # Architecture docs
+tests/eval/              # Eval suites
 ```
 
 ## License

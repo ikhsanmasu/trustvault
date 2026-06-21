@@ -15,10 +15,6 @@ services:
       - "8545:8545"
     volumes:
       - anvil-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-s", "http://localhost:8545"]
-      interval: 3s
-      retries: 15
 
   # ---- Contract deploy (runs once) ----------------------------------------
   deploy-anchor:
@@ -30,10 +26,9 @@ services:
       ANCHOR_PRIVATE_KEY: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
     volumes:
       - .:/app
-    command: sh -c "cd /app && npm install --silent && npx tsx scripts/deploy-anchor.ts"
+    command: sh -c "sleep 5 && cd /app && npm install --silent && npx tsx scripts/deploy-anchor.ts"
     depends_on:
-      anvil:
-        condition: service_healthy
+      - anvil
 
   # ---- Next.js dev server ------------------------------------------------
   app:
