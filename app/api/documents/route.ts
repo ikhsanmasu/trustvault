@@ -244,43 +244,40 @@ export async function GET(
 
   const searchParams = request.nextUrl.searchParams;
 
-  // -- 2. Validate project_id (P2: required) --------------------------------
+  // -- 2. Parse optional project_id (P3: optional for cross-project vault) ----
   const projectIdRaw = searchParams.get("project_id");
-  if (!projectIdRaw || projectIdRaw.trim().length === 0) {
+  const projectId = projectIdRaw?.trim();
+  if (projectId !== undefined && projectId.length > 0 && !UUID_RE.test(projectId)) {
     return NextResponse.json(
-      {
-        error: "project_id query parameter is required",
-        code: "MISSING_PROJECT_ID",
-      },
+      { error: "project_id must be a valid UUID", code: "INVALID_PROJECT_ID" },
       { status: 400 },
     );
   }
 
-  const projectId = projectIdRaw.trim();
-  if (!UUID_RE.test(projectId)) {
-    return NextResponse.json(
-      {
-        error: "project_id must be a valid UUID",
-        code: "INVALID_PROJECT_ID",
-      },
-      { status: 400 },
-    );
-  }
-
-  // -- 3. Verify user is a member of the project (app-layer check) ----------
-  const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-    "admin",
-    "editor",
-    "viewer",
-  ]);
-  if (!roleCheck.ok) {
-    return NextResponse.json(
-      {
-        error: "Access denied -- you are not a member of this project",
-        code: "FORBIDDEN",
-      },
-      { status: 403 },
-    );
+  // -- 3. Resolve which projects to query --------------------------------------
+  let queryProjectIds: string[];
+  if (projectId) {
+    // Scoped to a single project -- verify membership first
+    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
+      "admin", "editor", "viewer",
+    ]);
+    if (!roleCheck.ok) {
+      return NextResponse.json(
+        { error: "Access denied", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+    queryProjectIds = [projectId];
+  } else {
+    // No project_id — fetch all user's projects
+    const { data: memberships } = await supabase
+      .from("project_members")
+      .select("project_id")
+      .eq("user_id", user.id);
+    queryProjectIds = (memberships ?? []).map((m: { project_id: string }) => m.project_id);
+    if (queryProjectIds.length === 0) {
+      return NextResponse.json({ documents: [], total: 0 });
+    }
   }
 
   // -- 4. Parse & validate query parameters ---------------------------------
@@ -313,11 +310,11 @@ export async function GET(
     );
   }
 
-  // -- 5. Build query -- filter by project_id -------------------------------
+  // -- 5. Build query -- filter by resolved project IDs (P3: cross-project) ----
   let query = supabase
     .from("documents")
     .select("*", { count: "exact" })
-    .eq("project_id", projectId);
+    .in("project_id", queryProjectIds);
 
   if (search) {
     query = query.ilike("name", `%${search}%`);
