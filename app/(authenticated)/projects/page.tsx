@@ -94,9 +94,9 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Hero / Header section */}
-      <section className="relative overflow-hidden rounded-2xl hero-gradient mb-2">
+      <section className="relative overflow-hidden rounded-2xl hero-gradient">
         {/* dot-grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -150,7 +150,7 @@ export default function ProjectsPage() {
 
       {/* Stats bar */}
       {!isLoading && !error && (
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
           <span className="tabular-nums font-semibold text-foreground">
             {total.toLocaleString()}
           </span>

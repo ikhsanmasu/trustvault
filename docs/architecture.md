@@ -1,8 +1,8 @@
-# TrustVault -- Architecture (P2)
+# TrustVault -- Architecture (P5)
 
 ## Open Decisions
 
-None for P2. All interfaces are fully specified below.
+None for P5. All interfaces are fully specified below.
 
 ---
 
@@ -370,11 +370,11 @@ All P1 architecture described in the original document remains valid. The core p
 
 ---
 
-## 8. Forward-Compat Notes for P3 / P4
+## 8. Forward-Compat Notes for P5 / P6
 
-- P3 (Documentation & Demo): No architecture changes anticipated. The existing system should be demo-ready after P2. A narrative demo script may need seed data.
-- P4 (Blockchain Anchoring): The `documents` table should add a `proof_hash` and `anchor_tx` column. The compare flow should expose the proof. No structural changes to auth or project model needed.
-- OAuth providers (Google, GitHub): Supabase Auth supports them natively. Adding them is a configuration change, not an architecture change. Not in P2 scope.
+- P5 (Blockchain Anchoring): **Now implemented.** See Section 11 for the full architecture. The design differs from the original roadmap (no Merkle trees in P5; one fingerprint per document anchored directly). Batching and Merkle trees are deferred to a future phase.
+- P6 (AI Vault Assistant): RAG-based conversational AI. Requires vector embeddings and a chat interface. No architecture changes to P5 anchoring expected.
+- OAuth providers (Google, GitHub): Supabase Auth supports them natively. Adding them is a configuration change, not an architecture change. Not in current scope.
 
 ---
 
@@ -413,3 +413,245 @@ Build sequence for P2 -- must run in this order:
 **New for P2:** The `scaffold` agent must add `@supabase/ssr` to `package.json` dependencies. The `backend` agent creates `middleware.ts` (this is a config/boundary file -- if conductor prefers, `scaffold` creates the skeleton and `backend` fills it). The conductor must resolve this before spawning agents.
 
 Open questions for the human: none for P2 -- all interfaces are fully specified.
+
+---
+
+## 11. P5 Blockchain Anchoring Architecture
+
+### 11a. P5 System Overview
+
+P5 adds a **blockchain anchoring layer** that proves document integrity via an on-chain fingerprint registry. The system now has three domains:
+
+```
+                              ┌──────────────────────────────────────┐
+                              │   EVM Blockchain (Anvil/Sepolia/...)  │
+                              │   ┌────────────────────────────────┐  │
+                              │   │  TrustVaultAnchor (Solidity)    │  │
+                              │   │  mapping(bytes32 => uint256)    │  │
+                              │   │  anchor() / verify()            │  │
+                              │   └────────────────────────────────┘  │
+                              └──────────────┬───────────────────────┘
+                                             │ RPC calls (viem)
+                                             │ Server-side only
+                      ┌──────────────────────┴──────────────────────────┐
+                      │           Next.js App Router (Vercel)           │
+                      │                                                 │
+                      │  lib/anchor.ts                                  │
+                      │  ├── computeFingerprint(binaryHash, textHash)   │
+                      │  ├── AnchorService interface                    │
+                      │  ├── EvmAnchorService (viem implementation)     │
+                      │  └── getAnchorService() factory                 │
+                      │                                                 │
+                      │  app/api/anchor/route.ts   POST /api/anchor     │
+                      │  app/api/verify/route.ts   POST /api/verify     │
+                      └──────────────┬──────────────────────────────────┘
+                                     │
+                            Supabase Postgres
+                            documents table
+                            + fingerprint, chain, tx_hash, anchored_at
+```
+
+**Key architectural rule -- Do not touch the hashing pipeline:**
+
+P5 consumes `binary_hash` and `text_hash` from existing document records. It NEVER modifies `lib/core.ts` or the upload/compare pipeline. The existing hashing pipeline is an architectural invariant; P5 is a consumer, not a modifier.
+
+### 11b. Fingerprint Pipeline (New Architectural Invariant)
+
+The fingerprint computation is deterministic and must produce the same result off-chain (viem/TypeScript) and on-chain (Solidity). This is the cryptographic guarantee that enables independent verification.
+
+```
+Document record in DB:
+  binary_hash (64-char hex, SHA-256 of raw file)
+  text_hash   (64-char hex, SHA-256 of extracted text)
+        |
+        v
+  computeFingerprint(binaryHash, textHash)
+        |
+        v
+  keccak256(abi.encodePacked(binaryHashAsBytes32, textHashAsBytes32))
+        |
+        v
+  fingerprint (32 bytes, stored as 0x-prefixed hex = 66 chars)
+```
+
+**Contract:** This computation is entirely deterministic. Given the same two hashes, it always produces the same fingerprint. There are no salts, nonces, or random components.
+
+### 11c. Anchor Flow (Server-Side)
+
+```
+Browser (authenticated)    API: POST /api/anchor       lib/anchor.ts       Smart Contract
+  |                                |                        |                    |
+  |-- { documentId } ------------->|                        |                    |
+  |                                |-- requireAuth() ------>| (cookie)           |
+  |                                |<-- user (or 401) ------|                    |
+  |                                |-- fetch document ------>| (Supabase, RLS)   |
+  |                                |<-- doc (or 404) --------|                    |
+  |                                |-- check: fingerprint    |                    |
+  |                                |   already set?          |                    |
+  |                                |   YES -> 409 ALREADY_   |                    |
+  |                                |          ANCHORED       |                    |
+  |                                |-- computeFingerprint() ->|                    |
+  |                                |<-- fingerprint ----------|                    |
+  |                                |-- getAnchorService() --->|                    |
+  |                                |<-- service --------------|                    |
+  |                                |-- service.anchor(fp) --->|                    |
+  |                                |                          |-- simulateContract |
+  |                                |                          |<-- ok / revert     |
+  |                                |                          |-- writeContract --->|
+  |                                |                          |   emit Anchored    |
+  |                                |                          |<-- txHash ---------|
+  |                                |                          |-- waitForReceipt ->|
+  |                                |                          |<-- receipt --------|
+  |                                |<-- { txHash, anchoredAt }|                    |
+  |                                |-- UPDATE documents ------>| (Supabase, RLS)   |
+  |                                |   SET fingerprint, chain, |                    |
+  |                                |       tx_hash, anchored_at|                    |
+  |                                |<-- ok --------------------|                    |
+  |<-- 201 { anchorResult } -------|                        |                    |
+```
+
+**Critical rule:** The anchor transaction is signed server-side with `ANCHOR_PRIVATE_KEY`. The private key never leaves the Next.js server. The browser never sees it.
+
+### 11d. Verify Flow (Server-Side)
+
+```
+Browser (authenticated)    API: POST /api/verify       lib/anchor.ts       Smart Contract
+  |                                |                        |                    |
+  |-- { documentId } ------------->|                        |                    |
+  |                                |-- requireAuth() ------>| (cookie)           |
+  |                                |-- fetch document ------>| (Supabase, RLS)   |
+  |                                |<-- doc (or 404) --------|                    |
+  |                                |-- computeFingerprint() ->|                    |
+  |                                |   from current DB hashes |                    |
+  |                                |<-- recomputedFp ---------|                    |
+  |                                |                          |                    |
+  |                                |-- CASE: doc.fingerprint  |                    |
+  |                                |   is NULL:               |                    |
+  |                                |   return { intact: false,|                    |
+  |                                |     reason: "not_        |                    |
+  |                                |     anchored" }          |                    |
+  |                                |                          |                    |
+  |                                |-- CASE: recomputedFp !=  |                    |
+  |                                |   doc.fingerprint:       |                    |
+  |                                |   return { intact: false,|                    |
+  |                                |     reason: "hash_       |                    |
+  |                                |     mismatch" }          |                    |
+  |                                |                          |                    |
+  |                                |-- CASE: recomputedFp ==  |                    |
+  |                                |   doc.fingerprint:       |                    |
+  |                                |   service.verify(fp) --->|                    |
+  |                                |                          |-- readContract --->|
+  |                                |                          |<-- timestamp ------|
+  |                                |<-- { found, anchoredAt } |                    |
+  |                                |                          |                    |
+  |                                |   IF found: intact=true; |                    |
+  |                                |   IF not found: intact=  |                    |
+  |                                |     false, reason=       |                    |
+  |                                |     "not_on_chain"       |                    |
+  |                                |                          |                    |
+  |<-- 200 { verifyResult } -------|                        |                    |
+```
+
+### 11e. P5 Module Responsibilities
+
+#### New Modules (owned by `backend`)
+
+**`lib/anchor.ts`** -- Blockchain anchoring logic:
+- `computeFingerprint(binaryHash, textHash)` -- pure function, uses viem `keccak256` + `encodePacked`.
+- `AnchorService` interface -- `anchor(fp)` and `verify(fp)`.
+- `EvmAnchorService` class -- viem implementation: public client for reads, wallet client for transactions.
+- `getAnchorService()` factory -- reads `ANCHOR_*` env vars, returns configured service.
+- `createSigner(privateKey)` -- wraps `privateKeyToAccount` from viem. **TODO (prod): replace with KMS.**
+
+**`app/api/anchor/route.ts`** -- `POST /api/anchor`:
+- Requires auth + project membership (same pattern as existing endpoints).
+- Fetches document by ID.
+- Returns 409 if already anchored.
+- Computes fingerprint, calls `anchorService.anchor()`, updates DB.
+- Returns 201 with `AnchorResponse`.
+
+**`app/api/verify/route.ts`** -- `POST /api/verify`:
+- Requires auth + project membership.
+- Fetches document, recomputes fingerprint, checks against stored + on-chain.
+- Returns 200 with `VerifyResponse`.
+
+#### Updated Modules
+
+**`lib/types.ts`** -- Add P5 types:
+- `AnchorRequest`, `AnchorResponse`, `VerifyRequest`, `VerifyResponse`.
+- Update `Document` interface: add `fingerprint?`, `chain?`, `tx_hash?`, `anchored_at?` (all nullable -- only set after anchoring).
+
+#### New Modules (owned by `deployment`)
+
+**`contracts/TrustVaultAnchor.sol`** -- Smart contract (see `docs/blockchain.md`).
+
+**`scripts/deploy-anchor.ts`** -- Contract deployment script using viem.
+
+**`docker/anvil.Dockerfile`** -- Anvil Dockerfile for Railway deployment.
+
+#### New Modules (owned by `frontend`)
+
+**Anchor button + modal in vault rows** -- Shield icon on each document row. Opens modal showing fingerprint, chain info, tx hash, anchored timestamp, verification status, block explorer link.
+
+#### Updated Modules (owned by `database`)
+
+**Migration `20260622000000_p5_blockchain_anchor.sql`** -- Adds four columns + unique constraint + index to `documents` table.
+
+### 11f. Technology Choices (P5)
+
+| Choice | Rationale |
+|---|---|
+| `viem` (not ethers) | Lighter, tree-shakeable, first-class TypeScript support. Required by project spec. |
+| `abi.encodePacked` + `keccak256` | Standard Solidity pattern. `abi.encodePacked` tight-packs the two bytes32 values (64 bytes total), then keccak256 hashes to one bytes32. Identical behavior in viem and Solidity. |
+| Smart contract: mapping, not array | O(1) lookup by fingerprint. No iteration needed. Gas-efficient. |
+| `require(anchoredAt[fingerprint] == 0)` | Enforces immutability at contract level. No admin key can overwrite. |
+| `block.timestamp` (not `block.number`) | Portable across chains with different block times. Sufficient for "existed before time T" proofs. |
+| Anvil for local dev | Instant blocks, prefunded accounts, zero config. Far simpler than connecting to a public testnet for daily development. |
+| Solidity ^0.8.20 | Modern, uses built-in overflow protection. Compatible with latest Foundry/Hardhat tooling. |
+| `ANCHOR_PRIVATE_KEY` env var (not a wallet file) | Simplest deployment model for P5. KMS planned for production. |
+
+### 11g. Environment Variables (P5)
+
+| Variable | Scope | Description |
+|---|---|---|
+| `ANCHOR_RPC_URL` | Server-only | JSON-RPC endpoint URL (e.g., `http://127.0.0.1:8545` for Anvil) |
+| `ANCHOR_CHAIN_ID` | Server-only | EVM chain ID (e.g., `31337` for Anvil, `11155111` for Sepolia) |
+| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `TrustVaultAnchor` contract address (`0x`-prefixed) |
+| `ANCHOR_PRIVATE_KEY` | Server-only | Private key for signing anchor transactions (`0x`-prefixed, 64 hex chars). **Never prefixed with `NEXT_PUBLIC_`** |
+
+### 11h. Forward Compatibility
+
+- **Merkle batching:** The `AnchorService` interface abstracts the anchoring mechanism. A future `MerkleAnchorService` can implement the same interface, batching multiple fingerprints into one Merkle root transaction. The smart contract remains unchanged.
+- **Async queues:** The synchronous anchor flow can be replaced by an async queue without changing the API route signature. Add an `anchor_status` column to documents (`pending | confirmed | failed`).
+- **Multi-chain:** Add an `anchor_entries` child table to anchor one document on multiple chains. The current single-chain design is a deliberate simplification for P5.
+- **KMS signing:** The `createSigner()` factory is the single point of change for upgrading to KMS-based signing.
+
+---
+
+## 12. Handoff (P5)
+
+Build sequence for P5 -- must run in this order:
+
+| Step | Agent | Picks up | Runs |
+|---|---|---|---|
+| 0 | `scaffold` | `docs/architecture.md` (Sections 11e-11g), `docs/blockchain.md`, `CLAUDE.md` (stack) | **Sequential, alone.** Adds `viem` dependency to `package.json`. No other config changes needed. |
+| 1 | `database` | `docs/database.md` Section 11 -> create migration `20260622000000_p5_blockchain_anchor.sql` | **Parallel** with backend + frontend (after scaffold done) |
+| 1 | `backend` | `docs/api-spec.md` P5 endpoints + `docs/blockchain.md` + `docs/database.md` -> implement `lib/anchor.ts` (fingerprint + AnchorService), `app/api/anchor/route.ts`, `app/api/verify/route.ts`, update `lib/types.ts` | **Parallel** with database + frontend |
+| 1 | `frontend` | `docs/api-spec.md` P5 endpoints + `docs/blockchain.md` -> anchor button (shield icon) on vault rows, anchor modal, explorer link logic | **Parallel** with database + backend |
+| 2 | `qa` | `docs/roadmap.md` P5 acceptance criteria -> write eval tests for anchoring + verify flows, fingerprint computation | **Sequential** after build (gate) |
+| 2 | `security` | `docs/security.md` P5 section -> audit private key handling, server-side-only execution, env var exposure, replay protection | **Sequential** after build (gate, read-only) |
+| 3 | `deployment` | `docs/deployment.md` P5 section + `docs/blockchain.md` -> create `contracts/TrustVaultAnchor.sol`, `scripts/deploy-anchor.ts`, `docker/anvil.Dockerfile`, update CI, add Vercel env vars for P5 | **Last**, after gates pass |
+
+**Critical rules:**
+- `scaffold` is a serial prerequisite. No build agent may start before the skeleton exists and compiles with `viem` added.
+- `database`, `backend`, and `frontend` run in parallel. They share contracts (`database.md` for schema, `api-spec.md` for API shape, `blockchain.md` for fingerprint formula) and must not deviate.
+- File ownership matrix in `CLAUDE.md` applies. New ownership for P5:
+  - `deployment` owns `contracts/`, `scripts/deploy-anchor.ts`, `docker/anvil.Dockerfile`
+  - `backend` owns `lib/anchor.ts`, `app/api/anchor/`, `app/api/verify/`
+  - `frontend` owns anchor UI components
+  - `database` owns the P5 migration file
+- `ANCHOR_PRIVATE_KEY` must never appear in client-side code or env vars with `NEXT_PUBLIC_` prefix.
+- `scripts/verify.sh` (eslint + tsc --noEmit + vitest run) must pass before QA/Security review.
+- The existing hashing pipeline (`lib/core.ts`) is NOT modified by any agent. P5 is a consumer only.
+
+Open questions for the human: none for P5 -- all interfaces are fully specified.

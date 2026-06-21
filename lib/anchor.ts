@@ -265,6 +265,41 @@ export function getAnchorService(): {
   return { service, chainName };
 }
 
+/**
+ * Creates a read-only public client for verification (no signer needed).
+ * Used by the verify endpoint which only calls readContract.
+ */
+export function getPublicVerifier(): { verify: (fp: `0x${string}`) => Promise<{ found: boolean; anchoredAt: number | null }> } {
+  const rpcUrl = process.env.ANCHOR_RPC_URL;
+  const chainIdRaw = process.env.ANCHOR_CHAIN_ID;
+  const chainId = chainIdRaw ? Number(chainIdRaw) : NaN;
+  const contractAddress = process.env.ANCHOR_CONTRACT_ADDRESS as `0x${string}` | undefined;
+
+  if (!rpcUrl || isNaN(chainId) || !contractAddress) {
+    throw new Error("Missing anchor service configuration. Check ANCHOR_RPC_URL, ANCHOR_CHAIN_ID, ANCHOR_CONTRACT_ADDRESS env vars.");
+  }
+
+  const publicClient = createPublicClient({ transport: http(rpcUrl) });
+  const contractAbi = parseAbi(["function verify(bytes32) view returns (uint256)"]);
+
+  return {
+    verify: async (fp: `0x${string}`) => {
+      try {
+        const ts = (await publicClient.readContract({
+          address: contractAddress,
+          abi: contractAbi,
+          functionName: "verify",
+          args: [fp],
+        })) as unknown as bigint;
+        const tsNum = Number(ts);
+        return { found: tsNum > 0, anchoredAt: tsNum > 0 ? tsNum : null };
+      } catch {
+        return { found: false, anchoredAt: null };
+      }
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Fingerprint computation
 // ---------------------------------------------------------------------------

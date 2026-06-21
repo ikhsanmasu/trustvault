@@ -1,4 +1,4 @@
-# TrustVault -- Database Contract (P2)
+# TrustVault -- Database Contract (P5)
 
 This document is a **contract**. The `database` and `backend` agents must implement exactly what is specified here. Any required deviation must be flagged back to the architect before implementing.
 
@@ -830,3 +830,168 @@ Seed data is optional. The migration alone is sufficient.
 - The `pdf-uploads` storage bucket is unchanged.
 - The P1 migration file is never edited.
 - P1 API route handlers that used the service-role client must be updated to use the user-scoped client, but the database schema itself does not break any P1 queries.
+
+---
+
+## 11. P5 Additions: Blockchain Anchoring Columns
+
+### 11a. Overview
+
+P5 adds four columns to the `documents` table for blockchain anchoring metadata. All columns are nullable -- a document only has these values populated after a successful `POST /api/anchor` call. Documents from earlier phases (P1-P4) have NULL for all four columns.
+
+### 11b. New Columns on `documents`
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `fingerprint` | `text` | NULL | `NULL` | keccak256 fingerprint as 0x-prefixed hex string (66 characters). Computed from `binary_hash` + `text_hash` via `keccak256(abi.encodePacked(...))`. Set once at anchor time; never changes. |
+| `chain` | `text` | NULL | `NULL` | Human-readable chain identifier (e.g., `"anvil"`, `"sepolia"`, `"base"`, `"mainnet"`). Set from the environment at anchor time. |
+| `tx_hash` | `text` | NULL | `NULL` | Transaction hash of the anchor transaction. 0x-prefixed hex string (66 characters). References the on-chain transaction that emitted the `Anchored` event. |
+| `anchored_at` | `timestamptz` | NULL | `NULL` | Block timestamp when the anchor transaction was confirmed. Converted from unix seconds to `timestamptz` at insert time. |
+
+### 11c. Constraints
+
+- `UNIQUE (fingerprint)` -- No two documents can share the same fingerprint. This is a logical consequence of the fingerprint formula: each `(binary_hash, text_hash)` pair maps to a unique keccak256 output (collision resistance of keccak256). This constraint also prevents double-anchoring of the same document.
+
+**Note:** The unique constraint is applied with `NULLS NOT DISTINCT` behavior (Postgres 15+ default). Since `fingerprint` is only non-null for anchored documents, multiple documents with `NULL` fingerprint are allowed.
+
+### 11d. Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `documents_fingerprint_unique` | `fingerprint` | Unique constraint index (auto-created by UNIQUE). Enforces one anchor per fingerprint. |
+| `documents_chain_idx` | `chain` | Filter documents by anchoring chain. |
+| `documents_anchored_at_idx` | `anchored_at DESC` | List documents by anchor time (newest first). |
+
+### 11e. Updated Full `documents` Table Columns (P5)
+
+| Column | Type | Nullable | Default | Phase Added |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | P1 |
+| `name` | `text` | NOT NULL | -- | P1 |
+| `storage_path` | `text` | NOT NULL | -- | P1 |
+| `binary_hash` | `text` | NOT NULL | -- | P1 |
+| `text_hash` | `text` | NOT NULL | -- | P1 |
+| `extracted_text` | `text` | NOT NULL | `''` | P1 |
+| `file_size_bytes` | `bigint` | NOT NULL | -- | P1 |
+| `file_type` | `text` | NOT NULL | `'application/pdf'` | P3 |
+| `tenant_id` | `uuid` | NOT NULL | -- | P2 |
+| `project_id` | `uuid` | NOT NULL | -- | P2 |
+| `uploaded_by` | `uuid` | NOT NULL | -- | P2 |
+| `deleted_at` | `timestamptz` | NULL | `NULL` | P4 |
+| `deleted_by` | `uuid` | NULL | `NULL` | P4 |
+| `fingerprint` | `text` | NULL | `NULL` | **P5** |
+| `chain` | `text` | NULL | `NULL` | **P5** |
+| `tx_hash` | `text` | NULL | `NULL` | **P5** |
+| `anchored_at` | `timestamptz` | NULL | `NULL` | **P5** |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | P1 |
+
+### 11f. RLS Policies (Unchanged for P5)
+
+P5 adds no new RLS policies. The existing `documents_select_member` and `documents_insert_editor` policies from P2 continue to govern access. The `UPDATE` operation used by `POST /api/anchor` to set the four anchoring columns requires an UPDATE policy. P2 did not define an UPDATE policy on documents (documents were considered immutable after upload). P5 must add:
+
+```sql
+-- Allow editors and admins to update anchoring fields on documents they have access to.
+CREATE POLICY "documents_update_anchor" ON public.documents
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = documents.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = documents.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  );
+```
+
+**Important:** The route handler must restrict which columns can be updated. The UPDATE policy allows any column change, but the application code in `POST /api/anchor` must only SET `fingerprint`, `chain`, `tx_hash`, `anchored_at`. It must never modify `binary_hash`, `text_hash`, `extracted_text`, or any other column.
+
+### 11g. Migration File
+
+**File:** `supabase/migrations/20260622000000_p5_blockchain_anchor.sql`
+
+```sql
+-- ============================================================================
+-- TrustVault P5: Blockchain Anchoring Columns
+-- Migration: 20260622000000_p5_blockchain_anchor.sql
+-- Prerequisite: 20260621000003_p4_soft_delete.sql (P4 soft delete columns)
+-- ============================================================================
+
+-- --------------------------------------------------------------------------
+-- 1. ADD ANCHORING COLUMNS TO documents
+-- --------------------------------------------------------------------------
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS fingerprint text NULL DEFAULT NULL;
+
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS chain text NULL DEFAULT NULL;
+
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS tx_hash text NULL DEFAULT NULL;
+
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS anchored_at timestamptz NULL DEFAULT NULL;
+
+-- --------------------------------------------------------------------------
+-- 2. UNIQUE CONSTRAINT ON fingerprint
+--    Multiple NULL fingerprints are allowed; only non-NULL values must be unique.
+-- --------------------------------------------------------------------------
+-- Postgres 15+ treats NULLs as distinct by default for unique constraints,
+-- so multiple rows with NULL fingerprint will coexist fine.
+ALTER TABLE public.documents
+  ADD CONSTRAINT documents_fingerprint_unique UNIQUE (fingerprint);
+
+-- --------------------------------------------------------------------------
+-- 3. INDEXES
+-- --------------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS documents_chain_idx ON public.documents (chain);
+
+CREATE INDEX IF NOT EXISTS documents_anchored_at_idx ON public.documents (anchored_at DESC);
+
+-- --------------------------------------------------------------------------
+-- 4. UPDATE RLS POLICY (documents were previously INSERT+SELECT only)
+-- --------------------------------------------------------------------------
+-- P5 needs an UPDATE policy so that POST /api/anchor can set the anchoring
+-- columns.  The same role check as INSERT applies: admin or editor.
+CREATE POLICY "documents_update_anchor" ON public.documents
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = documents.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = documents.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  );
+```
+
+### 11h. Migration Strategy
+
+- **Additive only:** The migration adds columns, indexes, a constraint, and a new RLS policy. No existing columns or data are modified.
+- **Existing rows:** All existing documents will have `NULL` for the four new columns. They can be anchored later via `POST /api/anchor`.
+- **New documents:** Documents uploaded after P5 will also have `NULL` for anchoring columns until explicitly anchored.
+- **Rollback:** Drop the UPDATE policy, drop the indexes, drop the unique constraint, drop the four columns. Purely additive migration with a clean reverse path.
+- **Migration file placement:** The migration file goes in `supabase/migrations/` alongside the four existing migrations. The timestamp `20260622000000` places it after all P1-P4 migrations.
+- **Supabase GitHub auto-deploy:** New migration files pushed to the linked branch are automatically applied in timestamp order. No manual `supabase db push` needed.
+
+### 11i. No Breaking Changes
+
+- All existing columns, constraints, indexes, and RLS policies from P1-P4 are preserved.
+- Existing queries (SELECT, INSERT) on `documents` continue to work without modification.
+- The four new columns are all nullable with default NULL, so existing INSERT statements (which do not mention the new columns) continue to work.
+- The `documents` type in `lib/types.ts` must add optional fields for the new columns, maintaining backward compatibility with existing code that destructures Document objects.

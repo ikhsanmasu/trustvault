@@ -1,4 +1,4 @@
-# TrustVault -- API Specification (P2)
+# TrustVault -- API Specification (P5)
 
 This document is a **contract**. The `backend` agent implements exactly what is written here and the `frontend` agent calls exactly what is written here. Neither agent may silently change paths, field names, or types -- discrepancies must be flagged back to the architect.
 
@@ -956,3 +956,266 @@ All P1 endpoint shapes and the core compare pipeline are preserved. The only P1 
 - `POST /api/compare` -- adds auth and cross-project validation.
 
 All other P1 error codes, the CompareResult shape, and the AI prompt contract remain identical.
+
+---
+
+## P5 Endpoint Index
+
+| Method | Path | Auth | Role Required | Description |
+|---|---|---|---|---|
+| `POST` | `/api/anchor` | Yes | editor/admin | Anchor a document's fingerprint on-chain |
+| `POST` | `/api/verify` | Yes | member | Verify a document's on-chain anchoring status |
+
+---
+
+## P5 Shared Types
+
+```ts
+// ===== Blockchain Anchoring (P5) =====
+
+type AnchorRequest = {
+  documentId: string;  // UUID of the document to anchor
+};
+
+type AnchorResponse = {
+  documentId: string;
+  fingerprint: string;    // 0x-prefixed keccak256 hash (66 chars)
+  chain: string;          // chain identifier (e.g., "anvil", "sepolia")
+  txHash: string;         // 0x-prefixed transaction hash (66 chars)
+  anchoredAt: number;     // unix timestamp (seconds) from the block
+  verified: boolean;      // always true on successful anchor
+};
+
+type VerifyRequest = {
+  documentId: string;  // UUID of the document to verify
+};
+
+type VerifyResponse = {
+  documentId: string;
+  intact: boolean;
+  reason: 'ok' | 'not_anchored' | 'hash_mismatch' | 'not_on_chain';
+  storedFingerprint: string | null;      // what is in the database (null if never anchored)
+  recomputedFingerprint: string;          // recomputed from current DB hashes
+  anchoredAt: number | null;             // unix timestamp from chain (null if not found)
+  txHash: string | null;                 // stored transaction hash
+  chain: string | null;                  // stored chain name
+};
+```
+
+### P5 Reason Codes
+
+| `reason` | Meaning |
+|---|---|
+| `ok` | Document is intact -- recomputed fingerprint matches stored fingerprint AND on-chain confirms |
+| `not_anchored` | Document has never been anchored (`fingerprint` column is NULL) |
+| `hash_mismatch` | Recomputed fingerprint does not match stored fingerprint -- the document hashes have changed since anchoring |
+| `not_on_chain` | Recomputed fingerprint matches stored fingerprint, but the on-chain contract returns 0 (not found) -- possible chain reset or wrong contract address |
+
+### Updated Document Type (P5 fields)
+
+The `Document` type defined in the P2 Shared Types section gains four nullable fields:
+
+```ts
+type Document = {
+  // ... all existing P1-P4 fields ...
+  fingerprint: string | null;    // P5: 0x-prefixed keccak256 hash (66 chars), null if not anchored
+  chain: string | null;          // P5: chain identifier, null if not anchored
+  tx_hash: string | null;        // P5: transaction hash, null if not anchored
+  anchored_at: string | null;    // P5: ISO 8601 timestamptz, null if not anchored
+};
+```
+
+---
+
+## P5 Endpoints
+
+---
+
+### POST /api/anchor
+
+Anchor a document's fingerprint on the configured blockchain. The document's `binary_hash` and `text_hash` are read from the database and used to compute a keccak256 fingerprint, which is then written to the `TrustVaultAnchor` smart contract. The resulting transaction hash, chain identifier, and block timestamp are stored back in the `documents` table.
+
+This endpoint **requires a funded signer account** on the target chain. The `ANCHOR_PRIVATE_KEY` env var must reference an account with sufficient native balance for gas.
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type AnchorRequest = {
+  documentId: string;  // UUID of the document (must exist, must not be soft-deleted)
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `documentId` is a valid UUID. Return 400 `INVALID_DOCUMENT_ID` if not.
+3. Fetch the document from `documents` where `id = documentId`. RLS ensures the user has access.
+4. Return 404 `NOT_FOUND` if the document does not exist or the user cannot access it.
+5. Return 410 `DOCUMENT_DELETED` if `deleted_at IS NOT NULL` (soft-deleted documents cannot be anchored).
+6. Return 409 `ALREADY_ANCHORED` if `document.fingerprint IS NOT NULL`. A document can only be anchored once.
+7. **Role check:** Query `project_members` for the user's role in the document's project. Return 403 `FORBIDDEN` if the role is not `admin` or `editor`.
+8. Call `computeFingerprint(document.binary_hash, document.text_hash)` from `lib/anchor.ts` to produce the fingerprint.
+9. Call `getAnchorService()` to obtain the configured `AnchorService` instance.
+10. Call `anchorService.anchor(fingerprint)` to send the on-chain transaction.
+    - The service dry-runs first (simulateContract) to catch "Already anchored" reverts early.
+    - Then sends the transaction and waits for confirmation.
+    - Returns `{ txHash, anchoredAt }`.
+11. UPDATE the `documents` row with user-scoped Supabase client:
+    - SET `fingerprint = fingerprint`, `chain = chainName`, `tx_hash = txHash`, `anchored_at = to_timestamp(anchoredAt)`.
+    - RLS policy `documents_update_anchor` must allow this UPDATE.
+12. Return 201 with the `AnchorResponse`.
+
+**The `chain` value stored in the database:** Determined at anchor time from the configured chain. For `ANCHOR_CHAIN_ID=31337`, store `"anvil"`. For `11155111`, store `"sepolia"`. A mapping from chain ID to human-readable name is maintained in `lib/anchor.ts`:
+
+```ts
+const CHAIN_ID_TO_NAME: Record<number, string> = {
+  31337: "anvil",
+  11155111: "sepolia",
+  8453: "base",
+  10: "optimism",
+  1: "mainnet",
+};
+```
+
+If the chain ID is not in this map, store the numeric chain ID as a string (e.g., `"84532"`).
+
+#### Response -- 201 Created
+
+```ts
+type AnchorResponse = {
+  documentId: string;
+  fingerprint: string;    // 0x-prefixed hex, 66 chars
+  chain: string;
+  txHash: string;         // 0x-prefixed hex, 66 chars
+  anchoredAt: number;     // unix timestamp (seconds)
+  verified: boolean;      // true
+};
+```
+
+Example:
+```json
+{
+  "documentId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+  "fingerprint": "0x8f14e45f6e1234567890abcdef1234567890abcdef1234567890abcdef123456",
+  "chain": "anvil",
+  "txHash": "0x9e5c7b64a1234567890abcdef1234567890abcdef1234567890abcdef123456",
+  "anchoredAt": 1719000000,
+  "verified": true
+}
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_DOCUMENT_ID` | `documentId` is not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is not an admin or editor of the document's project |
+| 404 | `NOT_FOUND` | Document does not exist or user cannot access it |
+| 409 | `ALREADY_ANCHORED` | Document has already been anchored (`fingerprint IS NOT NULL`) |
+| 410 | `DOCUMENT_DELETED` | Document has been soft-deleted (`deleted_at IS NOT NULL`) |
+| 500 | `DB_ERROR` | Postgres query/update failed |
+| 500 | `ANCHOR_ERROR` | Anchor transaction failed (RPC error, revert, timeout, or insufficient balance) |
+
+---
+
+### POST /api/verify
+
+Verify a document's integrity by recomputing its fingerprint from the current database hashes and checking against the on-chain registry. This endpoint is **read-only** -- no transaction is sent.
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type VerifyRequest = {
+  documentId: string;  // UUID of the document to verify
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `documentId` is a valid UUID. Return 400 `INVALID_DOCUMENT_ID` if not.
+3. Fetch the document from `documents` where `id = documentId`. RLS ensures the user has access.
+4. Return 404 `NOT_FOUND` if the document does not exist or user cannot access it.
+5. Call `computeFingerprint(document.binary_hash, document.text_hash)` to produce the **recomputed fingerprint** from the current hashes in the database.
+6. **Case 1: `document.fingerprint IS NULL`** -- The document was never anchored.
+   - Return 200 with `{ intact: false, reason: "not_anchored", storedFingerprint: null, recomputedFingerprint, anchoredAt: null, txHash: null, chain: null }`.
+7. **Case 2: `recomputedFingerprint !== document.fingerprint`** -- The hashes in the database have changed since the document was anchored. This indicates tampering (the stored file or extracted text was modified after anchoring).
+   - Return 200 with `{ intact: false, reason: "hash_mismatch", storedFingerprint: document.fingerprint, recomputedFingerprint, anchoredAt: null, txHash: document.tx_hash, chain: document.chain }`.
+8. **Case 3: `recomputedFingerprint === document.fingerprint`** -- The hashes match. Now verify on-chain.
+   - Call `anchorService.verify(recomputedFingerprint)` to check the on-chain registry.
+   - **Sub-case 3a: `found === true`** -- Return 200 with `{ intact: true, reason: "ok", storedFingerprint: document.fingerprint, recomputedFingerprint, anchoredAt, txHash: document.tx_hash, chain: document.chain }`.
+   - **Sub-case 3b: `found === false`** -- The fingerprint is in our database but not on the chain. Possible causes: the transaction was never actually confirmed (despite our record), the chain was reset, or the `ANCHOR_CONTRACT_ADDRESS` was changed.
+   - Return 200 with `{ intact: false, reason: "not_on_chain", storedFingerprint: document.fingerprint, recomputedFingerprint, anchoredAt: null, txHash: document.tx_hash, chain: document.chain }`.
+
+#### Response -- 200 OK
+
+```ts
+type VerifyResponse = {
+  documentId: string;
+  intact: boolean;
+  reason: 'ok' | 'not_anchored' | 'hash_mismatch' | 'not_on_chain';
+  storedFingerprint: string | null;
+  recomputedFingerprint: string;
+  anchoredAt: number | null;    // unix timestamp from chain
+  txHash: string | null;
+  chain: string | null;
+};
+```
+
+Example (intact):
+```json
+{
+  "documentId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+  "intact": true,
+  "reason": "ok",
+  "storedFingerprint": "0x8f14e45f6e1234567890abcdef1234567890abcdef1234567890abcdef123456",
+  "recomputedFingerprint": "0x8f14e45f6e1234567890abcdef1234567890abcdef1234567890abcdef123456",
+  "anchoredAt": 1719000000,
+  "txHash": "0x9e5c7b64a1234567890abcdef1234567890abcdef1234567890abcdef123456",
+  "chain": "anvil"
+}
+```
+
+Example (hash mismatch -- tampering detected):
+```json
+{
+  "documentId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+  "intact": false,
+  "reason": "hash_mismatch",
+  "storedFingerprint": "0x8f14e45f6e1234567890abcdef1234567890abcdef1234567890abcdef123456",
+  "recomputedFingerprint": "0x9a2b3c4d5e6789012345abcdef6789012345abcdef6789012345abcdef67890",
+  "anchoredAt": null,
+  "txHash": "0x9e5c7b64a1234567890abcdef1234567890abcdef1234567890abcdef123456",
+  "chain": "anvil"
+}
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_DOCUMENT_ID` | `documentId` is not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 404 | `NOT_FOUND` | Document does not exist or user cannot access it |
+| 500 | `DB_ERROR` | Postgres query failed |
+| 500 | `ANCHOR_RPC_ERROR` | Anchor RPC is unreachable (verify call failed) |
+
+**Note:** Verify never returns 403 for viewers. All project members (including viewers) can verify document integrity. Verification is a read-only operation that poses no risk.
+
+---
+
+## P5 Environment Variables (Used by Route Handlers)
+
+| Variable | Used by |
+|---|---|
+| `ANCHOR_RPC_URL` | `getAnchorService()` -- connects to the EVM RPC endpoint |
+| `ANCHOR_CHAIN_ID` | `getAnchorService()` -- identifies the chain for viem client config |
+| `ANCHOR_CONTRACT_ADDRESS` | `getAnchorService()` -- address of the deployed `TrustVaultAnchor` |
+| `ANCHOR_PRIVATE_KEY` | `createSigner()` -- signs anchor transactions. **Server-only, never prefixed with `NEXT_PUBLIC_`** |
+
+These are in addition to the P2 environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DEEPSEEK_API_KEY`).

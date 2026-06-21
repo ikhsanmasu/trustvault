@@ -1,6 +1,6 @@
-# TrustVault -- Security Model (P2)
+# TrustVault -- Security Model (P5)
 
-This document is a **contract** for the `security` audit agent and a reference for `backend` and `deployment`. It defines the accepted threat model for P2 and the controls in place. P1 sections that remain valid are noted as preserved.
+This document is a **contract** for the `security` audit agent and a reference for `backend` and `deployment`. It defines the accepted threat model for P5 and the controls in place. P1-P4 sections that remain valid are noted as preserved.
 
 ---
 
@@ -345,3 +345,134 @@ The P2 security audit must verify:
 - [ ] File upload validates magic bytes (`%PDF`).
 - [ ] Cross-project comparison is blocked with a clear error.
 - [ ] SQL queries use parameterised methods (no raw string concat).
+
+---
+
+## 14. P5 Blockchain Anchoring Security
+
+### 14a. Threat Model (P5 Additions)
+
+P5 introduces blockchain interaction, private key management, and an on-chain smart contract. The threat surface expands beyond the web application to include the anchoring signer account, the RPC connection, and the smart contract itself.
+
+| Threat | Control |
+|---|---|
+| Private key exfiltration via env var leak | `ANCHOR_PRIVATE_KEY` is never prefixed with `NEXT_PUBLIC_`. It is read only by server-side code (`lib/anchor.ts`). It is never included in client bundles, never logged, never sent to the browser. |
+| Private key exfiltration via Vercel env var exposure | `ANCHOR_PRIVATE_KEY` is marked as **Sensitive** in Vercel environment variables. It is not exposed in build logs or preview deployments. |
+| Private key exfiltration via source code leak | `.env.local` is gitignored. The private key never appears in committed code. `git grep "ANCHOR_PRIVATE_KEY"` must return zero results in committed files. |
+| Transaction signing by unauthorized party | All anchor transactions are initiated from server-side API route handlers, which require a valid Supabase session + project editor/admin role. There is no client-side path to trigger an anchor transaction. |
+| Replay attacks (double-anchor of the same fingerprint) | Smart contract enforces `require(anchoredAt[fingerprint] == 0, "Already anchored")`. Once set, the fingerprint mapping is immutable. The database also enforces `UNIQUE (fingerprint)`. |
+| RPC man-in-the-middle | The RPC URL is configured via env var. For production, always use HTTPS endpoints (Infura, Alchemy, QuickNode). The viem `http` transport uses HTTPS. For Anvil (local dev), the RPC is on `localhost` -- not exposed to the network. |
+| Smart contract re-entrancy | Not applicable. The `anchor()` function has no external calls before state change. The single SSTORE happens after the require check, which is a read-only check on the same mapping. |
+| Smart contract upgrade/replacement | `TrustVaultAnchor` has no upgrade mechanism (no proxy, no `selfdestruct`, no owner). The contract is immutable once deployed. If a new contract is needed, deploy a new instance and update `ANCHOR_CONTRACT_ADDRESS`. Documents anchored to the old contract remain verifiable against the old contract address. |
+| Chain reorg removes an anchor transaction | Accepted risk for P5. On Anvil (single node, no reorgs) this is impossible. On public testnets/mainnets, wait for sufficient block confirmations. The frontend can poll `POST /api/verify` after anchoring to confirm. For production, the `waitForTransactionReceipt` with a configurable number of confirmations provides reasonable assurance. |
+| Fingerprint collision (two different (binary_hash, text_hash) pairs produce the same keccak256 output) | Relies on keccak256's collision resistance. The probability of a random collision in a 256-bit space is negligible (~1 in 2^128 with birthday bound). Not a practical threat. |
+| Signer account drained (gas theft) | The signer account holds only enough ETH for gas. It is not used for any other purpose. Use a dedicated account with a minimal balance. On Anvil, prefunded accounts have 10,000 test ETH -- acceptable for dev. For production testnet/mainnet, fund only enough for expected anchor volume (estimate 22,000 gas per anchor at current gas price). |
+| Cross-chain confusion (document anchored on chain A but verified against chain B) | The `chain` column records which chain the document was anchored on. The verify endpoint uses the SAME chain as was used for anchoring (reads `document.chain` to determine which AnchorService to use -- in P5, there is only one configured chain, so this is not an issue. In a future multi-chain setup, the `chain` column disambiguates). |
+| Smart contract storage collision (fingerprint mapping slot predictable) | Not a security concern. The mapping is keyed by bytes32 (keccak256 output). Storage slot computation is deterministic and collision-resistant. |
+| Denial of service via excessive anchor requests | Rate limiting at the deployment layer. Each anchor costs gas, which is paid by the server's signer account. Excessive requests could drain the gas balance. The recommended mitigation is a per-user rate limit on `POST /api/anchor` (e.g., 10 anchors per minute per user). |
+
+### 14b. Private Key Protection (Critical)
+
+The `ANCHOR_PRIVATE_KEY` environment variable is the most sensitive secret in P5. Compromise means an attacker can submit arbitrary anchor transactions from the server's identity.
+
+**Hard rules:**
+
+1. **Never prefix with `NEXT_PUBLIC_`.** Next.js inlines all `NEXT_PUBLIC_*` env vars into the client bundle at build time. `ANCHOR_PRIVATE_KEY` must be a plain server-side env var.
+2. **Never log the key.** Do not `console.log(process.env.ANCHOR_PRIVATE_KEY)` anywhere. Do not include it in error messages.
+3. **Never expose in API responses.** The `AnchorResponse` returns `fingerprint`, `chain`, `txHash`, `anchoredAt`, and `verified`. It does NOT return the private key or any derivative.
+4. **Use a dedicated account.** The private key should control an account used exclusively for TrustVault anchoring. It should not hold significant funds beyond gas requirements.
+5. **Rotate periodically (future).** When KMS is implemented, key rotation becomes trivial. For the raw private key approach in P5, rotation requires deploying a new signer account, funding it, and updating `ANCHOR_PRIVATE_KEY`.
+
+### 14c. Server-Side Execution Guarantee
+
+The anchor transaction is assembled, signed, and broadcast entirely on the server:
+
+```
+Browser (client)           Next.js Server              Blockchain
+    |                           |                          |
+    |-- POST /api/anchor ------>|                          |
+    |  { documentId }          |                          |
+    |                           |-- compute fingerprint    |
+    |                           |-- build tx (viem)        |
+    |                           |-- sign with private key  |
+    |                           |-- broadcast tx --------->|
+    |                           |<-- txHash ---------------|
+    |                           |-- wait for receipt ------>|
+    |                           |<-- receipt --------------|
+    |                           |-- update DB              |
+    |<-- 201 { response } ------|                          |
+```
+
+**No browser code path exists that constructs, signs, or broadcasts an anchor transaction.** The `ANCHOR_PRIVATE_KEY` is only referenced in `lib/anchor.ts`, which is only imported by `app/api/anchor/route.ts` and `scripts/deploy-anchor.ts`, both of which are server-side only.
+
+The `security` agent must verify:
+- `git grep "ANCHOR_PRIVATE_KEY" -- "*.tsx"` returns zero results (no usage in React components).
+- `git grep "NEXT_PUBLIC_ANCHOR"` returns zero results (no public exposure of anchor env vars).
+- The `viem` wallet client is only constructed in `lib/anchor.ts`, not in any client-side module.
+
+### 14d. Transaction Safety
+
+**Simulate before send:** The `EvmAnchorService.anchor()` method calls `simulateContract()` before `writeContract()`. This catches reverts (e.g., "Already anchored") without spending gas. The simulation result is not acted upon beyond checking for revert -- it is not trusted for state (only the actual transaction outcome matters).
+
+**Gas estimation:** viem's `writeContract()` automatically estimates gas. The signer account pays actual gas used. No manual gas limit is set (viem's default estimation is reliable for simple SSTORE operations).
+
+**Nonce management:** viem's `WalletClient` manages nonces automatically via `getTransactionCount`. No manual nonce tracking is needed for the single-signer, sequential-request model in P5.
+
+### 14e. Fingerprint Integrity
+
+The fingerprint computation is deterministic and must be identical off-chain (viem) and on-chain (Solidity). Any discrepancy means the verification is broken.
+
+**Guarantee:** Both viem's `keccak256(encodePacked(...))` and Solidity's `keccak256(abi.encodePacked(...))` use the same algorithm (Keccak-256) and the same packing rules (tight packing, no padding). The inputs are the same: two bytes32 values derived from the document's `binary_hash` and `text_hash`.
+
+The `qa` agent must write an eval test that:
+1. Takes known `binary_hash` and `text_hash` values.
+2. Computes the fingerprint via `computeFingerprint()`.
+3. Verifies it against a precomputed Solidity output (hardcoded in the test).
+
+### 14f. RLS Policy for Anchor Updates
+
+P5 adds a new RLS policy (`documents_update_anchor`) that allows editors and admins to UPDATE the anchoring columns on documents in their projects. The `security` agent must verify:
+
+- [ ] A viewer cannot anchor a document (UPDATE rejected by RLS).
+- [ ] A user outside the project cannot anchor a document.
+- [ ] An anon user cannot anchor a document.
+- [ ] The UPDATE policy allows only the anchoring columns to be modified at the application level (the route handler must explicitly list which columns to SET). RLS itself does not restrict which columns are updated -- this is an application-layer concern.
+
+### 14g. Security Audit Checklist Additions (for `security` agent)
+
+#### Private Key Safety
+- [ ] `git grep "ANCHOR_PRIVATE_KEY" -- "*.tsx"` returns zero results.
+- [ ] `git grep "NEXT_PUBLIC_ANCHOR"` returns zero results.
+- [ ] `ANCHOR_PRIVATE_KEY` is marked as **Sensitive** in Vercel environment variables.
+- [ ] `.env.local` is gitignored (confirm P1 rule still holds).
+- [ ] No `console.log` or `console.error` statements include `ANCHOR_PRIVATE_KEY` or any key material.
+
+#### Transaction Safety
+- [ ] `lib/anchor.ts` uses `simulateContract()` before `writeContract()`.
+- [ ] `lib/anchor.ts` uses `waitForTransactionReceipt()` after sending.
+- [ ] The signer account (from `ANCHOR_PRIVATE_KEY`) has a balance sufficient for expected anchor volume.
+
+#### Smart Contract Safety
+- [ ] `TrustVaultAnchor.sol` uses Solidity ^0.8.20 (built-in overflow protection).
+- [ ] `anchor()` has no external calls before state change (re-entrancy safe).
+- [ ] `require(anchoredAt[fingerprint] == 0)` prevents overwrites.
+- [ ] No `selfdestruct`, no proxy/upgrade mechanism, no owner role.
+- [ ] The contract compiles without warnings (`solc` or `forge build`).
+
+#### RLS
+- [ ] The `documents_update_anchor` policy exists and is enabled.
+- [ ] A viewer cannot UPDATE anchoring columns (RLS test).
+- [ ] An anon user cannot UPDATE anchoring columns (RLS test).
+
+#### Verification Flow
+- [ ] `POST /api/verify` correctly detects `not_anchored` (never anchored).
+- [ ] `POST /api/verify` correctly detects `hash_mismatch` (tampered after anchoring).
+- [ ] `POST /api/verify` correctly detects `not_on_chain` (fingerprint in DB but not on chain).
+- [ ] `POST /api/verify` returns `ok` for intact documents.
+
+#### Never-Do Additions (P5)
+15. **Never log `ANCHOR_PRIVATE_KEY` or include it in error messages.**
+16. **Never create an `ANCHOR_PRIVATE_KEY` env var with the `NEXT_PUBLIC_` prefix.**
+17. **Never commit a `.env.local` file or any file containing a real private key.**
+18. **Never allow the browser to construct or sign an anchor transaction.**
+19. **Never modify `binary_hash` or `text_hash` after a document has been anchored.** Anchoring creates a permanent cryptographic link between those hashes and the on-chain fingerprint.

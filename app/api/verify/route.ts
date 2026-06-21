@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase/auth";
-import { computeFingerprint, getAnchorService } from "@/lib/anchor";
+import { computeFingerprint, getPublicVerifier } from "@/lib/anchor";
 import type {
   VerifyRequest,
   VerifyResponse,
@@ -97,30 +97,19 @@ export async function POST(
   }
 
   // -- 7. Case 3: Fingerprints match — verify on-chain ----------------------
-  let anchorService: ReturnType<typeof getAnchorService>;
+  let verifier: { verify: (fp: `0x${string}`) => Promise<{ found: boolean; anchoredAt: number | null }> };
   try {
-    anchorService = getAnchorService();
+    verifier = getPublicVerifier();
   } catch {
-    // Anchor service not configured — can't verify on-chain
-    return NextResponse.json(
-      {
-        error: "Anchor service not configured",
-        code: "ANCHOR_RPC_ERROR",
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Anchor service not configured", code: "ANCHOR_RPC_ERROR" }, { status: 500 });
   }
 
   let verifyResult: { found: boolean; anchoredAt: number | null };
   try {
-    verifyResult = await anchorService.service.verify(recomputedFingerprint);
+    verifyResult = await verifier.verify(recomputedFingerprint);
   } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Anchor RPC unreachable";
-    return NextResponse.json(
-      { error: message, code: "ANCHOR_RPC_ERROR" },
-      { status: 500 },
-    );
+    const message = err instanceof Error ? err.message : "Anchor RPC unreachable";
+    return NextResponse.json({ error: message, code: "ANCHOR_RPC_ERROR" }, { status: 500 });
   }
 
   // -- 7a. Sub-case: Found on-chain -----------------------------------------
