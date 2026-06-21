@@ -47,26 +47,36 @@ async function main() {
   // ── 1. Create demo auth user via REST API ────────────────────────────
   console.log(`Creating demo user: ${DEMO_EMAIL}...`);
 
-  const createResp = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${adminKey}`,
-      apikey: adminKey,
-      "Content-Type": "application/json",
-    } as Record<string, string>,
-    body: JSON.stringify({
-      id: DEMO_USER_ID,
-      email: DEMO_EMAIL,
-      password: DEMO_PASSWORD,
-      email_confirm: true,
-      user_metadata: { full_name: "Demo User" },
-    }),
-  });
+  // Retry up to 10 times — Supabase auth may still be starting
+  let createResp: Response | undefined;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (attempt > 0) { console.log(`  Retry ${attempt}...`); await new Promise(r => setTimeout(r, 3000)); }
+    createResp = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminKey}`,
+        apikey: adminKey,
+        "Content-Type": "application/json",
+      } as Record<string, string>,
+      body: JSON.stringify({
+        id: DEMO_USER_ID,
+        email: DEMO_EMAIL,
+        password: DEMO_PASSWORD,
+        email_confirm: true,
+        user_metadata: { full_name: "Demo User" },
+      }),
+    });
+    if (createResp.ok || createResp.status === 409 || createResp.status === 422) break;
+  }
+
+  if (!createResp) {
+    console.error("  -> Failed: could not reach Supabase Auth after retries");
+    process.exit(1);
+  }
 
   if (createResp.ok) {
     console.log("  -> Created.");
   } else if (createResp.status === 409 || createResp.status === 422) {
-    // 409 = duplicate, 422 = email already registered
     console.log("  -> Already exists, skipping.");
   } else {
     const err = await createResp.text();
