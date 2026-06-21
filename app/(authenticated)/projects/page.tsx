@@ -33,25 +33,25 @@ export default function ProjectsPage() {
   if (!isAuthLoading && !user) {
     router.push("/login");
     return (
-      <main className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <Alert variant="destructive">
           <AlertDescription>Please log in to access projects.</AlertDescription>
         </Alert>
-      </main>
+      </div>
     );
   }
 
   if (isAuthLoading) {
     return (
-      <main className="mx-auto min-h-screen max-w-7xl px-4 py-8">
+      <div className="space-y-4">
         <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-4 w-64 mt-2" />
+        <Skeleton className="h-4 w-64" />
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-full" />
           ))}
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -62,9 +62,9 @@ export default function ProjectsPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-4 py-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground">
@@ -78,17 +78,15 @@ export default function ProjectsPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="w-48 sm:w-64"
           />
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            New Project
-          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)}>New Project</Button>
         </div>
       </div>
 
-      <Separator className="mb-6" />
+      <Separator />
 
       {/* Error */}
       {error && (
-        <Alert variant="destructive" className="mb-6">
+        <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -139,6 +137,6 @@ export default function ProjectsPage() {
           return created !== null;
         }}
       />
-    </main>
+    </div>
   );
 }

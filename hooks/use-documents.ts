@@ -8,8 +8,10 @@ import {
   ApiClientError,
 } from "@/lib/api-client";
 
-interface UseDocumentsParams {
-  projectId: string;
+export interface UseDocumentsParams {
+  projectId?: string;
+  fileType?: string;
+  limit?: number;
 }
 
 interface UseDocumentsReturn {
@@ -19,15 +21,22 @@ interface UseDocumentsReturn {
   error: string | null;
   search: string;
   setSearch: (value: string) => void;
+  fileType: string;
+  setFileType: (value: string) => void;
   refresh: () => void;
 }
 
-export function useDocuments({ projectId }: UseDocumentsParams): UseDocumentsReturn {
+export function useDocuments({
+  projectId,
+  fileType: initialFileType = "",
+  limit = 50,
+}: UseDocumentsParams = {}): UseDocumentsReturn {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [fileType, setFileType] = useState(initialFileType);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -47,9 +56,10 @@ export function useDocuments({ projectId }: UseDocumentsParams): UseDocumentsRet
     setError(null);
     try {
       const result: ListDocumentsResponse = await listDocuments({
-        project_id: projectId,
+        project_id: projectId || undefined,
+        file_type: fileType || undefined,
         search: debouncedSearch || undefined,
-        limit: 50,
+        limit,
       });
       setDocuments(result.documents);
       setTotal(result.total);
@@ -68,7 +78,7 @@ export function useDocuments({ projectId }: UseDocumentsParams): UseDocumentsRet
     } finally {
       setIsLoading(false);
     }
-  }, [projectId, debouncedSearch]);
+  }, [projectId, fileType, debouncedSearch, limit]);
 
   useEffect(() => {
     fetchDocuments();
@@ -81,6 +91,8 @@ export function useDocuments({ projectId }: UseDocumentsParams): UseDocumentsRet
     error,
     search,
     setSearch,
+    fileType,
+    setFileType,
     refresh: fetchDocuments,
   };
 }
