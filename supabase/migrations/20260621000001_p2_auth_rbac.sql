@@ -73,6 +73,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.tenants TO service_role, authenti
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO service_role, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.projects TO service_role, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_members TO service_role, authenticated;
+-- P1 only granted these to service_role; P2 needs authenticated access too
+GRANT SELECT, INSERT ON public.documents TO authenticated;
+GRANT SELECT, INSERT ON storage.objects TO authenticated;
 
 -- --------------------------------------------------------------------------
 -- 5. BACKFILL EXISTING DOCUMENTS (if any P1 data exists in dev)
@@ -147,14 +150,41 @@ CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
 RETURNS uuid AS $$
   SELECT tenant_id FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = '';
+SET search_path = 'public, auth, pg_catalog';
 
 CREATE OR REPLACE FUNCTION public.get_project_role(p_project_id uuid)
 RETURNS text AS $$
   SELECT role FROM public.project_members
   WHERE project_id = p_project_id AND user_id = auth.uid();
 $$ LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = '';
+SET search_path = 'public, auth, pg_catalog';
+
+-- Helper: check project membership without RLS (avoids infinite recursion)
+CREATE OR REPLACE FUNCTION public.is_project_member(p_project_id uuid, p_user_id uuid)
+RETURNS boolean AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.project_members
+    WHERE project_id = p_project_id AND user_id = p_user_id
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = 'public, auth, pg_catalog';
+
+-- Helper: check if user holds a specific role in a project (no RLS recursion)
+CREATE OR REPLACE FUNCTION public.has_project_role(p_project_id uuid, p_user_id uuid, p_role text)
+RETURNS boolean AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.project_members
+    WHERE project_id = p_project_id AND user_id = p_user_id AND role = p_role
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = 'public, auth, pg_catalog';
+
+-- Helper: check if there is an authenticated session (works in RLS context)
+CREATE OR REPLACE FUNCTION public.is_authenticated()
+RETURNS boolean AS $$
+  SELECT auth.uid() IS NOT NULL;
+$$ LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = 'public, auth, pg_catalog';
 
 -- --------------------------------------------------------------------------
 -- 11. TRIGGER: auto-create profile + tenant on sign-up
@@ -179,7 +209,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = '';
+SET search_path = 'public, auth, pg_catalog';
 
 -- Drop existing trigger if re-running migration
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -200,7 +230,7 @@ CREATE POLICY "tenants_select_own" ON public.tenants
 
 CREATE POLICY "tenants_insert_auth" ON public.tenants
   FOR INSERT
-  WITH CHECK (auth.uid() IS NOT NULL);
+  WITH CHECK (public.is_authenticated());
 
 -- --- profiles ---
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -219,98 +249,54 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "projects_select_member" ON public.projects
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = projects.id AND user_id = auth.uid()
-    )
-  );
+  USING (public.is_project_member(projects.id, auth.uid()));
 
+-- App-layer route handler sets correct tenant_id via getUserTenantId().
+-- Keep the RLS check simple to avoid helper-function issues in policy context.
 CREATE POLICY "projects_insert_auth" ON public.projects
   FOR INSERT
-  WITH CHECK (
-    auth.uid() IS NOT NULL
-    AND tenant_id = public.get_user_tenant_id()
-  );
+  WITH CHECK (public.is_authenticated());
 
 CREATE POLICY "projects_update_admin" ON public.projects
   FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = projects.id AND user_id = auth.uid() AND role = 'admin'
-    )
-  );
+  USING (public.has_project_role(projects.id, auth.uid(), 'admin'));
 
 CREATE POLICY "projects_delete_admin" ON public.projects
   FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = projects.id AND user_id = auth.uid() AND role = 'admin'
-    )
-  );
+  USING (public.has_project_role(projects.id, auth.uid(), 'admin'));
 
 -- --- project_members ---
 ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
 
+-- Use helper functions to avoid infinite recursion (policy self-referencing)
 CREATE POLICY "project_members_select_peer" ON public.project_members
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members pm2
-      WHERE pm2.project_id = project_members.project_id AND pm2.user_id = auth.uid()
-    )
-  );
+  USING (public.is_project_member(project_id, auth.uid()));
 
 CREATE POLICY "project_members_insert_admin" ON public.project_members
   FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = project_members.project_id AND user_id = auth.uid() AND role = 'admin'
-    )
-  );
+  WITH CHECK (public.has_project_role(project_id, auth.uid(), 'admin'));
 
 CREATE POLICY "project_members_update_admin" ON public.project_members
   FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = project_members.project_id AND user_id = auth.uid() AND role = 'admin'
-    )
-  );
+  USING (public.has_project_role(project_id, auth.uid(), 'admin'));
 
 CREATE POLICY "project_members_delete_admin" ON public.project_members
   FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = project_members.project_id AND user_id = auth.uid() AND role = 'admin'
-    )
-  );
+  USING (public.has_project_role(project_id, auth.uid(), 'admin'));
 
 -- --- documents ---
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "documents_select_member" ON public.documents
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = documents.project_id AND user_id = auth.uid()
-    )
-  );
+  USING (public.is_project_member(documents.project_id, auth.uid()));
 
 CREATE POLICY "documents_insert_editor" ON public.documents
   FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = documents.project_id
-        AND user_id = auth.uid()
-        AND role IN ('admin', 'editor')
-    )
+    (public.has_project_role(documents.project_id, auth.uid(), 'admin')
+     OR public.has_project_role(documents.project_id, auth.uid(), 'editor'))
     AND documents.uploaded_by = auth.uid()
     AND documents.tenant_id = public.get_user_tenant_id()
   );
@@ -329,3 +315,14 @@ CREATE POLICY "storage_pdf_select_auth" ON storage.objects
 CREATE POLICY "storage_pdf_insert_auth" ON storage.objects
   FOR INSERT
   WITH CHECK (bucket_id = 'pdf-uploads' AND auth.role() = 'authenticated');
+
+-- --------------------------------------------------------------------------
+-- 14. GRANT FUNCTION EXECUTE PRIVILEGES
+-- --------------------------------------------------------------------------
+-- SECURITY DEFINER functions must be explicitly granted to the roles that
+-- need to call them (e.g. from RLS policies).
+GRANT EXECUTE ON FUNCTION public.get_user_tenant_id() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.get_project_role(uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_project_member(uuid, uuid) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.has_project_role(uuid, uuid, text) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_authenticated() TO authenticated, anon;

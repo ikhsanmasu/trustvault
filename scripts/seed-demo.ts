@@ -65,15 +65,13 @@ async function main() {
 
   if (createResp.ok) {
     console.log("  -> Created.");
+  } else if (createResp.status === 409 || createResp.status === 422) {
+    // 409 = duplicate, 422 = email already registered
+    console.log("  -> Already exists, skipping.");
   } else {
     const err = await createResp.text();
-    // 409 = already exists, that's fine
-    if (createResp.status === 409) {
-      console.log("  -> Already exists, skipping.");
-    } else {
-      console.error(`  -> Failed (${createResp.status}): ${err}`);
-      process.exit(1);
-    }
+    console.error(`  -> Failed (${createResp.status}): ${err}`);
+    process.exit(1);
   }
 
   // ── 2. Create profile (link to Demo Corp) ────────────────────────────
