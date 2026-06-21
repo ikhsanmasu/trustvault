@@ -28,7 +28,11 @@ export function createServiceClient(): SupabaseClient {
 /**
  * Pre-created service-role client singleton.
  *
- * Kept for backward compatibility with any code that imports `supabase`
- * directly. Prefer `createServiceClient()` in new code for clarity.
+ * @deprecated This singleton is a footgun — importing it accidentally in a
+ * route handler silently bypasses RLS and tenant isolation.  Prefer
+ * `createServiceClient()` in new code, and route handlers must use
+ * `requireAuth()` from `@/lib/supabase/auth` for user-scoped operations.
+ *
+ * Kept only for backward compatibility. Do NOT add new imports of this symbol.
  */
 export const supabase: SupabaseClient = createServiceClient();

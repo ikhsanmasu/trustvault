@@ -101,12 +101,12 @@ export async function requireProjectRole(
 
   if (error || !member) {
     // RLS may have filtered the row, or the project doesn't exist.
-    // Return 404 to avoid leaking whether the project exists.
+    // Return 403 to avoid leaking whether the project exists (per api-spec).
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Project not found or access denied", code: "NOT_FOUND" },
-        { status: 404 },
+        { error: "You do not have access to this project", code: "FORBIDDEN" },
+        { status: 403 },
       ),
     };
   }

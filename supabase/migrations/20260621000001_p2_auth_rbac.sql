@@ -140,13 +140,15 @@ CREATE INDEX IF NOT EXISTS documents_project_id_idx ON public.documents (project
 CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
 RETURNS uuid AS $$
   SELECT tenant_id FROM public.profiles WHERE id = auth.uid();
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
+$$ LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = '';
 
 CREATE OR REPLACE FUNCTION public.get_project_role(p_project_id uuid)
 RETURNS text AS $$
   SELECT role FROM public.project_members
   WHERE project_id = p_project_id AND user_id = auth.uid();
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
+$$ LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = '';
 
 -- --------------------------------------------------------------------------
 -- 11. TRIGGER: auto-create profile + tenant on sign-up
@@ -170,7 +172,8 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '';
 
 -- Drop existing trigger if re-running migration
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -305,3 +308,18 @@ CREATE POLICY "documents_insert_editor" ON public.documents
     AND documents.uploaded_by = auth.uid()
     AND documents.tenant_id = public.get_user_tenant_id()
   );
+
+-- --------------------------------------------------------------------------
+-- 13. STORAGE RLS POLICIES (pdf-uploads bucket)
+-- --------------------------------------------------------------------------
+-- P2 switched uploads from service_role to user-scoped clients, so storage
+-- needs RLS policies granting authenticated users access. App-layer route
+-- handlers enforce project membership before upload/download.
+
+CREATE POLICY "storage_pdf_select_auth" ON storage.objects
+  FOR SELECT
+  USING (bucket_id = 'pdf-uploads' AND auth.role() = 'authenticated');
+
+CREATE POLICY "storage_pdf_insert_auth" ON storage.objects
+  FOR INSERT
+  WITH CHECK (bucket_id = 'pdf-uploads' AND auth.role() = 'authenticated');
