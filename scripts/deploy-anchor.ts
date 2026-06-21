@@ -77,6 +77,15 @@ async function main() {
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
   console.log(`Deployed at: ${receipt.contractAddress}`);
   console.log(`Block: ${receipt.blockNumber}`);
+
+  // Write to file for docker-compose automation
+  const addrFile = process.env.ANCHOR_ADDR_FILE || "/tmp/deploy-output.txt";
+  try {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(addrFile, receipt.contractAddress!);
+    console.log(`Address written to ${addrFile}`);
+  } catch { /* ignore */ }
+
   console.log("");
   console.log("Add this to your .env.local:");
   console.log(`ANCHOR_CONTRACT_ADDRESS=${receipt.contractAddress}`);
