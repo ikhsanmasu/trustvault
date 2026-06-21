@@ -130,13 +130,19 @@ ALTER TABLE public.documents ALTER COLUMN tenant_id SET NOT NULL;
 ALTER TABLE public.documents ALTER COLUMN project_id SET NOT NULL;
 
 -- --------------------------------------------------------------------------
--- 8. ADD FOREIGN KEY CONSTRAINTS ON DOCUMENTS
+-- 8. ADD FOREIGN KEY CONSTRAINTS ON DOCUMENTS (idempotent if re-run)
 -- --------------------------------------------------------------------------
-ALTER TABLE public.documents
-  ADD CONSTRAINT documents_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id);
-
-ALTER TABLE public.documents
-  ADD CONSTRAINT documents_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_tenant_id_fkey') THEN
+    ALTER TABLE public.documents
+      ADD CONSTRAINT documents_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_project_id_fkey') THEN
+    ALTER TABLE public.documents
+      ADD CONSTRAINT documents_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
+  END IF;
+END $$;
 
 -- --------------------------------------------------------------------------
 -- 9. ADD project_id INDEX ON DOCUMENTS
