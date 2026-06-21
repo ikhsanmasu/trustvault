@@ -47,26 +47,36 @@ async function main() {
   // ── 1. Create demo auth user via REST API ────────────────────────────
   console.log(`Creating demo user: ${DEMO_EMAIL}...`);
 
-  const createResp = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${adminKey}`,
-      apikey: adminKey,
-      "Content-Type": "application/json",
-    } as Record<string, string>,
-    body: JSON.stringify({
-      id: DEMO_USER_ID,
-      email: DEMO_EMAIL,
-      password: DEMO_PASSWORD,
-      email_confirm: true,
-      user_metadata: { full_name: "Demo User" },
-    }),
-  });
+  // Retry up to 10 times — Supabase auth may still be starting
+  let createResp: Response | undefined;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (attempt > 0) { console.log(`  Retry ${attempt}...`); await new Promise(r => setTimeout(r, 3000)); }
+    createResp = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminKey}`,
+        apikey: adminKey,
+        "Content-Type": "application/json",
+      } as Record<string, string>,
+      body: JSON.stringify({
+        id: DEMO_USER_ID,
+        email: DEMO_EMAIL,
+        password: DEMO_PASSWORD,
+        email_confirm: true,
+        user_metadata: { full_name: "Demo User" },
+      }),
+    });
+    if (createResp.ok || createResp.status === 409 || createResp.status === 422) break;
+  }
+
+  if (!createResp) {
+    console.error("  -> Failed: could not reach Supabase Auth after retries");
+    process.exit(1);
+  }
 
   if (createResp.ok) {
     console.log("  -> Created.");
   } else if (createResp.status === 409 || createResp.status === 422) {
-    // 409 = duplicate, 422 = email already registered
     console.log("  -> Already exists, skipping.");
   } else {
     const err = await createResp.text();
@@ -109,14 +119,83 @@ async function main() {
     project_id: DEMO_PROJECT,
     user_id: DEMO_USER_ID,
     role: "admin",
-  });
+  }, { onConflict: "project_id,user_id" });
 
   if (memberErr) {
-    console.error("Failed to add member:", memberErr.message);
-    process.exit(1);
+    // Membership may already exist — non-fatal
+    console.log("  -> Membership already exists, skipping.");
+  } else {
+    console.log("  -> Project membership set (admin).");
   }
 
-  console.log("  -> Project membership set (admin).");
+  // ── 4. Upload sample documents ────────────────────────────────────────
+  const samplesDir = resolve(process.cwd(), "samples");
+  const EXT_TO_MIME: Record<string, string> = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".json": "application/json",
+    ".csv": "text/csv",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+  };
+
+  let uploaded = 0;
+  try {
+    const { readdirSync } = await import("node:fs");
+    const files = readdirSync(samplesDir).filter(f => !f.startsWith("."));
+
+    for (const filename of files) {
+      const ext = filename.slice(filename.lastIndexOf(".")).toLowerCase();
+      const mimeType = EXT_TO_MIME[ext];
+      if (!mimeType) { console.log(`  ⚠ Skipping ${filename} (unknown type)`); continue; }
+
+      const filePath = resolve(samplesDir, filename);
+      const buffer = readFileSync(filePath);
+      const storagePath = `uploads/${new Date().getUTCFullYear()}/${DEMO_PROJECT}/${filename}`;
+
+      // Check if already seeded
+      const { data: existing } = await adminClient.from("documents").select("id").eq("storage_path", storagePath).single();
+      if (existing) { console.log(`  ⏭ ${filename} (already exists)`); continue; }
+
+      // Upload to storage
+      const { error: uploadErr } = await adminClient.storage.from("pdf-uploads").upload(storagePath, buffer, { contentType: mimeType, upsert: false });
+      if (uploadErr) { console.error(`  ❌ ${filename}: upload failed — ${uploadErr.message}`); continue; }
+
+      // Compute hashes
+      const { createHash } = await import("node:crypto");
+      const binaryHash = createHash("sha256").update(buffer).digest("hex");
+      // Try UTF-8 decode; fallback to empty for binary files (DOCX, XLSX, PDF)
+      let textContent = "";
+      try {
+        textContent = new TextDecoder("utf-8", { fatal: true }).decode(buffer).slice(0, 40000);
+      } catch { /* binary file — store empty text */ }
+      const textHash = createHash("sha256").update(textContent, "utf-8").digest("hex");
+
+      // Insert DB record
+      const displayName = filename.replace(ext, "").replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const { error: dbErr } = await adminClient.from("documents").insert({
+        name: displayName,
+        storage_path: storagePath,
+        binary_hash: binaryHash,
+        text_hash: textHash,
+        extracted_text: textContent,
+        file_size_bytes: buffer.length,
+        file_type: mimeType,
+        tenant_id: DEMO_TENANT,
+        project_id: DEMO_PROJECT,
+        uploaded_by: DEMO_USER_ID,
+      });
+      if (dbErr) { console.error(`  ❌ ${filename}: DB insert failed — ${dbErr.message}`); continue; }
+      console.log(`  ✅ ${filename} (${(buffer.length / 1024).toFixed(1)} KB, ${mimeType})`);
+      uploaded++;
+    }
+  } catch (err: any) {
+    if (err.code === "ENOENT") { console.log("  ⚠ samples/ directory not found — skipping sample uploads."); }
+    else { console.error("  ❌ Error reading samples:", err.message); }
+  }
+
+  console.log(`  -> Uploaded ${uploaded} sample document${uploaded !== 1 ? "s" : ""}.`);
   console.log(`\n✅ Ready! Login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
   console.log(`   Open: http://localhost:3000/projects/${DEMO_PROJECT}`);
 }

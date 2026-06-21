@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Document } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { IconShield } from "@/components/icons";
 
 // ---- File type helpers ------------------------------------------------------
 
@@ -92,6 +93,7 @@ interface VaultDocumentRowProps {
   onCompare: (doc: Document) => void;
   onDelete?: (doc: Document) => void;
   onView?: (doc: Document) => void;
+  onAnchor?: (doc: Document) => void;
   /** "row" = horizontal table row, "card" = vertical card for grid view */
   variant?: "row" | "card";
 }
@@ -102,9 +104,11 @@ export function VaultDocumentRow({
   onCompare,
   onDelete,
   onView,
+  onAnchor,
   variant = "row",
 }: VaultDocumentRowProps) {
   const isDeleted = !!document.deleted_at;
+  const isAnchored = !!document.fingerprint;
   const accentBorder = isDeleted ? "border-l-neutral-300 dark:border-l-neutral-600" : getFileTypeAccent(document.file_type);
   const iconBg = getFileTypeIconBg(document.file_type);
 
@@ -172,6 +176,22 @@ export function VaultDocumentRow({
 
         {/* Action buttons */}
         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-1 relative z-10">
+          {onAnchor && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onAnchor(document); }}
+              className={cn(
+                "cursor-pointer inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors",
+                isAnchored
+                  ? "text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                  : "text-muted-foreground hover:text-secondary hover:bg-secondary/10",
+              )}
+              title={isAnchored ? "View anchor details" : "Anchor on blockchain"}
+              aria-label={isAnchored ? `Anchor details for ${document.name}` : `Anchor ${document.name}`}
+            >
+              <IconShield className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onCompare(document); }}
@@ -268,6 +288,22 @@ export function VaultDocumentRow({
 
       {/* Action buttons */}
       <div className="shrink-0 flex items-center gap-0.5">
+        {onAnchor && (
+          <button
+            type="button"
+            onClick={() => onAnchor(document)}
+            className={cn(
+              "inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors",
+              isAnchored
+                ? "text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                : "text-muted-foreground hover:text-secondary hover:bg-secondary/10",
+            )}
+            title={isAnchored ? "View anchor details" : "Anchor on blockchain"}
+            aria-label={isAnchored ? `Anchor details for ${document.name}` : `Anchor ${document.name}`}
+          >
+            <IconShield className="h-[15px] w-[15px]" />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onCompare(document)}

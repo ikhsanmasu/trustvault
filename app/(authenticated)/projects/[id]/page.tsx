@@ -14,6 +14,7 @@ import { useProject } from "@/hooks/use-project";
 import { useDocuments } from "@/hooks/use-documents";
 import { CompareModal } from "@/components/compare-modal";
 import { DocumentPreviewModal } from "@/components/document-preview-modal";
+import { AnchorModal } from "@/components/anchor-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow } from "@/components/vault-document-row";
 import { deleteDocument, restoreDocument } from "@/lib/api-client";
@@ -41,6 +42,7 @@ export default function ProjectDetailPage() {
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [compareDoc, setCompareDoc] = useState<Document | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
+  const [anchorDoc, setAnchorDoc] = useState<Document | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Document | null>(null);
 
   const canUpload = currentUserRole === "admin" || currentUserRole === "editor";
@@ -150,7 +152,7 @@ export default function ProjectDetailPage() {
             ) : (
               <div className="space-y-1.5">
                 {documents.map((doc) => (
-                  <VaultDocumentRow key={doc.id} document={doc} onCompare={(d) => setCompareDoc(d)} onView={(d) => setViewDoc(d)} onDelete={(d) => setConfirmDelete(d)} />
+                  <VaultDocumentRow key={doc.id} document={doc} onCompare={(d) => setCompareDoc(d)} onView={(d) => setViewDoc(d)} onAnchor={(d) => setAnchorDoc(d)} onDelete={(d) => setConfirmDelete(d)} />
                 ))}
               </div>
             )}
@@ -178,6 +180,14 @@ export default function ProjectDetailPage() {
       {project && <ProjectForm open={editDialogOpen} onOpenChange={setEditDialogOpen} onSubmit={async (data) => await updateProjectDetails(data)} title="Edit Project" initialName={project.name} initialDescription={project.description} isEdit />}
       {compareDoc && <CompareModal document={compareDoc} open={compareDoc !== null} onOpenChange={(open) => { if (!open) setCompareDoc(null); }} />}
       {viewDoc && <DocumentPreviewModal document={viewDoc} open={viewDoc !== null} onOpenChange={(open) => { if (!open) setViewDoc(null); }} />}
+      {anchorDoc && (
+        <AnchorModal
+          document={anchorDoc}
+          open={anchorDoc !== null}
+          onOpenChange={(open) => { if (!open) setAnchorDoc(null); }}
+          onAnchored={() => { refreshDocs(); }}
+        />
+      )}
       {confirmDelete && (
         <ConfirmDialog
           open={confirmDelete !== null} onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}

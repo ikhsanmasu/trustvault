@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { AIVerdict } from "./types";
 
+// P5: blockchain fingerprint — thin re-export from lib/anchor.ts
+export { computeFingerprint } from "./anchor";
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

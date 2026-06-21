@@ -1,0 +1,28 @@
+{
+  "invoice": {
+    "number": "INV-2025-0042",
+    "issued": "2025-05-12",
+    "due": "2025-06-11",
+    "currency": "USD",
+    "status": "sent",
+    "seller": {
+      "name": "Meridian Labs",
+      "taxId": "ML-99-2841760",
+      "address": "14 Harbour Street, Suite 300, Portsea"
+    },
+    "buyer": {
+      "name": "Aster Logistics Pte Ltd",
+      "contact": "ap@asterlogistics.example"
+    },
+    "lineItems": [
+      { "id": 1, "description": "Document integrity audit (Q2)", "qty": 1, "unitPrice": 4200.00, "amount": 4200.00 },
+      { "id": 2, "description": "Anchoring nodes — managed, monthly", "qty": 3, "unitPrice": 180.00, "amount": 540.00 },
+      { "id": 3, "description": "Onboarding & training session", "qty": 2, "unitPrice": 350.00, "amount": 700.00 }
+    ],
+    "subtotal": 5440.00,
+    "taxRate": 0.08,
+    "tax": 435.20,
+    "total": 5875.20,
+    "notes": "Payment via bank transfer. Reference the invoice number in the transfer memo."
+  }
+}

@@ -1,6 +1,6 @@
-# TrustVault -- Deployment & Operations (P4)
+# TrustVault -- Deployment & Operations (P5)
 
-This document is a **contract** for the `deployment` agent. It specifies the local dev setup, CI configuration, Supabase Auth configuration, Supabase GitHub integration, and Vercel deployment process. P1-P3 deployment sections that remain valid are noted as preserved.
+This document is a **contract** for the `deployment` agent. It specifies the local dev setup, CI configuration, Supabase Auth configuration, Supabase GitHub integration, Vercel deployment process, blockchain node setup (Anvil/Railway), and contract deployment. P1-P4 deployment sections that remain valid are noted as preserved.
 
 ---
 
@@ -115,7 +115,7 @@ supabase db reset   # wipes and replays all migrations
 
 ## 4. Database Migration Strategy (Updated for P4)
 
-### P4 migration structure
+### P4 migration structure (updated for P5)
 
 ```
 supabase/
@@ -127,6 +127,9 @@ supabase/
                                           storage RLS policy update
     20260621000003_p4_soft_delete.sql  ← P4: soft delete, deleted_at/deleted_by columns,
                                           documents_deleted_at_idx index
+    20260622000000_p5_blockchain_anchor.sql  ← P5: anchoring columns (fingerprint, chain,
+                                                tx_hash, anchored_at), unique constraint,
+                                                UPDATE RLS policy
   seed.sql                              ← optional demo data
 ```
 
@@ -265,19 +268,20 @@ On every `push` and `pull_request` to `main` or `dev`:
 3. `npm ci` (installs dependencies).
 4. `npm run lint` -- must exit 0.
 5. `npx tsc --noEmit` -- must exit 0.
-6. `npm run test` -- must exit 0 (408 tests across 5 test files).
+6. `npm run test` -- must exit 0 (tests across all test files including P5 eval tests).
 7. Validate Supabase migration files exist and follow naming convention (`YYYYMMDDHHMMSS_descriptive_name.sql`).
 
 ### P4 Note on Unit Tests
 
-P4 has 408 tests across 5 test files:
+P4 has 408 tests across 5 test files. P5 adds a sixth test file:
 - `lib/core.test.ts` (160 tests): Pure functions for hashing, text extraction, schema.
 - `tests/eval/eval.test.ts` (11 tests): AI materiality eval contracts.
 - `tests/eval/p2-eval.test.ts` (64 tests): P2 RBAC, auth, profiles, projects contracts.
 - `tests/eval/p3-eval.test.ts` (109 tests): P3 multi-format, dashboard, profile, tenant contracts.
 - `tests/eval/p4-eval.test.ts` (64 tests): P4 soft delete, restore, RLS, storage cleanup contracts.
+- `tests/eval/p5-eval.test.ts` (P5): Blockchain anchoring, fingerprint computation, anchor/verify flows.
 
-All tests are pure contract/eval tests that do not require a running Supabase instance.
+All tests are pure contract/eval tests that do not require a running Supabase instance. P5 eval tests for fingerprint computation do not require a running blockchain node (expected vs. actual fingerprint values are precomputed).
 
 ### Required `package.json` scripts (unchanged)
 
@@ -409,15 +413,243 @@ All P1-P3 "No-Go" items remain. P4 adds:
 - Never hard-delete a `documents` row from the database -- use the soft-delete flow (set `deleted_at`).
 - Never skip the migration validation step in CI -- broken migration files block deployment.
 - Never manually run `supabase db push` on production if Supabase GitHub auto-deploy is connected (double-application risk).
+- Never deploy the application before running the P5 database migration (anchoring columns).
+- Never deploy the application before deploying the `TrustVaultAnchor` contract and setting `ANCHOR_CONTRACT_ADDRESS`.
+- Never expose `ANCHOR_PRIVATE_KEY` in client-side code or env vars with `NEXT_PUBLIC_` prefix.
+- Never commit `ANCHOR_PRIVATE_KEY` or any real private key to the repository.
 
 ---
 
-## 11. P1-P3 Baseline (Preserved)
+## 11. P1-P4 Baseline (Preserved)
 
-All P1-P3 deployment steps remain valid and are incorporated above. The P1 deployment document Sections 2-8 and P2-P3 extensions are the foundation that P4 extends. Key preserved items:
+All P1-P4 deployment steps remain valid and are incorporated above. The P1 deployment document Sections 2-8 and P2-P4 extensions are the foundation that P5 extends. Key preserved items:
 - Local dev setup with Supabase CLI.
 - Migration naming convention and apply process.
 - GitHub Actions CI workflow.
 - Vercel build configuration.
 - Deploy script (`scripts/deploy.sh`).
 - Supabase GitHub auto-deploy integration.
+
+---
+
+## 12. P5 Additions: Blockchain Node & Contract Deployment
+
+### 12a. New P5 Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| `viem` | ^2.x (latest) | EVM interaction, contract calls, transaction signing, keccak256 hashing. Replaces ethers. |
+| `solc` | ^0.8.20 (dev) | Solidity compiler for `TrustVaultAnchor.sol`. Optional if using Foundry. |
+
+The `viem` dependency must be added to `package.json` by the `scaffold` agent before build agents start.
+
+### 12b. New Environment Variables for P5
+
+| Variable | Scope | Description | Required |
+|---|---|---|---|
+| `ANCHOR_RPC_URL` | Server-only | JSON-RPC endpoint URL | Yes (for anchor/verify to work) |
+| `ANCHOR_CHAIN_ID` | Server-only | EVM chain ID as integer | Yes |
+| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `TrustVaultAnchor` address (`0x`-prefixed) | Yes |
+| `ANCHOR_PRIVATE_KEY` | Server-only | Private key for signing anchor transactions | Yes (for anchor to work; verify works without it if using read-only client) |
+
+**Note:** `ANCHOR_PRIVATE_KEY` is only required for `POST /api/anchor`. `POST /api/verify` uses a read-only public client and does not need the private key. If anchoring is not available (no private key configured), the verify endpoint can still check previously anchored documents.
+
+**Local dev (`.env.local`)** -- add these entries:
+
+```
+# P5: Blockchain Anchoring (Anvil local dev)
+ANCHOR_RPC_URL=http://127.0.0.1:8545
+ANCHOR_CHAIN_ID=31337
+ANCHOR_CONTRACT_ADDRESS=<output from deploy-anchor.ts>
+ANCHOR_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+### 12c. Local Anvil Setup
+
+**Prerequisite:** Install Foundry (https://book.getfoundry.sh/getting-started/installation).
+
+**Step 1 -- Start Anvil** (terminal 1, keep running):
+
+```bash
+anvil
+```
+
+This starts a local Ethereum node at `http://127.0.0.1:8545` with chain ID 31337 and 10 prefunded accounts (10,000 ETH each).
+
+**Step 2 -- Deploy the contract** (terminal 2):
+
+```bash
+npx tsx scripts/deploy-anchor.ts
+```
+
+**Expected output:**
+```
+Deploying TrustVaultAnchor to chain 31337...
+Transaction hash: 0x...
+Contract deployed at: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+```
+
+**Step 3 -- Update `.env.local`:**
+
+Copy the deployed contract address into `ANCHOR_CONTRACT_ADDRESS` in `.env.local`.
+
+**Step 4 -- Verify deployment:**
+
+```bash
+# Read the contract to confirm it's deployed
+cast call <CONTRACT_ADDRESS> "anchoredAt(bytes32)(uint256)" "0x0000000000000000000000000000000000000000000000000000000000000001" --rpc-url http://127.0.0.1:8545
+# Should return 0 (no fingerprint anchored yet)
+```
+
+### 12d. Full Local Dev Workflow (P5)
+
+1. Start Supabase: `supabase start`
+2. Apply all migrations: `supabase db reset` (applies P1-P5 migrations)
+3. Start Anvil: `anvil` (separate terminal)
+4. Deploy contract: `npx tsx scripts/deploy-anchor.ts`
+5. Update `.env.local` with the contract address
+6. Start Next.js: `npm run dev`
+7. Open `http://localhost:3000`, sign up/sign in, upload a document, click the shield icon to anchor it, verify it
+
+### 12e. Railway Deployment for Anvil (Staging/Demo)
+
+For a persistent blockchain endpoint in a deployed environment, run Anvil as a separate Railway service.
+
+**Dockerfile:** `docker/anvil.Dockerfile`
+
+```dockerfile
+FROM ghcr.io/foundry-rs/foundry:latest
+
+RUN mkdir -p /data
+
+EXPOSE 8545
+
+ENTRYPOINT ["anvil", "--host", "0.0.0.0", "--state", "/data/anvil.state", "--state-interval", "5"]
+```
+
+**Railway service configuration:**
+
+| Setting | Value |
+|---|---|
+| Service name | `trustvault-anvil` |
+| Source | Dockerfile at `docker/anvil.Dockerfile` |
+| Port | 8545 |
+| Protocol | TCP |
+| Health check | TCP connect to port 8545 |
+| Volume | `/data` (1 GB, persistent) |
+| Environment variables | None required (Anvil uses defaults) |
+
+**After the Anvil service is running:**
+
+1. Note the Railway service URL (e.g., `trustvault-anvil.railway.internal:8545` for internal traffic, or the public domain).
+2. Set `ANCHOR_RPC_URL` in the Next.js service's environment variables to point to the Anvil service.
+3. Run `npx tsx scripts/deploy-anchor.ts` once (with the appropriate `ANCHOR_RPC_URL`) to deploy the contract to the Railway-hosted Anvil instance.
+4. Set `ANCHOR_CONTRACT_ADDRESS` in the Next.js service to the deployed contract address.
+5. Use one of Anvil's deterministic private keys as `ANCHOR_PRIVATE_KEY` (the prefunded accounts are the same every time Anvil starts from the same state file).
+
+**Important:** The Anvil state file at `/data/anvil.state` persists the blockchain state across Railway restarts. Without it, the chain resets to genesis on every restart, losing all anchored data.
+
+### 12f. Production Deployment (Public Testnet / Mainnet)
+
+For production, do NOT use Anvil on Railway. Instead, use a public testnet or mainnet with a reliable RPC provider.
+
+**Step 1 -- Fund a signer account:**
+
+- Generate a new account: `cast wallet new` (Foundry) or use a hardware wallet.
+- Fund it with testnet ETH (Sepolia faucet) or real ETH (exchange/on-ramp).
+- Set `ANCHOR_PRIVATE_KEY` to the account's private key.
+
+**Step 2 -- Deploy the contract:**
+
+```bash
+ANCHOR_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY \
+ANCHOR_CHAIN_ID=11155111 \
+ANCHOR_PRIVATE_KEY=0x... \
+npx tsx scripts/deploy-anchor.ts
+```
+
+**Step 3 -- Verify the contract on Etherscan (optional but recommended):**
+
+```bash
+forge verify-contract \
+  --rpc-url https://sepolia.infura.io/v3/YOUR_KEY \
+  --etherscan-api-key YOUR_ETHERSCAN_API_KEY \
+  <CONTRACT_ADDRESS> \
+  contracts/TrustVaultAnchor.sol:TrustVaultAnchor
+```
+
+A verified contract allows anyone to inspect the source code and independently confirm the anchoring logic.
+
+**Step 4 -- Set Vercel environment variables:**
+
+Add all four `ANCHOR_*` variables in Vercel > Settings > Environment Variables. Mark `ANCHOR_PRIVATE_KEY` as **Sensitive**.
+
+### 12g. Contract Deployment Script Details
+
+**File:** `scripts/deploy-anchor.ts` (owned by `deployment` agent)
+
+The script uses viem to deploy the compiled contract. Key behavior:
+
+1. Reads env vars: `ANCHOR_RPC_URL`, `ANCHOR_CHAIN_ID`, `ANCHOR_PRIVATE_KEY`.
+2. Reads compiled artifacts:
+   - ABI from `contracts/out/TrustVaultAnchor_sol_TrustVaultAnchor.abi` (solc output)
+   - Bytecode from `contracts/out/TrustVaultAnchor_sol_TrustVaultAnchor.bin`
+3. Creates a viem wallet client and public client.
+4. Calls `walletClient.deployContract({ abi, bytecode, args: [] })`.
+5. Waits for receipt via `publicClient.waitForTransactionReceipt()`.
+6. Prints the deployed contract address.
+
+**Fallback if solc artifacts not found:** Try Foundry artifacts from `out/TrustVaultAnchor.sol/TrustVaultAnchor.json` (Forge output format). The script should detect which artifact format is available.
+
+**Usage:**
+```bash
+# All four env vars must be set
+ANCHOR_RPC_URL=<url> ANCHOR_CHAIN_ID=<id> ANCHOR_PRIVATE_KEY=<key> npx tsx scripts/deploy-anchor.ts
+```
+
+### 12h. CI Updates for P5
+
+The GitHub Actions CI workflow must:
+
+1. Continue running `eslint`, `tsc --noEmit`, and `vitest run` (unchanged).
+2. **New:** Validate that the new P5 migration file exists and follows the naming convention (`20260622000000_p5_blockchain_anchor.sql`).
+3. **New (optional):** Run `solc` or `forge build` to verify the Solidity contract compiles without errors. This requires Foundry or `solc` available in the CI environment.
+
+**Recommended CI addition (Foundry check):**
+
+```yaml
+- name: Install Foundry
+  uses: foundry-rs/foundry-toolchain@v1
+
+- name: Compile Solidity contract
+  run: forge build --contracts contracts/
+```
+
+If Foundry is not available in CI, the Solidity compilation check can be skipped (the deploy script validates at deploy time). The contract is simple enough that compilation errors are unlikely once tested locally.
+
+### 12i. Vercel Deployment for P5
+
+**New environment variables required in Vercel:**
+
+| Variable | Environments | Sensitivity |
+|---|---|---|
+| `ANCHOR_RPC_URL` | Production, Preview | Plain |
+| `ANCHOR_CHAIN_ID` | Production, Preview | Plain |
+| `ANCHOR_CONTRACT_ADDRESS` | Production, Preview | Plain |
+| `ANCHOR_PRIVATE_KEY` | Production, Preview | **Sensitive (secret)** |
+
+**Preview deployments:** Use the same Anvil instance (Railway) or a dedicated Sepolia contract for preview environments. Alternatively, skip anchor functionality in preview deployments by not setting `ANCHOR_PRIVATE_KEY` -- the app should handle the missing configuration gracefully (anchor button disabled, verify still works if documents were previously anchored).
+
+### 12j. Pre-Deploy Checklist Additions (P5)
+
+Before deploying P5 to production:
+
+- [ ] Verify the P5 migration (`20260622000000_p5_blockchain_anchor.sql`) has been applied to the production Supabase database (check Supabase Dashboard > Integrations > GitHub > Run History, or run `supabase db push`).
+- [ ] Verify the four new columns (`fingerprint`, `chain`, `tx_hash`, `anchored_at`) exist on the production `documents` table.
+- [ ] Verify the `documents_fingerprint_unique` constraint exists.
+- [ ] Verify the `documents_update_anchor` RLS policy exists and is enabled.
+- [ ] Deploy the `TrustVaultAnchor` contract to the target chain.
+- [ ] Set `ANCHOR_CONTRACT_ADDRESS` to the deployed contract address.
+- [ ] Set `ANCHOR_PRIVATE_KEY` to a funded account on the target chain.
+- [ ] Test a full anchor + verify cycle on production (upload a document, anchor it, verify it).
+- [ ] Verify the `ANCHOR_PRIVATE_KEY` account balance is sufficient for expected anchor volume.

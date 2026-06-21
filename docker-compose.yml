@@ -1,0 +1,54 @@
+# TrustVault — Blockchain + App in Docker
+# Supabase is started separately via CLI (required for proper auth/migrations).
+# Usage: ./start.sh  (or: npx supabase start && docker compose up -d)
+
+services:
+  anvil:
+    build:
+      context: .
+      dockerfile: docker/anvil.Dockerfile
+    ports:
+      - "8545:8545"
+    volumes:
+      - anvil-data:/data
+
+  deploy-anchor:
+    image: node:22-alpine
+    working_dir: /app
+    environment:
+      ANCHOR_RPC_URL: http://anvil:8545
+      ANCHOR_CHAIN_ID: "31337"
+      ANCHOR_PRIVATE_KEY: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+    volumes:
+      - .:/app
+    command: sh -c "sleep 3 && cd /app && npm install --silent && npx tsx scripts/deploy-anchor.ts"
+    depends_on:
+      - anvil
+
+  app:
+    image: node:22-alpine
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://host.docker.internal:54321}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
+      ANCHOR_RPC_URL: http://anvil:8545
+      ANCHOR_CHAIN_ID: "31337"
+      ANCHOR_PRIVATE_KEY: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+      ANCHOR_CONTRACT_ADDRESS: ${ANCHOR_CONTRACT_ADDRESS:-}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    command: sh -c "cd /app && npm install --silent && npm run dev"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      deploy-anchor:
+        condition: service_completed_successfully
+
+volumes:
+  anvil-data:

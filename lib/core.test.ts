@@ -11,6 +11,7 @@ import {
   getFileExtension,
   ALLOWED_MIME_TYPES,
   MIME_TO_EXTENSION,
+  computeFingerprint,
 } from "./core";
 import type { AllowedMimeType } from "./core";
 
@@ -1733,5 +1734,174 @@ describe("P4: Integrity verification of soft-deleted documents", () => {
     // After restore: extracted_text is still "", but text_hash column is unchanged
     expect(storedHash).toBe(computeTextHash(originalText));
     expect(storedHash).not.toBe(computeTextHash(""));
+  });
+});
+
+// ============================================================================
+// P5: computeFingerprint — blockchain anchoring fingerprint
+// ============================================================================
+
+describe("P5: computeFingerprint", () => {
+  it("returns a 66-character 0x-prefixed hex string", () => {
+    const fp = computeFingerprint(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    );
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("is deterministic — same hashes always produce the same fingerprint", () => {
+    const bh = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const th = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp1 = computeFingerprint(bh, th);
+    const fp2 = computeFingerprint(bh, th);
+    expect(fp1).toBe(fp2);
+  });
+
+  it("produces different fingerprints for different binary hashes", () => {
+    const th = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp1 = computeFingerprint(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      th,
+    );
+    const fp2 = computeFingerprint(
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      th,
+    );
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it("produces different fingerprints for different text hashes", () => {
+    const bh = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const fp1 = computeFingerprint(
+      bh,
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    const fp2 = computeFingerprint(
+      bh,
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it("produces a fingerprint matching a known reference value", () => {
+    // SHA-256 of "abc" = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+    // SHA-256 of ""    = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    const bh = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const th = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp = computeFingerprint(bh, th);
+
+    // This is the reference value computed from the same inputs using
+    // viem keccak256(encodePacked(["bytes32","bytes32"], [0x+bh, 0x+th]))
+    // Verified against a Solidity implementation.
+    expect(fp).toBe(
+      "0x4372d3e7781250cbf01c9f3ea8571e3a0328ed051dc3028f832f56bc187cd8df",
+    );
+    expect(fp).toHaveLength(66);
+  });
+
+  it("handles all-zero hashes (both hashes are 64 zeros)", () => {
+    const zeroHash = "0000000000000000000000000000000000000000000000000000000000000000";
+    const fp = computeFingerprint(zeroHash, zeroHash);
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+    // Determinism check
+    expect(computeFingerprint(zeroHash, zeroHash)).toBe(fp);
+  });
+
+  it("handles legacy P1 document hashes (64-char lowercase hex)", () => {
+    // P1 documents have binary_hash and text_hash as 64 lower hex chars.
+    // This test verifies they work as-is without requiring prefix changes.
+    const realP1BinaryHash =
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const realP1TextHash =
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp = computeFingerprint(realP1BinaryHash, realP1TextHash);
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("produces same result as re-importing from lib/anchor directly", async () => {
+    // Validate the thin re-export in lib/core.ts delegates correctly
+    const { computeFingerprint: direct } = await import("./anchor");
+    const bh =
+      "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    const th =
+      "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321";
+    expect(computeFingerprint(bh, th)).toBe(direct(bh, th));
+  });
+
+  it("produces different fingerprint when binary_hash and text_hash are swapped", () => {
+    // abi.encodePacked order matters: [bh, th] !== [th, bh]
+    const bh = "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111";
+    const th = "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222";
+    const fpNormal = computeFingerprint(bh, th);
+    const fpSwapped = computeFingerprint(th, bh);
+    expect(fpNormal).not.toBe(fpSwapped);
+    // Both remain valid format
+    expect(fpNormal).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(fpSwapped).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("produces same fingerprint when hashes contain uppercase hex characters", () => {
+    // The computeFingerprint prepends 0x to raw hashes, so mixed-case
+    // inputs still produce valid bytes32 values. However, the output
+    // keccak256 is always lowercase.
+    const bhLower =
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const bhUpper = bhLower.toUpperCase();
+    const th =
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    // Lowercase vs uppercase input — both are valid hex
+    const fpLower = computeFingerprint(bhLower, th);
+    const fpUpper = computeFingerprint(bhUpper, th);
+    // Uppercase vs lowercase hex should produce the SAME result because
+    // 0x + hex string represents the same bytes32 value regardless of case
+    expect(fpLower).toBe(fpUpper);
+  });
+
+  it("fingerprint built from real pipeline hashes is deterministic", () => {
+    // Full pipeline: buffer -> binary_hash, text -> text_hash, both -> fingerprint
+    const buffer = Buffer.from("Real document content for anchoring");
+    const text = "This is the extracted text of the document.";
+    const bh = computeBinaryHash(buffer);
+    const th = computeTextHash(text);
+
+    // Run 5 times — always identical
+    for (let i = 0; i < 5; i++) {
+      const fp = computeFingerprint(bh, th);
+      expect(fp).toHaveLength(66);
+      expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+      // Every iteration produces the same result
+      expect(fp).toBe(computeFingerprint(bh, th));
+    }
+  });
+
+  it("fingerprint built from empty buffer and empty text hashes is valid", () => {
+    const bh = computeBinaryHash(Buffer.alloc(0));
+    const th = computeTextHash("");
+    expect(bh).toHaveLength(64);
+    expect(th).toHaveLength(64);
+    const fp = computeFingerprint(bh, th);
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+    // The empty fingerprint is deterministic
+    expect(computeFingerprint(bh, th)).toBe(fp);
+  });
+
+  it("fingerprint changes when a single byte in the source buffer changes", () => {
+    const buf1 = Buffer.from("The contract amount is $500,000.");
+    const buf2 = Buffer.from("The contract amount is $500,001.");
+    const th = computeTextHash("generic extracted text");
+
+    const bh1 = computeBinaryHash(buf1);
+    const bh2 = computeBinaryHash(buf2);
+
+    const fp1 = computeFingerprint(bh1, th);
+    const fp2 = computeFingerprint(bh2, th);
+
+    expect(bh1).not.toBe(bh2);
+    expect(fp1).not.toBe(fp2);
   });
 });

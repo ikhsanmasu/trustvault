@@ -1,0 +1,25 @@
+MERIDIAN LABS — PROJECT SYNC
+Date: 2025-05-15  |  Time: 10:00–10:35  |  Location: Room B / remote
+
+Attendees: R. Okafor (PM), L. Tan (Eng), S. Devi (Security), M. Cole (Client lead)
+
+1. INTEGRITY VAULT — STATUS
+   - Hashing pipeline (binary -> text -> summary) running in staging.
+   - Anchoring to ledger now wired behind a single config switch.
+   - Open item: decide simulation host before client demo.
+
+2. CLIENT DEMO PREP
+   - Aster Logistics demo scheduled 2025-05-29.
+   - Need 5-6 sample documents across formats for the walkthrough.
+   - S. Devi to confirm tamper-evidence story is reproducible live.
+
+3. RISKS
+   - Single-node sim is fine for demo, NOT for production (note in deck).
+   - Watch storage cost on always-on services.
+
+ACTIONS
+   - [L. Tan]  finalize config switch + deploy script        due 05-20
+   - [S. Devi] prepare tamper/verify demo path                due 05-23
+   - [R. Okafor] circulate sample document pack               due 05-22
+
+Next sync: 2025-05-22, 10:00
