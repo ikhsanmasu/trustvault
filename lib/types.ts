@@ -1,4 +1,4 @@
-/** Shared TypeScript types for TrustVault P2. */
+/** Shared TypeScript types for TrustVault P3. */
 
 // ---------------------------------------------------------------------------
 // Role type (RBAC)
@@ -26,6 +26,36 @@ export interface Profile {
   created_at: string;
 }
 
+/** P3: request body for updating the current user's profile. */
+export interface UpdateProfileRequest {
+  display_name?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Tenant (P3)
+// ---------------------------------------------------------------------------
+
+export interface Tenant {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+/** P3: request body for updating the tenant name. */
+export interface UpdateTenantRequest {
+  name: string;
+}
+
+// ---------------------------------------------------------------------------
+// Password (P3)
+// ---------------------------------------------------------------------------
+
+/** P3: request body for changing the user's password. */
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
 // ---------------------------------------------------------------------------
 // Project
 // ---------------------------------------------------------------------------
@@ -51,7 +81,7 @@ export interface ProjectMember {
 }
 
 // ---------------------------------------------------------------------------
-// Document (updated for P2 — tenant_id, project_id, uploaded_by are NOT NULL)
+// Document (updated for P3 — file_type added)
 // ---------------------------------------------------------------------------
 
 export interface Document {
@@ -62,6 +92,7 @@ export interface Document {
   text_hash: string;
   extracted_text: string;
   file_size_bytes: number;
+  file_type: string; // P3: tracked so downstream code knows the file format
   tenant_id: string;
   project_id: string;
   uploaded_by: string;
@@ -118,6 +149,17 @@ export interface BulkUploadResult {
 export type BulkUploadResponse = BulkUploadResult;
 
 // ---------------------------------------------------------------------------
+// Dashboard (P3)
+// ---------------------------------------------------------------------------
+
+export interface DashboardStats {
+  project_count: number;
+  document_count: number;
+  total_storage_bytes: number;
+  recent_documents: Document[];
+}
+
+// ---------------------------------------------------------------------------
 // Generic response wrappers
 // ---------------------------------------------------------------------------
 
@@ -140,6 +182,10 @@ export interface GetDocumentResponse {
 }
 
 export interface GetProfileResponse {
+  profile: Profile;
+}
+
+export interface UpdateProfileResponse {
   profile: Profile;
 }
 
@@ -170,4 +216,22 @@ export interface AddMemberResponse {
 
 export interface UpdateMemberRoleResponse {
   member: ProjectMember;
+}
+
+// -- P3 response types --
+
+export interface DashboardResponse {
+  stats: DashboardStats;
+}
+
+export interface GetTenantResponse {
+  tenant: Tenant;
+}
+
+export interface UpdateTenantResponse {
+  tenant: Tenant;
+}
+
+export interface ChangePasswordResponse {
+  success: boolean;
 }

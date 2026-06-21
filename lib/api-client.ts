@@ -1,15 +1,21 @@
 // ---------------------------------------------------------------------------
 // TrustVault API client — thin typed wrappers around /api/* endpoints.
 // Consumes the API contract in docs/api-spec.md exactly.
-// P2: Updated with auth types, projects, bulk upload, and project-scoped docs.
+// P3: Updated with new compare flow, dashboard, tenant, settings, multi-format.
 // ---------------------------------------------------------------------------
 
-// ---- Shared types from api-spec.md (P2) ------------------------------------
+// ---- Shared types from api-spec.md (P3) ------------------------------------
 
 export interface Profile {
   id: string;
   tenant_id: string;
   display_name: string | null;
+  created_at: string;
+}
+
+export interface Tenant {
+  id: string;
+  name: string;
   created_at: string;
 }
 
@@ -39,15 +45,16 @@ export interface Document {
   text_hash: string;
   extracted_text: string;
   file_size_bytes: number;
+  file_type: string;
   tenant_id: string;
   project_id: string;
   uploaded_by: string;
   created_at: string;
 }
 
-export interface CompareResponse {
-  docAId: string;
-  docBId: string;
+export interface CompareResult {
+  docId: string;
+  uploadedFileName: string;
   stage: "BINARY_MATCH" | "TEXT_MATCH" | "AI_COMPARE";
   verdict: "IDENTICAL" | "BINARY_DIFF_ONLY" | "MATERIAL" | "NOT_MATERIAL";
   confidence: "HIGH" | "MEDIUM" | "LOW" | null;
@@ -69,7 +76,13 @@ export interface BulkUploadResult {
   failed: number;
 }
 
-// ---- Request types ---------------------------------------------------------
+// Matches backend GET /api/dashboard response
+export interface DashboardStats {
+  project_count: number;
+  document_count: number;
+  total_storage_bytes: number;
+  recent_documents: Document[];
+}
 
 export interface CreateProjectRequest {
   name: string;
@@ -90,15 +103,39 @@ export interface UpdateMemberRoleRequest {
   role: MemberRole;
 }
 
-export interface CompareRequest {
-  docAId: string;
-  docBId: string;
+export interface UpdateProfileRequest {
+  display_name: string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface UpdateTenantRequest {
+  name: string;
 }
 
 // ---- Response types --------------------------------------------------------
 
 export interface GetProfileResponse {
   profile: Profile;
+}
+
+export interface UpdateProfileResponse {
+  profile: Profile;
+}
+
+export interface GetTenantResponse {
+  tenant: Tenant;
+}
+
+export interface UpdateTenantResponse {
+  tenant: Tenant;
+}
+
+export interface DashboardResponse {
+  stats: DashboardStats;
 }
 
 export interface CreateProjectResponse {
@@ -178,6 +215,30 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 // ---- API functions ---------------------------------------------------------
 
+// ===== Tenant =====
+
+/**
+ * GET /api/tenant — get current user's tenant.
+ */
+export async function getTenant(): Promise<GetTenantResponse> {
+  const response = await fetch("/api/tenant");
+  return handleResponse<GetTenantResponse>(response);
+}
+
+/**
+ * PATCH /api/tenant — update tenant name.
+ */
+export async function updateTenant(
+  data: UpdateTenantRequest,
+): Promise<UpdateTenantResponse> {
+  const response = await fetch("/api/tenant", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<UpdateTenantResponse>(response);
+}
+
 // ===== Profile =====
 
 /**
@@ -186,6 +247,44 @@ async function handleResponse<T>(response: Response): Promise<T> {
 export async function getProfile(): Promise<GetProfileResponse> {
   const response = await fetch("/api/profile");
   return handleResponse<GetProfileResponse>(response);
+}
+
+/**
+ * PATCH /api/profile — update display_name.
+ */
+export async function updateProfile(
+  data: UpdateProfileRequest,
+): Promise<UpdateProfileResponse> {
+  const response = await fetch("/api/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<UpdateProfileResponse>(response);
+}
+
+/**
+ * PATCH /api/password — change password.
+ */
+export async function changePassword(
+  data: ChangePasswordRequest,
+): Promise<{ updated: boolean }> {
+  const response = await fetch("/api/password", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ updated: boolean }>(response);
+}
+
+// ===== Dashboard =====
+
+/**
+ * GET /api/dashboard — get aggregate stats for the tenant.
+ */
+export async function getDashboard(): Promise<DashboardResponse> {
+  const response = await fetch("/api/dashboard");
+  return handleResponse<DashboardResponse>(response);
 }
 
 // ===== Projects =====
@@ -330,9 +429,16 @@ export async function removeMember(
 
 // ===== Documents =====
 
+export interface ListDocumentsParams {
+  project_id?: string;
+  file_type?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
 /**
- * POST /api/documents — upload a single PDF.
- * P2: Requires project_id.
+ * POST /api/documents — upload a document.
  */
 export async function uploadDocument(
   file: File,
@@ -352,26 +458,21 @@ export async function uploadDocument(
   return handleResponse<UploadResponse>(response);
 }
 
-export interface ListDocumentsParams {
-  project_id: string;
-  search?: string;
-  limit?: number;
-  offset?: number;
-}
-
 /**
- * GET /api/documents — list documents. P2: Requires project_id.
+ * GET /api/documents — list documents. P3: project_id is optional, file_type filter added.
  */
 export async function listDocuments(
-  params: ListDocumentsParams,
+  params?: ListDocumentsParams,
 ): Promise<ListDocumentsResponse> {
   const sp = new URLSearchParams();
-  sp.set("project_id", params.project_id);
-  if (params.search) sp.set("search", params.search);
-  if (params.limit !== undefined) sp.set("limit", String(params.limit));
-  if (params.offset !== undefined) sp.set("offset", String(params.offset));
+  if (params?.project_id) sp.set("project_id", params.project_id);
+  if (params?.file_type) sp.set("file_type", params.file_type);
+  if (params?.search) sp.set("search", params.search);
+  if (params?.limit !== undefined) sp.set("limit", String(params.limit));
+  if (params?.offset !== undefined) sp.set("offset", String(params.offset));
 
-  const url = `/api/documents?${sp.toString()}`;
+  const qs = sp.toString();
+  const url = `/api/documents${qs ? `?${qs}` : ""}`;
 
   const response = await fetch(url);
   return handleResponse<ListDocumentsResponse>(response);
@@ -390,7 +491,7 @@ export async function getDocument(
 // ===== Bulk Upload =====
 
 /**
- * POST /api/documents/bulk — upload multiple PDFs to a project.
+ * POST /api/documents/bulk — upload multiple files to a project.
  */
 export async function bulkUploadDocuments(
   files: File[],
@@ -415,18 +516,39 @@ export async function bulkUploadDocuments(
 // ===== Compare =====
 
 /**
- * POST /api/compare — run the 3-step document comparison pipeline.
- * P2: Both documents must belong to the same project (enforced server-side).
+ * POST /api/compare — P3: compare stored doc vs ephemeral uploaded file.
+ * Sends docId + file as multipart/form-data.
  */
+export async function compareWithFile(
+  docId: string,
+  file: File,
+): Promise<CompareResult> {
+  const formData = new FormData();
+  formData.append("docId", docId);
+  formData.append("file", file);
+
+  const response = await fetch("/api/compare", {
+    method: "POST",
+    body: formData,
+  });
+
+  return handleResponse<CompareResult>(response);
+}
+
+// ---- Backward compatibility (P2 consumers) ----------------------------------
+
+/** @deprecated Use CompareResult from P3 endpoint. */
+export type CompareResponse = CompareResult;
+
+/** @deprecated Use compareWithFile. Sends P2-compatible JSON compare request (still supported by backend). */
 export async function compareDocuments(
   docAId: string,
   docBId: string,
-): Promise<CompareResponse> {
+): Promise<CompareResult> {
   const response = await fetch("/api/compare", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ docAId, docBId } satisfies CompareRequest),
+    body: JSON.stringify({ docAId, docBId }),
   });
-
-  return handleResponse<CompareResponse>(response);
+  return handleResponse<CompareResult>(response);
 }

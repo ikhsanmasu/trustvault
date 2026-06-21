@@ -20,7 +20,7 @@ export default function HomePage() {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         setIsAuthenticated(true);
-        router.push("/projects");
+        router.push("/dashboard");
       } else {
         setIsAuthenticated(false);
         setIsChecking(false);
@@ -28,7 +28,7 @@ export default function HomePage() {
     });
   }, [router]);
 
-  // Redirect authenticated users to projects
+  // Redirect authenticated users to dashboard
   if (isAuthenticated) {
     return (
       <main className="flex min-h-screen items-center justify-center">
@@ -53,9 +53,9 @@ export default function HomePage() {
       </h1>
 
       <p className="mt-4 max-w-xl text-center text-lg text-muted-foreground">
-        A multi-tenant document-integrity platform. Upload PDFs,
-        compare versions, and let AI assess whether changes are
-        MATERIAL or NOT MATERIAL.
+        A multi-tenant document-integrity platform. Upload PDFs, DOCX,
+        spreadsheets, images, and more. Compare versions and let AI
+        assess whether changes are MATERIAL or NOT MATERIAL.
       </p>
 
       <div className="mt-10 flex items-center gap-4">
@@ -74,16 +74,17 @@ export default function HomePage() {
         <div className="rounded-lg border p-6">
           <div className="mb-2 text-sm font-semibold">Step 1</div>
           <p className="text-sm text-muted-foreground">
-            Create a project and upload PDF documents. Binary and
-            text hashes are computed and stored automatically.
+            Create a project and upload documents. Supported formats
+            include PDF, DOCX, XLSX, JSON, CSV, images, and more.
           </p>
         </div>
 
         <div className="rounded-lg border p-6">
           <div className="mb-2 text-sm font-semibold">Step 2</div>
           <p className="text-sm text-muted-foreground">
-            Compare two document versions. Deterministic hash
-            checks run first to detect identical files.
+            Compare a stored document against a new upload.
+            Deterministic hash checks detect identical or purely
+            binary-different files before AI is involved.
           </p>
         </div>
 
@@ -91,25 +92,27 @@ export default function HomePage() {
           <div className="mb-2 text-sm font-semibold">Step 3</div>
           <p className="text-sm text-muted-foreground">
             AI assesses whether text changes are MATERIAL or
-            NOT MATERIAL, providing reasoning and confidence.
+            NOT MATERIAL, providing reasoning and a confidence
+            level for every comparison.
           </p>
         </div>
       </div>
 
       <div className="mt-10 grid gap-4 sm:grid-cols-3">
         <div className="rounded-lg border p-6">
-          <div className="mb-2 text-sm font-semibold">Projects</div>
+          <div className="mb-2 text-sm font-semibold">Dashboard</div>
           <p className="text-sm text-muted-foreground">
-            Organise documents by project. Invite team members and
-            control access with admin, editor, or viewer roles.
+            See total documents, recent uploads, project counts, and
+            storage usage at a glance on your personal dashboard.
           </p>
         </div>
 
         <div className="rounded-lg border p-6">
           <div className="mb-2 text-sm font-semibold">Bulk Upload</div>
           <p className="text-sm text-muted-foreground">
-            Upload up to 10 PDFs at once. Each file is processed
-            independently with individual results.
+            Upload up to 10 files at once. Each file is processed
+            independently with individual results -- any supported
+            format, mixed in a single batch.
           </p>
         </div>
 
@@ -117,7 +120,8 @@ export default function HomePage() {
           <div className="mb-2 text-sm font-semibold">Multi-Tenant</div>
           <p className="text-sm text-muted-foreground">
             Row-level security ensures each tenant&apos;s data is
-            isolated. Role-based access at the project level.
+            isolated. Role-based access at the project level with
+            admin, editor, and viewer roles.
           </p>
         </div>
       </div>

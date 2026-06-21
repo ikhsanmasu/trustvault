@@ -3,20 +3,20 @@
 import { useState, useCallback } from "react";
 import {
   compareWithFile,
-  type CompareResult as CompareResponse,
+  type CompareResult,
   ApiClientError,
 } from "@/lib/api-client";
 
-interface UseCompareReturn {
-  result: CompareResponse | null;
+interface UseCompareFileReturn {
+  result: CompareResult | null;
   isLoading: boolean;
   error: string | null;
   runCompare: (docId: string, file: File) => Promise<void>;
   reset: () => void;
 }
 
-export function useCompare(): UseCompareReturn {
-  const [result, setResult] = useState<CompareResponse | null>(null);
+export function useCompareFile(): UseCompareFileReturn {
+  const [result, setResult] = useState<CompareResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

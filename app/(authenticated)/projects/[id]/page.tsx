@@ -18,11 +18,13 @@ import {
 } from "@/components/ui/card";
 import { useProject } from "@/hooks/use-project";
 import { useDocuments } from "@/hooks/use-documents";
+import { CompareModal } from "@/components/compare-modal";
+import { VaultDocumentRow } from "@/components/vault-document-row";
 import UploadForm from "@/components/upload-form";
 import BulkUpload from "@/components/bulk-upload";
-import DocumentTable from "@/components/document-table";
 import MemberList from "@/components/member-list";
 import ProjectForm from "@/components/project-form";
+import type { Document } from "@/lib/api-client";
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -55,6 +57,7 @@ export default function ProjectDetailPage() {
 
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [compareDoc, setCompareDoc] = useState<Document | null>(null);
 
   const canUpload = currentUserRole === "admin" || currentUserRole === "editor";
   const isAdmin = currentUserRole === "admin";
@@ -63,31 +66,31 @@ export default function ProjectDetailPage() {
   if (!isAuthLoading && !user) {
     router.push("/login");
     return (
-      <main className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <Alert variant="destructive">
           <AlertDescription>Please log in to access projects.</AlertDescription>
         </Alert>
-      </main>
+      </div>
     );
   }
 
   if (isAuthLoading || isLoadingProject) {
     return (
-      <main className="mx-auto min-h-screen max-w-5xl px-4 py-8">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-48 mb-2" />
         <Skeleton className="h-4 w-64" />
         <div className="mt-6 space-y-4">
           <Skeleton className="h-64 w-full" />
           <Skeleton className="h-96 w-full" />
         </div>
-      </main>
+      </div>
     );
   }
 
   if (projectError || !project) {
     return (
-      <main className="mx-auto min-h-screen max-w-5xl px-4 py-8">
-        <Alert variant="destructive" className="mb-4">
+      <div className="space-y-4">
+        <Alert variant="destructive">
           <AlertDescription>
             {projectError || "Project not found."}
           </AlertDescription>
@@ -98,13 +101,13 @@ export default function ProjectDetailPage() {
         >
           Back to Projects
         </Link>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl px-4 py-8 space-y-6">
-      {/* Header + breadcrumb */}
+    <div className="space-y-6">
+      {/* Header */}
       <div>
         <Link
           href="/projects"
@@ -180,19 +183,69 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* Document table */}
-      <DocumentTable
-        documents={documents}
-        total={docTotal}
-        isLoading={isLoadingDocs}
-        error={docError}
-        search={search}
-        onSearchChange={setSearch}
-        onRefresh={refreshDocs}
-        projectId={projectId}
-        projectName={project.name}
-        userRole={currentUserRole}
-      />
+      {/* Document list */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Documents</CardTitle>
+              <CardDescription>
+                {docTotal} document{docTotal !== 1 ? "s" : ""} in {project.name}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                placeholder="Search by name…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="flex h-9 w-48 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-64"
+              />
+              <Button variant="outline" size="sm" onClick={refreshDocs}>
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {docError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{docError}</AlertDescription>
+            </Alert>
+          )}
+
+          {isLoadingDocs ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <p className="text-sm text-muted-foreground">
+                {search
+                  ? "No documents match your search."
+                  : "No documents in this project yet."}
+              </p>
+              {!search && canUpload && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Use the upload form above to add documents.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {documents.map((doc) => (
+                <VaultDocumentRow
+                  key={doc.id}
+                  document={doc}
+                  onCompare={(d) => setCompareDoc(d)}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Separator />
 
@@ -235,6 +288,17 @@ export default function ProjectDetailPage() {
           isEdit
         />
       )}
-    </main>
+
+      {/* Compare Modal */}
+      {compareDoc && (
+        <CompareModal
+          document={compareDoc}
+          open={compareDoc !== null}
+          onOpenChange={(open) => {
+            if (!open) setCompareDoc(null);
+          }}
+        />
+      )}
+    </div>
   );
 }

@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { computeBinaryHash, extractPdfText, computeTextHash } from "@/lib/core";
-import { requireAuth, requireProjectRole, getUserTenantId } from "@/lib/supabase/auth";
+import {
+  computeBinaryHash,
+  extractFileText,
+  computeTextHash,
+  isAllowedMimeType,
+  getFileExtension,
+} from "@/lib/core";
+import {
+  requireAuth,
+  requireProjectRole,
+  getUserTenantId,
+} from "@/lib/supabase/auth";
 import type {
   UploadResponse,
   ListDocumentsResponse,
@@ -23,18 +33,18 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
-// POST /api/documents — Upload a PDF document (P2: auth + project scoping)
+// POST /api/documents -- Upload a document (P3: all 14 MIME types accepted)
 // ---------------------------------------------------------------------------
 
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<UploadResponse | ErrorResponse>> {
-  // ── 1. requireAuth ─────────────────────────────────────────────────────
+  // -- 1. requireAuth -------------------------------------------------------
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
   const { user, supabase } = auth;
 
-  // ── 2. Parse multipart form data ───────────────────────────────────────
+  // -- 2. Parse multipart form data -----------------------------------------
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -49,7 +59,7 @@ export async function POST(
   const name = formData.get("name");
   const projectIdRaw = formData.get("project_id");
 
-  // ── 3. Validate file presence ──────────────────────────────────────────
+  // -- 3. Validate file presence --------------------------------------------
   if (!file || !(file instanceof File)) {
     return NextResponse.json(
       { error: "No file provided", code: "MISSING_FILE" },
@@ -57,15 +67,20 @@ export async function POST(
     );
   }
 
-  // ── 4. Validate file type ──────────────────────────────────────────────
-  if (file.type !== "application/pdf") {
+  // -- 4. Validate file type (P3: 14 MIME types accepted) -------------------
+  if (!isAllowedMimeType(file.type)) {
     return NextResponse.json(
-      { error: "File must be a PDF", code: "INVALID_FILE_TYPE" },
+      {
+        error: `Unsupported file type: ${file.type}. Allowed types: text/plain, text/csv, text/html, text/markdown, text/xml, application/json, application/xml, application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, application/msword, application/rtf, application/vnd.oasis.opendocument.text`,
+        code: "INVALID_FILE_TYPE",
+      },
       { status: 415 },
     );
   }
 
-  // ── 5. Validate file size ──────────────────────────────────────────────
+  const mimeType = file.type;
+
+  // -- 5. Validate file size ------------------------------------------------
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
       { error: "File exceeds 20 MB limit", code: "FILE_TOO_LARGE" },
@@ -79,7 +94,7 @@ export async function POST(
     );
   }
 
-  // ── 6. Validate name ───────────────────────────────────────────────────
+  // -- 6. Validate name -----------------------------------------------------
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json(
       { error: "Document name is required", code: "MISSING_NAME" },
@@ -98,8 +113,12 @@ export async function POST(
     );
   }
 
-  // ── 7. Validate project_id (P2: required) ──────────────────────────────
-  if (!projectIdRaw || typeof projectIdRaw !== "string" || projectIdRaw.trim().length === 0) {
+  // -- 7. Validate project_id (P2: required) --------------------------------
+  if (
+    !projectIdRaw ||
+    typeof projectIdRaw !== "string" ||
+    projectIdRaw.trim().length === 0
+  ) {
     return NextResponse.json(
       { error: "project_id is required", code: "MISSING_PROJECT_ID" },
       { status: 400 },
@@ -109,20 +128,23 @@ export async function POST(
   const projectId = projectIdRaw.trim();
   if (!UUID_RE.test(projectId)) {
     return NextResponse.json(
-      { error: "project_id must be a valid UUID", code: "INVALID_PROJECT_ID" },
+      {
+        error: "project_id must be a valid UUID",
+        code: "INVALID_PROJECT_ID",
+      },
       { status: 400 },
     );
   }
 
-  // ── 8. Role check: user must be admin or editor ────────────────────────
+  // -- 8. Role check: user must be admin or editor --------------------------
   const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
     "admin",
     "editor",
   ]);
   if (!roleCheck.ok) return roleCheck.response;
 
-  // ── 9. Get user's tenant_id ────────────────────────────────────────────
-  const tenantId = await getUserTenantId(supabase);
+  // -- 9. Get user's tenant_id ----------------------------------------------
+  const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
       { error: "User profile not found", code: "NOT_FOUND" },
@@ -130,45 +152,38 @@ export async function POST(
     );
   }
 
-  // ── 10. Read file into buffer ──────────────────────────────────────────
-  // Make TWO independent copies — unpdf transfers the ArrayBuffer to a
-  // PDF.js worker, which detaches it. The second copy stays alive for Supabase.
+  // -- 10. Read file into buffer (two copies: one for extraction, one for upload) --
   const raw = await file.arrayBuffer();
   const fileCopy1 = raw.slice(0);
   const fileCopy2 = raw.slice(0);
   const buffer = Buffer.from(fileCopy1 as ArrayBuffer);
 
-  // ── 11. PDF magic-byte check ───────────────────────────────────────────
-  const PDF_MAGIC = Buffer.from([0x25, 0x50, 0x44, 0x46]);
-  if (buffer.length < 4 || !buffer.subarray(0, 4).equals(PDF_MAGIC)) {
-    return NextResponse.json(
-      { error: "File content is not a valid PDF", code: "INVALID_FILE_CONTENT" },
-      { status: 415 },
-    );
-  }
-
-  // ── 12–14. Compute hashes and extract text ─────────────────────────────
+  // -- 11. Compute hashes and extract text (P3: format-aware) ---------------
   const binaryHash = computeBinaryHash(buffer);
-  const extractedText = await extractPdfText(buffer);
+  const extractedText = await extractFileText(buffer, mimeType);
   const textHash = computeTextHash(extractedText);
 
-  // ── 15. Generate storage path (P2: includes project_id) ────────────────
+  // -- 12. Generate storage path (P3: correct extension for file type) ------
   const year = new Date().getUTCFullYear().toString();
   const fileUuid = randomUUID();
-  const storagePath = `uploads/${year}/${projectId}/${fileUuid}.pdf`;
+  const ext = getFileExtension(mimeType);
+  const storagePath = `uploads/${year}/${projectId}/${fileUuid}${ext}`;
 
-  // ── 16. Upload to Supabase Storage (user-scoped client) ────────────────
+  // -- 13. Upload to Supabase Storage (user-scoped client) ------------------
   const uploadData = fileCopy2 as ArrayBuffer;
   const { error: storageError } = await supabase.storage
     .from("pdf-uploads")
     .upload(storagePath, uploadData, {
-      contentType: "application/pdf",
+      contentType: mimeType,
       upsert: false,
     });
 
   if (storageError) {
     if (process.env.NODE_ENV === "development") {
-      console.error("[upload] Storage error:", JSON.stringify(storageError));
+      console.error(
+        "[upload] Storage error:",
+        JSON.stringify(storageError),
+      );
     }
     return NextResponse.json(
       { error: "Failed to store file", code: "STORAGE_ERROR" },
@@ -176,7 +191,7 @@ export async function POST(
     );
   }
 
-  // ── 17. Insert database row (P2: includes tenant_id, project_id, uploaded_by) ─
+  // -- 14. Insert database row (P3: now includes file_type) -----------------
   const { data: document, error: dbError } = await supabase
     .from("documents")
     .insert({
@@ -186,6 +201,7 @@ export async function POST(
       text_hash: textHash,
       extracted_text: extractedText,
       file_size_bytes: buffer.length,
+      file_type: mimeType,
       tenant_id: tenantId,
       project_id: projectId,
       uploaded_by: user.id,
@@ -195,7 +211,12 @@ export async function POST(
 
   if (dbError || !document) {
     if (process.env.NODE_ENV === "development") {
-      console.error("[upload] DB error:", JSON.stringify(dbError), "document:", document);
+      console.error(
+        "[upload] DB error:",
+        JSON.stringify(dbError),
+        "document:",
+        document,
+      );
     }
     return NextResponse.json(
       { error: "Failed to save document record", code: "DB_ERROR" },
@@ -210,54 +231,56 @@ export async function POST(
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/documents — List documents (P2: auth + required project_id filter)
+// GET /api/documents -- List documents (P2: auth + required project_id filter)
 // ---------------------------------------------------------------------------
 
 export async function GET(
   request: NextRequest,
 ): Promise<NextResponse<ListDocumentsResponse | ErrorResponse>> {
-  // ── 1. requireAuth ─────────────────────────────────────────────────────
+  // -- 1. requireAuth -------------------------------------------------------
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
   const { user, supabase } = auth;
 
   const searchParams = request.nextUrl.searchParams;
 
-  // ── 2. Validate project_id (P2: required) ──────────────────────────────
+  // -- 2. Parse optional project_id (P3: optional for cross-project vault) ----
   const projectIdRaw = searchParams.get("project_id");
-  if (!projectIdRaw || projectIdRaw.trim().length === 0) {
-    return NextResponse.json(
-      { error: "project_id query parameter is required", code: "MISSING_PROJECT_ID" },
-      { status: 400 },
-    );
-  }
-
-  const projectId = projectIdRaw.trim();
-  if (!UUID_RE.test(projectId)) {
+  const projectId = projectIdRaw?.trim();
+  if (projectId !== undefined && projectId.length > 0 && !UUID_RE.test(projectId)) {
     return NextResponse.json(
       { error: "project_id must be a valid UUID", code: "INVALID_PROJECT_ID" },
       { status: 400 },
     );
   }
 
-  // ── 3. Verify user is a member of the project (app-layer check) ────────
-  const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-    "admin",
-    "editor",
-    "viewer",
-  ]);
-  if (!roleCheck.ok) {
-    // requireProjectRole returns 404 if no membership — translate to 403 for clarity
-    // Actually, it already returns 404, which is correct per spec:
-    // "403 FORBIDDEN — User is not a member of this project"
-    // Let's override with 403 since the user IS authenticated but not a member.
-    return NextResponse.json(
-      { error: "Access denied — you are not a member of this project", code: "FORBIDDEN" },
-      { status: 403 },
-    );
+  // -- 3. Resolve which projects to query --------------------------------------
+  let queryProjectIds: string[];
+  if (projectId) {
+    // Scoped to a single project -- verify membership first
+    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
+      "admin", "editor", "viewer",
+    ]);
+    if (!roleCheck.ok) {
+      return NextResponse.json(
+        { error: "Access denied", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+    queryProjectIds = [projectId];
+  } else {
+    // No project_id — fetch all user's projects
+    const { data: memberships } = await supabase
+      .from("project_members")
+      .select("project_id")
+      .eq("user_id", user.id);
+    queryProjectIds = (memberships ?? []).map((m: { project_id: string }) => m.project_id);
+    if (queryProjectIds.length === 0) {
+      return NextResponse.json({ documents: [], total: 0 });
+    }
   }
 
-  // ── 4. Parse & validate query parameters ───────────────────────────────
+  // -- 4. Parse & validate query parameters ---------------------------------
   const search = searchParams.get("search")?.trim() || undefined;
 
   const limitRaw = searchParams.get("limit") ?? String(DEFAULT_LIMIT);
@@ -287,11 +310,11 @@ export async function GET(
     );
   }
 
-  // ── 5. Build query — filter by project_id ──────────────────────────────
+  // -- 5. Build query -- filter by resolved project IDs (P3: cross-project) ----
   let query = supabase
     .from("documents")
     .select("*", { count: "exact" })
-    .eq("project_id", projectId);
+    .in("project_id", queryProjectIds);
 
   if (search) {
     query = query.ilike("name", `%${search}%`);

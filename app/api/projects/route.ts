@@ -60,7 +60,7 @@ export async function POST(
   const description = (body.description ?? "").trim();
 
   // ── 4. Get user's tenant_id ────────────────────────────────────────────
-  const tenantId = await getUserTenantId(supabase);
+  const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
       { error: "User profile not found", code: "NOT_FOUND" },
