@@ -311,10 +311,17 @@ export async function GET(
   }
 
   // -- 5. Build query -- filter by resolved project IDs (P3: cross-project) ----
+  const includeDeleted = searchParams.get("include_deleted") === "true";
   let query = supabase
     .from("documents")
     .select("*", { count: "exact" })
     .in("project_id", queryProjectIds);
+
+  // Default: exclude soft-deleted documents unless explicitly requested
+  if (!includeDeleted) {
+    query = query.is("deleted_at", null);
+  }
+  // When includeDeleted=true, show all (both active and deleted)
 
   if (search) {
     query = query.ilike("name", `%${search}%`);

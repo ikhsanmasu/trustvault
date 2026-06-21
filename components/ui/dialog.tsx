@@ -8,9 +8,10 @@ interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
+  className?: string;
 }
 
-function Dialog({ open, onOpenChange, children }: DialogProps) {
+function Dialog({ open, onOpenChange, children, className }: DialogProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") onOpenChange(false);
@@ -40,7 +41,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
         aria-hidden="true"
       />
       {/* Content */}
-      <div className="relative z-50 w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border bg-background p-6 shadow-lg mx-4">
+      <div className={cn("relative z-50 w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border bg-background shadow-lg mx-4", className)}>
         {children}
       </div>
     </div>

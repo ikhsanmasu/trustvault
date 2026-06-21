@@ -1,4 +1,5 @@
 import { AuthProvider } from "@/components/auth-provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
 
 // NOTE: This layout wraps all protected pages with the AuthProvider context
@@ -10,9 +11,11 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   return (
-    <AuthProvider>
-      <Navbar />
-      {children}
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <Navbar />
+        {children}
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

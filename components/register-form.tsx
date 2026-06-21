@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -11,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuthContext } from "@/components/auth-provider";
@@ -143,14 +141,6 @@ export default function RegisterForm() {
           </Alert>
         )}
       </CardContent>
-      <CardFooter className="flex justify-center">
-        <p className="text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <Link href="/login" className={buttonVariants({ variant: "link" }) + " px-0"}>
-            Sign in
-          </Link>
-        </p>
-      </CardFooter>
     </Card>
   );
 }

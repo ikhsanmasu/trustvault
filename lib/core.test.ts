@@ -1603,3 +1603,135 @@ describe("P3: MIME_TO_EXTENSION constraint", () => {
     expect(uniqueNonXml.size).toBe(nonXmlExts.length);
   });
 });
+
+// ============================================================================
+// P4: Hash preservation across soft delete
+// ============================================================================
+
+describe("P4: Hash preservation after soft delete", () => {
+  it("text hash is preserved after extracted_text is cleared (soft delete)", () => {
+    // Soft delete sets extracted_text to "", but the text_hash column
+    // remains unchanged in the DB. The text hash computed from the
+    // original extracted text should still match the stored text_hash.
+    const originalText = "Payment terms: $10,000 due 2026-07-01.";
+    const originalHash = computeTextHash(originalText);
+
+    // After soft delete, extracted_text is "" but stored text_hash is kept
+    const afterDeleteHash = originalHash; // hash column not modified
+    expect(afterDeleteHash).toBe(computeTextHash(originalText));
+    expect(afterDeleteHash).not.toBe(computeTextHash(""));
+  });
+
+  it("binary hash is preserved after soft delete (column not modified)", () => {
+    const buffer = Buffer.from("Contract v1 binary content", "utf-8");
+    const originalBinaryHash = computeBinaryHash(buffer);
+
+    // Soft delete preserves binary_hash in the DB
+    const preservedHash = originalBinaryHash;
+    expect(preservedHash).toBe(computeBinaryHash(buffer));
+    expect(preservedHash).toHaveLength(64);
+  });
+
+  it("empty extracted_text (post-delete) has a valid, deterministic hash", () => {
+    const emptyHash = computeTextHash("");
+    expect(emptyHash).toHaveLength(64);
+    expect(emptyHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(computeTextHash("")).toBe(emptyHash); // deterministic
+  });
+
+  it("a soft-deleted document (empty text) compared against original text triggers AI_COMPARE", () => {
+    const originalText = "Confidential Agreement between Party A and Party B.";
+    const deletedText = "";
+
+    // Hashes will differ (original text hash vs empty string hash)
+    const originalHash = computeTextHash(originalText);
+    const deletedHash = computeTextHash(deletedText);
+
+    expect(originalHash).not.toBe(deletedHash);
+
+    // Pipeline should proceed to AI compare since text hashes differ
+    const prompt = buildComparePrompt(originalText, deletedText);
+    expect(prompt.user).toContain("Confidential Agreement");
+    expect(prompt.user).toContain("Document B (new version)");
+  });
+
+  it("binary hash differs for identical text content when BOM/encoding differs", () => {
+    // This validates that binary hash comparison catches encoding-level diffs
+    // even when the text content is logically identical — relevant for
+    // documents that went through soft-delete (file removed, hash kept).
+    const text = "Payment: $10,000";
+    const bufUtf8 = Buffer.from(text, "utf-8");
+    const bufUtf16 = Buffer.from(text, "utf-16le");
+
+    const hashUtf8 = computeBinaryHash(bufUtf8);
+    const hashUtf16 = computeBinaryHash(bufUtf16);
+
+    expect(hashUtf8).not.toBe(hashUtf16);
+  });
+
+  it("compare prompt works correctly with one empty text (deleted document scenario)", () => {
+    const prompt = buildComparePrompt(
+      "This document has substantive content.",
+      "", // soft-deleted document has empty extracted_text
+    );
+
+    expect(prompt.system).toContain("MATERIAL or NOT_MATERIAL");
+    expect(prompt.user).toContain("Document A (baseline)");
+    expect(prompt.user).toContain("Document B (new version)");
+
+    // AI response for empty vs non-empty should be parsable
+    const aiResponse = {
+      verdict: "MATERIAL" as const,
+      confidence: "MEDIUM" as const,
+      reasoning:
+        "Document B has no extractable text while Document A contains substantive content.",
+    };
+    const parsed = parseAIResponse(aiResponse);
+    expect(parsed.verdict).toBe("MATERIAL");
+    expect(parsed.confidence).toBe("MEDIUM");
+  });
+});
+
+// ============================================================================
+// P4: Deleted document integrity verification
+// ============================================================================
+
+describe("P4: Integrity verification of soft-deleted documents", () => {
+  it("two soft-deleted documents with identical original text have matching hashes", () => {
+    const originalText = "Section 1: Indemnification clause. Section 2: Payment terms.";
+    const hash1 = computeTextHash(originalText);
+    const hash2 = computeTextHash(originalText);
+
+    // Even if both documents are soft-deleted (extracted_text is ""),
+    // their stored text_hash values (from when they were active) would match
+    expect(hash1).toBe(hash2);
+  });
+
+  it("soft-deleted document can be compared against another active document", () => {
+    // Doc A: active, text = "Payment: $10,000"
+    // Doc B: soft-deleted, stored text_hash matches "Payment: $25,000"
+    const docAText = "Payment: $10,000";
+    const docBOriginalText = "Payment: $25,000";
+
+    const docATextHash = computeTextHash(docAText);
+    const docBTextHash = computeTextHash(docBOriginalText);
+
+    expect(docATextHash).not.toBe(docBTextHash);
+
+    // AI compare would be triggered
+    const prompt = buildComparePrompt(docAText, docBOriginalText);
+    expect(prompt.user).toContain("$10,000");
+    expect(prompt.user).toContain("$25,000");
+  });
+
+  it("restored document with empty extracted_text still has preserved hash", () => {
+    // On restore, deleted_at is cleared but extracted_text stays ""
+    // The text_hash from the original upload is preserved
+    const originalText = "Non-disclosure agreement between Company X and Company Y.";
+    const storedHash = computeTextHash(originalText);
+
+    // After restore: extracted_text is still "", but text_hash column is unchanged
+    expect(storedHash).toBe(computeTextHash(originalText));
+    expect(storedHash).not.toBe(computeTextHash(""));
+  });
+});

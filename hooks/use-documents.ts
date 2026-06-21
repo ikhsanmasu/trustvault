@@ -12,6 +12,7 @@ export interface UseDocumentsParams {
   projectId?: string;
   fileType?: string;
   limit?: number;
+  includeDeleted?: boolean;
 }
 
 interface UseDocumentsReturn {
@@ -30,6 +31,7 @@ export function useDocuments({
   projectId,
   fileType: initialFileType = "",
   limit = 50,
+  includeDeleted = true,
 }: UseDocumentsParams = {}): UseDocumentsReturn {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [total, setTotal] = useState(0);
@@ -60,6 +62,7 @@ export function useDocuments({
         file_type: fileType || undefined,
         search: debouncedSearch || undefined,
         limit,
+        include_deleted: includeDeleted,
       });
       setDocuments(result.documents);
       setTotal(result.total);
