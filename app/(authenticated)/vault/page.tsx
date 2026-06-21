@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CompareModal } from "@/components/compare-modal";
 import { DocumentPreviewModal } from "@/components/document-preview-modal";
+import { AnchorModal } from "@/components/anchor-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
@@ -27,6 +28,7 @@ import {
   IconRefresh,
   IconPlus,
   IconFolder,
+  IconShield,
 } from "@/components/icons";
 
 // ---- Type filter chips with counts -----------------------------------------
@@ -83,6 +85,7 @@ export default function VaultPage() {
 
   const [compareDoc, setCompareDoc] = useState<Document | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
+  const [anchorDoc, setAnchorDoc] = useState<Document | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -404,6 +407,7 @@ export default function VaultPage() {
               projectName={projectMap.get(doc.project_id)}
               onCompare={(d) => setCompareDoc(d)}
               onView={(d) => setViewDoc(d)}
+              onAnchor={(d) => setAnchorDoc(d)}
               onDelete={(d) => setConfirmDelete(d)}
             />
           ))}
@@ -475,6 +479,9 @@ export default function VaultPage() {
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-0.5">
+                          <button type="button" onClick={() => setAnchorDoc(doc)} className={cn("inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors", doc.fingerprint ? "text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950" : "text-muted-foreground hover:text-secondary hover:bg-secondary/10")} title={doc.fingerprint ? "View anchor details" : "Anchor on blockchain"} aria-label={doc.fingerprint ? `Anchor details for ${doc.name}` : `Anchor ${doc.name}`}>
+                            <IconShield className="h-[15px] w-[15px]" />
+                          </button>
                           <button type="button" onClick={() => setCompareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Compare" aria-label={`Compare ${doc.name}`}>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                           </button>
@@ -505,6 +512,14 @@ export default function VaultPage() {
       )}
       {viewDoc && (
         <DocumentPreviewModal document={viewDoc} open={viewDoc !== null} onOpenChange={(open) => { if (!open) setViewDoc(null); }} />
+      )}
+      {anchorDoc && (
+        <AnchorModal
+          document={anchorDoc}
+          open={anchorDoc !== null}
+          onOpenChange={(open) => { if (!open) setAnchorDoc(null); }}
+          onAnchored={() => { refresh(); }}
+        />
       )}
       {confirmDelete && (
         <ConfirmDialog

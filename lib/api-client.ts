@@ -52,6 +52,11 @@ export interface Document {
   created_at: string;
   deleted_at?: string | null;
   deleted_by?: string | null;
+  // P5: Blockchain anchoring fields
+  fingerprint?: string | null;
+  chain?: string | null;
+  tx_hash?: string | null;
+  anchored_at?: string | null;
 }
 
 export interface CompareResult {
@@ -575,4 +580,62 @@ export async function restoreDocument(id: string): Promise<{ document: Document 
     body: JSON.stringify({ action: "restore" }),
   });
   return handleResponse<{ document: Document }>(response);
+}
+
+// ===== P5: Blockchain Anchoring =====
+
+export interface AnchorRequest {
+  documentId: string;
+}
+
+export interface AnchorResponse {
+  documentId: string;
+  fingerprint: string;
+  chain: string;
+  txHash: string;
+  anchoredAt: number;
+  verified: boolean;
+}
+
+export interface VerifyRequest {
+  documentId: string;
+}
+
+export interface VerifyResponse {
+  documentId: string;
+  intact: boolean;
+  reason: "ok" | "not_anchored" | "hash_mismatch" | "not_on_chain";
+  storedFingerprint: string | null;
+  recomputedFingerprint: string;
+  anchoredAt: number | null;
+  txHash: string | null;
+  chain: string | null;
+}
+
+/**
+ * POST /api/anchor — anchor a document's fingerprint on-chain.
+ */
+export async function anchorDocument(
+  documentId: string,
+): Promise<AnchorResponse> {
+  const response = await fetch("/api/anchor", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId }),
+  });
+  return handleResponse<AnchorResponse>(response);
+}
+
+/**
+ * POST /api/verify — verify a document's on-chain anchoring status.
+ */
+export async function verifyDocument(
+  documentId: string,
+): Promise<VerifyResponse> {
+  const response = await fetch("/api/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId }),
+  });
+  return handleResponse<VerifyResponse>(response);
 }
