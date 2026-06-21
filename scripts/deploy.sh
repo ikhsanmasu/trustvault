@@ -58,11 +58,12 @@ set -e
 #    - Upload a document
 #    - Trigger a compare
 #
-# P4 migration files (applied in order):
+# P5 migration files (applied in order):
 #   supabase/migrations/20260621000000_init.sql           (P1: documents + storage)
 #   supabase/migrations/20260621000001_p2_auth_rbac.sql   (P2: tenants, profiles, projects, RLS, trigger)
 #   supabase/migrations/20260621000002_p3_multiformat.sql (P3: multi-format file_type, storage RLS)
 #   supabase/migrations/20260621000003_p4_soft_delete.sql (P4: soft delete, deleted_at/deleted_by columns)
+#   supabase/migrations/20260622000000_p5_blockchain_anchor.sql (P5: fingerprint, chain, tx_hash, anchored_at columns)
 # ---------------------------------------------------------------------------
 
 echo "==> Checking required env vars..."
@@ -71,6 +72,13 @@ REQUIRED_VARS=(
   NEXT_PUBLIC_SUPABASE_ANON_KEY
   SUPABASE_SERVICE_ROLE_KEY
   DEEPSEEK_API_KEY
+  ANCHOR_RPC_URL
+  ANCHOR_CHAIN_ID
+  ANCHOR_CONTRACT_ADDRESS
+)
+
+OPTIONAL_VARS=(
+  ANCHOR_PRIVATE_KEY
 )
 
 MISSING=0
@@ -83,9 +91,17 @@ for VAR in "${REQUIRED_VARS[@]}"; do
   fi
 done
 
+for VAR in "${OPTIONAL_VARS[@]}"; do
+  if [ -z "${!VAR}" ]; then
+    echo "    INFO: $VAR is not set. Anchoring will be unavailable (verify-only mode)."
+  else
+    echo "    OK: $VAR"
+  fi
+done
+
 if [ "$MISSING" -eq 1 ]; then
   echo ""
-  echo "    Some env vars are missing. Local dev requires .env.local with all four variables."
+  echo "    Some required env vars are missing. Local dev requires .env.local with all seven variables."
   echo "    Production requires these variables set in Vercel Settings > Environment Variables."
   echo "    For guidance, see .env.example in the project root."
   echo ""
@@ -105,8 +121,13 @@ echo "      npx supabase db push --db-url <prod-connection-string>"
 echo ""
 
 echo "==> WARNING: Ensure database migrations are applied before deploy."
-echo "    P4 migration adds soft delete columns (deleted_at, deleted_by) to the documents table."
-echo "    Without this migration, P4 delete/restore endpoints will fail."
+echo "    P5 migration adds anchoring columns (fingerprint, chain, tx_hash, anchored_at)"
+echo "    to the documents table. Without this migration, P5 anchor/verify endpoints will fail."
+echo ""
+
+echo "==> WARNING: Ensure TrustVaultAnchor contract is deployed before deploy."
+echo "    Run: npx tsx scripts/deploy-anchor.ts"
+echo "    Set ANCHOR_CONTRACT_ADDRESS in Vercel environment variables."
 echo ""
 
 echo "==> Running verify before deploy..."
@@ -127,4 +148,12 @@ echo "==> P4: verify soft delete columns exist on the documents table:"
 echo "    - deleted_at timestamptz NULL"
 echo "    - deleted_by uuid NULL"
 echo "    - documents_deleted_at_idx index"
+echo ""
+echo "==> P5: verify anchoring columns exist on the documents table:"
+echo "    - fingerprint text NULL"
+echo "    - chain text NULL"
+echo "    - tx_hash text NULL"
+echo "    - anchored_at timestamptz NULL"
+echo "    - documents_fingerprint_unique unique constraint"
+echo "    - documents_update_anchor RLS policy enabled"
 echo ""

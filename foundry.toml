@@ -1,0 +1,6 @@
+[profile.default]
+src = "contracts"
+out = "contracts/out"
+solc = "0.8.20"
+
+# No remappings needed — TrustVaultAnchor.sol has zero imports
