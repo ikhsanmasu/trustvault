@@ -191,7 +191,7 @@ export async function POST(
     );
   }
 
-  // -- 14. Insert database row (P3: now includes mime_type) -----------------
+  // -- 14. Insert database row (P3: now includes file_type) -----------------
   const { data: document, error: dbError } = await supabase
     .from("documents")
     .insert({
@@ -201,7 +201,7 @@ export async function POST(
       text_hash: textHash,
       extracted_text: extractedText,
       file_size_bytes: buffer.length,
-      mime_type: mimeType,
+      file_type: mimeType,
       tenant_id: tenantId,
       project_id: projectId,
       uploaded_by: user.id,

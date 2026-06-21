@@ -80,7 +80,7 @@ export interface ProjectMember {
 }
 
 // ---------------------------------------------------------------------------
-// Document (updated for P3 — mime_type added)
+// Document (updated for P3 — file_type added)
 // ---------------------------------------------------------------------------
 
 export interface Document {
@@ -91,7 +91,7 @@ export interface Document {
   text_hash: string;
   extracted_text: string;
   file_size_bytes: number;
-  mime_type: string; // P3: tracked so downstream code knows the file format
+  file_type: string; // P3: tracked so downstream code knows the file format
   tenant_id: string;
   project_id: string;
   uploaded_by: string;

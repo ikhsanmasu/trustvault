@@ -263,7 +263,7 @@ export async function POST(
           text_hash: textHash,
           extracted_text: extractedText,
           file_size_bytes: buffer.length,
-          mime_type: mimeType,
+          file_type: mimeType,
           tenant_id: tenantId,
           project_id: projectId,
           uploaded_by: user.id,
