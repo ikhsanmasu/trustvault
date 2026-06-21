@@ -164,7 +164,12 @@ services:
         echo 'Installing dependencies...' &&
         npm install --silent &&
         echo 'Applying DB migrations...' &&
-        npx supabase db push --db-url postgresql://postgres:postgres@supabase-db:5432/postgres 2>/dev/null || true &&
+        for f in /app/supabase/migrations/*.sql; do
+          echo "  Running: \$(basename \$f)" &&
+          PGPASSWORD=postgres psql -h supabase-db -U postgres -f "\$f" 2>/dev/null || true
+        done &&
+        echo 'Running seed...' &&
+        PGPASSWORD=postgres psql -h supabase-db -U postgres -f /app/supabase/seed.sql 2>/dev/null || true &&
         echo 'Starting Next.js...' &&
         npm run dev
       "
