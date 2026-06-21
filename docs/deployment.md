@@ -1,6 +1,6 @@
-# TrustVault -- Deployment & Operations (P2)
+# TrustVault -- Deployment & Operations (P4)
 
-This document is a **contract** for the `deployment` agent. It specifies the local dev setup, CI configuration, Supabase Auth configuration, and Vercel deployment process. P1 deployment sections that remain valid are noted as preserved.
+This document is a **contract** for the `deployment` agent. It specifies the local dev setup, CI configuration, Supabase Auth configuration, Supabase GitHub integration, and Vercel deployment process. P1-P3 deployment sections that remain valid are noted as preserved.
 
 ---
 
@@ -82,6 +82,8 @@ supabase db reset
 This applies all SQL files in `supabase/migrations/` in order:
 1. `20260621000000_init.sql` (P1: documents table + storage bucket)
 2. `20260621000001_p2_auth_rbac.sql` (P2: tenants, profiles, projects, project_members, RLS policies, trigger)
+3. `20260621000002_p3_multiformat.sql` (P3: multi-format file_type column, storage RLS)
+4. `20260621000003_p4_soft_delete.sql` (P4: soft delete, deleted_at/deleted_by columns)
 
 ### Step 4 -- Start the Next.js dev server
 
@@ -111,9 +113,9 @@ supabase db reset   # wipes and replays all migrations
 
 ---
 
-## 4. Database Migration Strategy (Updated for P2)
+## 4. Database Migration Strategy (Updated for P4)
 
-### P2 migration structure
+### P4 migration structure
 
 ```
 supabase/
@@ -121,27 +123,71 @@ supabase/
     20260621000000_init.sql            ← P1: create documents table + bucket (DO NOT EDIT)
     20260621000001_p2_auth_rbac.sql    ← P2: tenants, profiles, projects, project_members,
                                           update documents, RLS policies, auth trigger
+    20260621000002_p3_multiformat.sql  ← P3: multi-format support, file_type column,
+                                          storage RLS policy update
+    20260621000003_p4_soft_delete.sql  ← P4: soft delete, deleted_at/deleted_by columns,
+                                          documents_deleted_at_idx index
   seed.sql                              ← optional demo data
 ```
 
 ### Applying migrations
 
 - **Local dev:** `supabase db reset` (wipes and replays all) or `supabase db push` (applies pending only).
-- **Production:** `supabase db push --db-url <prod-connection-string>`.
+- **Production (primary):** Supabase GitHub auto-deploy. Once connected (Section 4a), new migration files pushed to the linked branch are automatically applied in timestamp order. No manual CLI command needed.
+- **Production (fallback):** `supabase db push --db-url <prod-connection-string>`.
 
-**Rule:** Run database migrations **before** deploying the new application version. The P2 migration adds NOT NULL constraints on `documents.tenant_id` and `documents.project_id`. If the new application version is deployed first, existing P1 route handlers that insert without those columns will fail.
+**Rule:** Run database migrations **before** deploying the new application version. The P4 migration adds `deleted_at` and `deleted_by` columns to the `documents` table. If the new application version is deployed first, P4 delete/restore endpoints will fail with missing column errors.
 
 ### Production migration checklist
 
-- [ ] Run `supabase db push` with the production connection string.
-- [ ] Verify new tables exist: `tenants`, `profiles`, `projects`, `project_members`.
+- [ ] Run `supabase db push` with the production connection string, or verify Supabase GitHub auto-deploy applied migrations (Settings → Integrations → GitHub → Run History).
+- [ ] Verify new P4 columns exist on `documents` table: `deleted_at timestamptz NULL`, `deleted_by uuid NULL`.
+- [ ] Verify the `documents_deleted_at_idx` index exists.
+- [ ] Verify existing tables still intact: `tenants`, `profiles`, `projects`, `project_members`.
 - [ ] Verify RLS is enabled on all tables (check Supabase Dashboard > Authentication > Policies).
 - [ ] Verify the `on_auth_user_created` trigger exists in the Database > Triggers section.
 - [ ] Verify existing `documents` rows (if any) were backfilled with NOT NULL tenant_id and project_id.
 
 ---
 
-## 5. Supabase Auth Configuration (NEW for P2)
+### 4a. Supabase GitHub Auto-Deploy (NEW for P4)
+
+Supabase can automatically apply migrations on every push to a linked GitHub branch. This eliminates the manual `supabase db push` step for production and ensures the database is always in sync with the code.
+
+#### Setup (one-time, in Supabase Dashboard)
+
+1. Open your Supabase project Dashboard at [supabase.com](https://supabase.com).
+2. Navigate to **Settings > Integrations > GitHub**.
+3. Click **Connect** and authorise Supabase to access your GitHub account.
+4. Select the repository (e.g. `ikhsanmasu/trustvault`).
+5. Select the branch to watch (e.g. `dev` for staging, `main` for production).
+6. Click **Save** or **Connect branch**.
+
+#### How it works
+
+- On every push to the linked branch, Supabase scans `supabase/migrations/` for new `.sql` files.
+- New migrations are applied in timestamp order (the `YYYYMMDDHHMMSS` prefix determines ordering).
+- Already-applied migrations are skipped (Supabase tracks which migrations have run).
+- Results are visible in **Settings > Integrations > GitHub > Run History**.
+- The CI workflow also validates migration file format (see Section 6).
+
+#### Verification
+
+After connecting and pushing the branch:
+
+- Go to **Settings > Integrations > GitHub > Run History** in the Supabase Dashboard.
+- Confirm each migration shows a green checkmark (applied successfully).
+- If a migration fails, the run history shows the error. Fix the migration SQL, push again, and Supabase retries only the failed migration.
+
+#### Fallback (if GitHub integration is not used)
+
+```bash
+npx supabase db push --db-url "postgresql://postgres:[password]@[host]:5432/postgres"
+```
+
+---
+
+## 5. Supabase Auth Configuration (P2)
 
 ### 5a. Production Supabase Project Settings
 
@@ -204,26 +250,34 @@ Vercel preview deployments use auto-generated URLs (e.g. `https://project-git-br
 
 ---
 
-## 6. GitHub Actions CI (Updated for P2)
+## 6. GitHub Actions CI (Updated for P4)
 
 ### Workflow File
 
 Path: `.github/workflows/ci.yml`
 
-### What the workflow must do (unchanged from P1)
+### What the workflow must do
 
 On every `push` and `pull_request` to `main` or `dev`:
 
 1. Checkout repository.
-2. Set up Node.js 20.
-3. `npm ci` (installs dependencies including `@supabase/ssr`).
+2. Set up Node.js 22.
+3. `npm ci` (installs dependencies).
 4. `npm run lint` -- must exit 0.
 5. `npx tsc --noEmit` -- must exit 0.
-6. `npm run test` -- must exit 0.
+6. `npm run test` -- must exit 0 (408 tests across 5 test files).
+7. Validate Supabase migration files exist and follow naming convention (`YYYYMMDDHHMMSS_descriptive_name.sql`).
 
-### P2 Note on Unit Tests
+### P4 Note on Unit Tests
 
-Unit tests in `lib/core.test.ts` test pure functions only and do not require auth. The `lib/core.ts` functions are unchanged. Integration tests for auth flows are NOT in CI scope for P2 (they require a running Supabase instance). The `qa` agent may add E2E/auth tests separately.
+P4 has 408 tests across 5 test files:
+- `lib/core.test.ts` (160 tests): Pure functions for hashing, text extraction, schema.
+- `tests/eval/eval.test.ts` (11 tests): AI materiality eval contracts.
+- `tests/eval/p2-eval.test.ts` (64 tests): P2 RBAC, auth, profiles, projects contracts.
+- `tests/eval/p3-eval.test.ts` (109 tests): P3 multi-format, dashboard, profile, tenant contracts.
+- `tests/eval/p4-eval.test.ts` (64 tests): P4 soft delete, restore, RLS, storage cleanup contracts.
+
+All tests are pure contract/eval tests that do not require a running Supabase instance.
 
 ### Required `package.json` scripts (unchanged)
 
@@ -242,15 +296,15 @@ Unit tests in `lib/core.test.ts` test pure functions only and do not require aut
 
 ### GitHub Actions Secrets
 
-No new secrets are required for CI in P2. The lint/typecheck/test steps do not connect to Supabase.
+No new secrets are required for CI in P4. The lint/typecheck/test steps do not connect to Supabase.
 
 ---
 
-## 7. Local Verify Script (Unchanged from P1)
+## 7. Local Verify Script (P4)
 
 Path: `scripts/verify.sh`
 
-The `deployment` agent must create/update this script to verify the P2 build locally:
+The `deployment` agent must create/update this script to verify the P4 build locally. The script is unchanged from P1-P2 in structure; it now validates 408 tests across 5 test files:
 
 ```bash
 #!/usr/bin/env bash
@@ -272,7 +326,7 @@ Make executable: `chmod +x scripts/verify.sh`
 
 ---
 
-## 8. Vercel Deployment (Updated for P2)
+## 8. Vercel Deployment (Updated for P4)
 
 ### Build Configuration (unchanged)
 
@@ -288,34 +342,35 @@ Make executable: `chmod +x scripts/verify.sh`
 
 Set these in the Vercel project dashboard under **Settings > Environment Variables**. Apply to all environments (Production, Preview, Development).
 
-| Variable | Environments | Sensitivity | P2 Change |
+| Variable | Environments | Sensitivity | P4 Status |
 |---|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | All | Plain | Must be the **production** Supabase URL for production deploys, localhost for local. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All | Plain | Must be the **production** Supabase anon key for production. |
-| `SUPABASE_SERVICE_ROLE_KEY` | All | **Sensitive (secret)** | Must be the **production** Supabase service-role key. |
+| `NEXT_PUBLIC_SUPABASE_URL` | All | Plain | Unchanged. Production Supabase URL for production, localhost for local. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All | Plain | Unchanged. Production Supabase anon key for production. |
+| `SUPABASE_SERVICE_ROLE_KEY` | All | **Sensitive (secret)** | Unchanged. Production Supabase service-role key. |
 | `DEEPSEEK_API_KEY` | All | **Sensitive (secret)** | Unchanged. |
 
-For Vercel preview deployments, use the same production Supabase credentials. In P2, this means preview deployments share the same database and users as production (not isolated). For stricter environments, create a separate Supabase project for staging.
+For Vercel preview deployments, use the same production Supabase credentials. Preview deployments share the same database and users as production (not isolated). For stricter environments, create a separate Supabase project for staging.
 
 ### Production Supabase Project
 
-Create a Supabase project at [supabase.com](https://supabase.com) and run migrations:
+Create a Supabase project at [supabase.com](https://supabase.com) and run migrations. The recommended approach is Supabase GitHub auto-deploy (Section 4a). Fallback:
 
 ```bash
 supabase db push --db-url "postgresql://postgres:[password]@[host]:5432/postgres"
 ```
 
-This applies both P1 and P2 migrations.
+This applies all P1-P4 migrations.
 
 ### Pre-Deploy Checklist (Ordered)
 
-1. **Migrate database first:** `supabase db push` to production.
-2. **Configure Supabase Auth** (Section 5): Set Site URL and Redirect URLs in the Supabase Dashboard.
-3. **Set Vercel environment variables** (Section 8).
-4. **Push to main** to trigger Vercel deploy.
-5. **Verify:** Sign up a test user, create a project, upload a document, trigger a compare.
+1. **Migrate database first:** Connect Supabase GitHub integration (Section 4a) or run `supabase db push` to production.
+2. **Verify migration applied:** Check Supabase Dashboard → Settings → Integrations → GitHub → Run History.
+3. **Configure Supabase Auth** (Section 5): Set Site URL and Redirect URLs in the Supabase Dashboard.
+4. **Set Vercel environment variables** (Section 8).
+5. **Push to main** to trigger Vercel deploy (CI validates migrations, then Vercel deploys).
+6. **Verify:** Sign up a test user, create a project, upload a document, trigger a compare, soft-delete and restore a document.
 
-**Never deploy the application before migrating the database** -- the new application expects `documents.tenant_id` and `documents.project_id` to be NOT NULL and the new tables to exist.
+**Never deploy the application before migrating the database** -- the P4 application expects `documents.deleted_at` and `documents.deleted_by` columns to exist, and the soft-delete/restore endpoints will fail without them.
 
 ### Deployment Flow
 
@@ -324,40 +379,45 @@ This applies both P1 and P2 migrations.
 
 ---
 
-## 9. Supabase Production Setup Checklist (Updated for P2)
+## 9. Supabase Production Setup Checklist (Updated for P4)
 
 Performed once when creating the production environment. Not repeated per deploy.
 
 - [ ] Create Supabase project at supabase.com.
-- [ ] Run `supabase db push` with the production connection string (applies both P1 and P2 migrations).
+- [ ] Set up Supabase GitHub auto-deploy (Section 4a) and verify migrations apply, or run `supabase db push` with the production connection string (applies all P1-P4 migrations).
 - [ ] **Verify RLS is enabled** on all tables: `tenants`, `profiles`, `projects`, `project_members`, `documents`. Check **Authentication > Policies** in the Supabase Dashboard.
 - [ ] **Verify the `on_auth_user_created` trigger** exists (Database > Triggers).
 - [ ] **Configure Auth settings:** Site URL and Redirect URLs (Section 5).
-- [ ] Verify the `documents` table has the new columns (`tenant_id` NOT NULL, `project_id` NOT NULL, `uploaded_by` NOT NULL) and FK constraints.
+- [ ] Verify the `documents` table has P2-P4 columns: `tenant_id` NOT NULL, `project_id` NOT NULL, `uploaded_by` NOT NULL, `file_type`, `deleted_at`, `deleted_by`.
+- [ ] Verify the `documents_deleted_at_idx` index exists.
 - [ ] Verify the `pdf-uploads` storage bucket is created with `public = false`.
 - [ ] Copy the production Supabase URL, anon key, and service-role key into Vercel environment variables.
 - [ ] Copy the DeepSeek API key into Vercel environment variables.
 
 ---
 
-## 10. No-Go List (Updated for P2)
+## 10. No-Go List (Updated for P4)
 
-All P1 "No-Go" items remain. P2 adds:
+All P1-P3 "No-Go" items remain. P4 adds:
 
-- Never deploy the application before running the P2 database migration.
-- Never edit the P1 migration file (`20260621000000_init.sql`) -- all P2 changes go in the P2 migration.
+- Never deploy the application before running the P4 database migration (soft delete columns).
+- Never edit prior migration files -- all P4 changes go in the P4 migration (`20260621000003_p4_soft_delete.sql`).
 - Never run `supabase db reset` on the production database.
 - Never use the production service-role key in local development.
 - Never set `NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` -- the service-role key must never be prefixed with `NEXT_PUBLIC_`.
 - Never configure Supabase Auth Site URL to `localhost` for the production project -- use the actual Vercel domain.
+- Never hard-delete a `documents` row from the database -- use the soft-delete flow (set `deleted_at`).
+- Never skip the migration validation step in CI -- broken migration files block deployment.
+- Never manually run `supabase db push` on production if Supabase GitHub auto-deploy is connected (double-application risk).
 
 ---
 
-## 11. P1 Baseline (Preserved)
+## 11. P1-P3 Baseline (Preserved)
 
-All P1 deployment steps remain valid and are incorporated above. The P1 deployment document Sections 2-8 are the foundation that P2 extends. Key preserved items:
+All P1-P3 deployment steps remain valid and are incorporated above. The P1 deployment document Sections 2-8 and P2-P3 extensions are the foundation that P4 extends. Key preserved items:
 - Local dev setup with Supabase CLI.
 - Migration naming convention and apply process.
 - GitHub Actions CI workflow.
 - Vercel build configuration.
 - Deploy script (`scripts/deploy.sh`).
+- Supabase GitHub auto-deploy integration.

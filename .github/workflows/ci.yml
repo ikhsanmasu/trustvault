@@ -24,3 +24,49 @@ jobs:
       - run: npx tsc --noEmit
 
       - run: npm run test
+
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Supabase migration files are present
+        run: |
+          MIGRATION_DIR="supabase/migrations"
+          if [ ! -d "$MIGRATION_DIR" ]; then
+            echo "ERROR: supabase/migrations directory not found"
+            exit 1
+          fi
+
+          MIGRATION_COUNT=$(find "$MIGRATION_DIR" -maxdepth 1 -name "*.sql" -type f | wc -l)
+          if [ "$MIGRATION_COUNT" -eq 0 ]; then
+            echo "ERROR: No migration files found in $MIGRATION_DIR"
+            exit 1
+          fi
+          echo "Found $MIGRATION_COUNT migration file(s)"
+
+      - name: Validate migration naming convention
+        run: |
+          MIGRATION_DIR="supabase/migrations"
+          INVALID=$(find "$MIGRATION_DIR" -maxdepth 1 -name "*.sql" -type f | while read f; do
+            basename=$(basename "$f")
+            # Must match: YYYYMMDDHHMMSS_descriptive_name.sql
+            if ! echo "$basename" | grep -qE '^[0-9]{14}_[a-z0-9_]+\.sql$'; then
+              echo "  INVALID: $basename"
+            fi
+          done)
+
+          if [ -n "$INVALID" ]; then
+            echo "ERROR: Migration files with invalid naming convention found:"
+            echo "$INVALID"
+            echo "Expected format: YYYYMMDDHHMMSS_descriptive_name.sql"
+            exit 1
+          fi
+          echo "All migration file names are valid"
+
+      - name: List migrations (informational)
+        run: |
+          echo "Migration files (applied in order):"
+          find supabase/migrations -maxdepth 1 -name "*.sql" -type f | sort | while read f; do
+            echo "  $f"
+          done
