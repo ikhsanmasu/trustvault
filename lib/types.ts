@@ -99,6 +99,11 @@ export interface Document {
   created_at: string;
   deleted_at?: string | null;
   deleted_by?: string | null;
+  // P5: blockchain anchoring (all nullable — only set after successful anchor)
+  fingerprint?: string | null;  // 0x-prefixed keccak256 hash (66 chars)
+  chain?: string | null;        // chain identifier (e.g. "anvil", "sepolia")
+  tx_hash?: string | null;      // 0x-prefixed transaction hash (66 chars)
+  anchored_at?: string | null;  // ISO 8601 timestamptz
 }
 
 // ---------------------------------------------------------------------------
@@ -236,4 +241,36 @@ export interface UpdateTenantResponse {
 
 export interface ChangePasswordResponse {
   success: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// P5: Blockchain Anchoring
+// ---------------------------------------------------------------------------
+
+export interface AnchorRequest {
+  documentId: string;
+}
+
+export interface AnchorResponse {
+  documentId: string;
+  fingerprint: string;   // 0x-prefixed keccak256 hash (66 chars)
+  chain: string;          // chain identifier (e.g. "anvil", "sepolia")
+  txHash: string;         // 0x-prefixed transaction hash (66 chars)
+  anchoredAt: number;     // unix timestamp (seconds) from the block
+  verified: boolean;      // always true on successful anchor
+}
+
+export interface VerifyRequest {
+  documentId: string;
+}
+
+export interface VerifyResponse {
+  documentId: string;
+  intact: boolean;
+  reason: "ok" | "not_anchored" | "hash_mismatch" | "not_on_chain";
+  storedFingerprint: string | null;
+  recomputedFingerprint: string;
+  anchoredAt: number | null;    // unix timestamp from chain
+  txHash: string | null;
+  chain: string | null;
 }

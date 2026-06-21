@@ -11,6 +11,7 @@ import {
   getFileExtension,
   ALLOWED_MIME_TYPES,
   MIME_TO_EXTENSION,
+  computeFingerprint,
 } from "./core";
 import type { AllowedMimeType } from "./core";
 
@@ -1733,5 +1734,101 @@ describe("P4: Integrity verification of soft-deleted documents", () => {
     // After restore: extracted_text is still "", but text_hash column is unchanged
     expect(storedHash).toBe(computeTextHash(originalText));
     expect(storedHash).not.toBe(computeTextHash(""));
+  });
+});
+
+// ============================================================================
+// P5: computeFingerprint — blockchain anchoring fingerprint
+// ============================================================================
+
+describe("P5: computeFingerprint", () => {
+  it("returns a 66-character 0x-prefixed hex string", () => {
+    const fp = computeFingerprint(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    );
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("is deterministic — same hashes always produce the same fingerprint", () => {
+    const bh = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const th = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp1 = computeFingerprint(bh, th);
+    const fp2 = computeFingerprint(bh, th);
+    expect(fp1).toBe(fp2);
+  });
+
+  it("produces different fingerprints for different binary hashes", () => {
+    const th = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp1 = computeFingerprint(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      th,
+    );
+    const fp2 = computeFingerprint(
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      th,
+    );
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it("produces different fingerprints for different text hashes", () => {
+    const bh = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const fp1 = computeFingerprint(
+      bh,
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    const fp2 = computeFingerprint(
+      bh,
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it("produces a fingerprint matching a known reference value", () => {
+    // SHA-256 of "abc" = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+    // SHA-256 of ""    = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    const bh = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const th = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp = computeFingerprint(bh, th);
+
+    // This is the reference value computed from the same inputs using
+    // viem keccak256(encodePacked(["bytes32","bytes32"], [0x+bh, 0x+th]))
+    // Verified against a Solidity implementation.
+    expect(fp).toBe(
+      "0x4372d3e7781250cbf01c9f3ea8571e3a0328ed051dc3028f832f56bc187cd8df",
+    );
+    expect(fp).toHaveLength(66);
+  });
+
+  it("handles all-zero hashes (both hashes are 64 zeros)", () => {
+    const zeroHash = "0000000000000000000000000000000000000000000000000000000000000000";
+    const fp = computeFingerprint(zeroHash, zeroHash);
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+    // Determinism check
+    expect(computeFingerprint(zeroHash, zeroHash)).toBe(fp);
+  });
+
+  it("handles legacy P1 document hashes (64-char lowercase hex)", () => {
+    // P1 documents have binary_hash and text_hash as 64 lower hex chars.
+    // This test verifies they work as-is without requiring prefix changes.
+    const realP1BinaryHash =
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const realP1TextHash =
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const fp = computeFingerprint(realP1BinaryHash, realP1TextHash);
+    expect(fp).toHaveLength(66);
+    expect(fp).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("produces same result as re-importing from lib/anchor directly", async () => {
+    // Validate the thin re-export in lib/core.ts delegates correctly
+    const { computeFingerprint: direct } = await import("./anchor");
+    const bh =
+      "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    const th =
+      "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321";
+    expect(computeFingerprint(bh, th)).toBe(direct(bh, th));
   });
 });
