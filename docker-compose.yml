@@ -6,7 +6,7 @@ services:
   anvil:
     build:
       context: .
-      dockerfile: docker/anvil.Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "8545:8545"
     volumes:
