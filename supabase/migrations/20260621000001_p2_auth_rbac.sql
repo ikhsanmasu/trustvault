@@ -66,6 +66,15 @@ CREATE TABLE IF NOT EXISTS public.project_members (
 CREATE INDEX IF NOT EXISTS project_members_user_id_idx ON public.project_members (user_id);
 
 -- --------------------------------------------------------------------------
+-- 4b. GRANT PRIVILEGES ON NEW TABLES
+-- --------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tenants TO service_role, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO service_role, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.projects TO service_role, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_members TO service_role, authenticated;
+
+-- --------------------------------------------------------------------------
 -- 5. BACKFILL EXISTING DOCUMENTS (if any P1 data exists in dev)
 -- --------------------------------------------------------------------------
 DO $$
@@ -125,9 +134,6 @@ ALTER TABLE public.documents
 
 ALTER TABLE public.documents
   ADD CONSTRAINT documents_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
-
-ALTER TABLE public.documents
-  ADD CONSTRAINT documents_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES auth.users(id);
 
 -- --------------------------------------------------------------------------
 -- 9. ADD project_id INDEX ON DOCUMENTS
