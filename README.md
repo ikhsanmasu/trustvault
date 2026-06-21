@@ -21,7 +21,7 @@ Anchor fingerprint on-chain → Verify integrity anytime
 
 ## Quick Start
 
-### Option A: Docker Compose (everything)
+### Option A: Local dev (recommended)
 
 ```bash
 git clone https://github.com/ikhsanmasu/trustvault.git
@@ -29,29 +29,26 @@ cd trustvault
 cp .env.example .env.local
 # Edit .env.local — add your DEEPSEEK_API_KEY
 
-docker compose up -d                    # Start everything
-docker compose exec app npx tsx scripts/seed-demo.ts   # Seed demo data + samples
+npx supabase start                # Start Supabase (DB + Auth + Storage)
+npm install
+npx supabase db reset             # Apply migrations + seed SQL
+npx tsx scripts/seed-demo.ts      # Create demo user + upload sample files
+npm run dev                       # Start Next.js
 
 open http://localhost:3000
 # Login: demo@trustvault.dev / demo123456
+# 16 documents ready across 7 file types
 ```
 
-This starts: Supabase (DB + Auth + Storage), Anvil blockchain, deploys anchor contract, and runs Next.js. Sample documents are auto-uploaded.
-
-### Option B: Local dev (Supabase CLI)
+### Option B: Docker (blockchain anchoring)
 
 ```bash
-npx supabase start                      # Start Supabase
-npm install
-npx supabase db reset                   # Apply migrations + seed SQL
-npx tsx scripts/seed-demo.ts            # Create demo user + upload samples
-npm run dev                             # Start Next.js
-
-# Optional: blockchain anchoring
-docker compose up anvil deploy-anchor -d
+# After Supabase is running (npx supabase start):
+docker compose up -d
+# Starts Anvil + deploys anchor contract + runs Next.js
 ```
 
-### Option C: Production
+### Option C: Production (Vercel + Supabase Cloud)
 
 1. Connect Vercel + Supabase Cloud
 2. Set env vars (see .env.example)
@@ -92,7 +89,7 @@ hooks/                   # React hooks
 supabase/migrations/     # SQL migrations (P1-P5)
 contracts/               # Solidity smart contracts
 scripts/                 # deploy-anchor.ts, seed-demo.ts, verify.sh
-docker/                  # Dockerfiles (Anvil, Kong)
+docker/                  # Dockerfiles (Anvil)
 docs/                    # Architecture, API spec, security, roadmap
 tests/eval/              # Eval suites (P1-P5)
 ```

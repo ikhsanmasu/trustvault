@@ -1,109 +1,12 @@
-# TrustVault — Complete local dev stack
-# Usage: docker compose up -d
-# Open http://localhost:3000
-#
-# Everything included: Supabase (DB + Auth + Storage), Anvil, Next.js
+# TrustVault — Local dev with Docker
+# Usage:
+#   1. npx supabase start                 # Start Supabase (DB + Auth + Storage)
+#   2. docker compose up -d               # Start Anvil + deploy contract + app
+#   3. npx tsx scripts/seed-demo.ts       # Seed demo user + sample documents
+#   4. Open http://localhost:3000
 
 services:
-  # ═══════════════════════════════════════════════════════════════════════
-  # Supabase — Postgres + Auth + Storage + REST API
-  # ═══════════════════════════════════════════════════════════════════════
-
-  supabase-db:
-    image: supabase/postgres:15.8.1.054
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
-    ports:
-      - "54322:5432"
-    volumes:
-      - supabase-db:/var/lib/postgresql/data
-      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
-      interval: 5s
-      retries: 10
-
-  supabase-auth:
-    image: supabase/gotrue:v2.162.3
-    environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres?sslmode=disable
-      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
-      GOTRUE_JWT_EXP: 3600
-      GOTRUE_SITE_URL: http://localhost:3000
-      GOTRUE_URI_ALLOW_LIST: http://localhost:3000,http://localhost:3001,http://localhost:3002
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-      GOTRUE_MAILER_AUTOCONFIRM: "true"
-      GOTRUE_SMS_AUTOCONFIRM: "true"
-    ports:
-      - "54321:9999"
-    depends_on:
-      supabase-db:
-        condition: service_healthy
-
-  supabase-rest:
-    image: postgrest/postgrest:v12.2.4
-    environment:
-      PGRST_DB_URI: postgresql://postgres:postgres@supabase-db:5432/postgres
-      PGRST_DB_SCHEMAS: public,storage,auth
-      PGRST_DB_ANON_ROLE: anon
-      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
-      PGRST_DB_USE_LEGACY_GUCS: "false"
-    ports:
-      - "54321:3000"
-    depends_on:
-      supabase-db:
-        condition: service_healthy
-
-  supabase-storage:
-    image: supabase/storage-api:v1.15.2
-    environment:
-      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
-      SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
-      DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
-      POSTGREST_URL: http://supabase-rest:3000
-      GLOBAL_S3_BUCKET: pdf-uploads
-      REGION: local
-      FILE_SIZE_LIMIT: "20971520"
-      STORAGE_BACKEND: file
-      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
-      TENANT_ID: stub
-    ports:
-      - "54321:5000"
-    volumes:
-      - supabase-storage:/var/lib/storage
-    depends_on:
-      - supabase-db
-      - supabase-rest
-
-  supabase-kong:
-    image: kong:2.8.1-alpine
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001
-      KONG_LOG_LEVEL: error
-    ports:
-      - "54321:8000"
-      - "54323:8001"  # Studio-like API
-    volumes:
-      - ./docker/kong.yml:/var/lib/kong/kong.yml:ro
-    depends_on:
-      - supabase-auth
-      - supabase-rest
-      - supabase-storage
-
-  # ═══════════════════════════════════════════════════════════════════════
-  # Blockchain — Anvil (local Ethereum node)
-  # ═══════════════════════════════════════════════════════════════════════
-
+  # ---- Anvil (local Ethereum node) ---------------------------------------
   anvil:
     build:
       context: .
@@ -117,10 +20,7 @@ services:
       interval: 3s
       retries: 15
 
-  # ═══════════════════════════════════════════════════════════════════════
-  # One-shot — Deploy smart contract
-  # ═══════════════════════════════════════════════════════════════════════
-
+  # ---- Contract deploy (runs once) ----------------------------------------
   deploy-anchor:
     image: node:22-alpine
     working_dir: /app
@@ -130,25 +30,21 @@ services:
       ANCHOR_PRIVATE_KEY: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
     volumes:
       - .:/app
-    command: >
-      sh -c "cd /app && npm install --silent && npx tsx scripts/deploy-anchor.ts"
+    command: sh -c "cd /app && npm install --silent && npx tsx scripts/deploy-anchor.ts"
     depends_on:
       anvil:
         condition: service_healthy
 
-  # ═══════════════════════════════════════════════════════════════════════
-  # App — Next.js dev server
-  # ═══════════════════════════════════════════════════════════════════════
-
+  # ---- Next.js dev server ------------------------------------------------
   app:
     image: node:22-alpine
     working_dir: /app
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_SUPABASE_URL: http://supabase-kong:8000
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
-      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://host.docker.internal:54321}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
       ANCHOR_RPC_URL: http://anvil:8545
       ANCHOR_CHAIN_ID: "31337"
@@ -158,13 +54,12 @@ services:
       - .:/app
       - /app/node_modules
       - /app/.next
-    command: ["/bin/sh", "/app/docker/app-entrypoint.sh"]
-      "
+    command: sh -c "cd /app && npm install --silent && npm run dev"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - supabase-kong
-      - deploy-anchor
+      deploy-anchor:
+        condition: service_completed_successfully
 
 volumes:
-  supabase-db:
-  supabase-storage:
   anvil-data:
