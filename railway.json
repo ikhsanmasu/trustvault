@@ -4,7 +4,7 @@
   },
   "deploy": {
     "port": 8545,
-    "healthcheckPath": "/",
+    "healthcheckPath": "",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
