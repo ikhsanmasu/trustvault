@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { computeBinaryHash, extractPdfText, computeTextHash } from "@/lib/core";
-import { requireAuth, requireProjectRole, getUserTenantId } from "@/lib/supabase/auth";
+import {
+  computeBinaryHash,
+  extractFileText,
+  computeTextHash,
+  isAllowedMimeType,
+  getFileExtension,
+} from "@/lib/core";
+import {
+  requireAuth,
+  requireProjectRole,
+  getUserTenantId,
+} from "@/lib/supabase/auth";
 import type {
   BulkUploadResponse,
   BulkUploadItem,
@@ -22,18 +32,18 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
-// POST /api/documents/bulk — Upload multiple PDFs (sequential processing)
+// POST /api/documents/bulk -- Upload multiple documents (P3: all 14 types)
 // ---------------------------------------------------------------------------
 
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<BulkUploadResponse | ErrorResponse>> {
-  // ── 1. requireAuth ─────────────────────────────────────────────────────
+  // -- 1. requireAuth -------------------------------------------------------
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
   const { user, supabase } = auth;
 
-  // ── 2. Parse multipart form data ───────────────────────────────────────
+  // -- 2. Parse multipart form data -----------------------------------------
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -44,9 +54,13 @@ export async function POST(
     );
   }
 
-  // ── 3. Validate project_id ─────────────────────────────────────────────
+  // -- 3. Validate project_id -----------------------------------------------
   const projectIdRaw = formData.get("project_id");
-  if (!projectIdRaw || typeof projectIdRaw !== "string" || projectIdRaw.trim().length === 0) {
+  if (
+    !projectIdRaw ||
+    typeof projectIdRaw !== "string" ||
+    projectIdRaw.trim().length === 0
+  ) {
     return NextResponse.json(
       { error: "project_id is required", code: "MISSING_PROJECT_ID" },
       { status: 400 },
@@ -56,19 +70,22 @@ export async function POST(
   const projectId = projectIdRaw.trim();
   if (!UUID_RE.test(projectId)) {
     return NextResponse.json(
-      { error: "project_id must be a valid UUID", code: "INVALID_PROJECT_ID" },
+      {
+        error: "project_id must be a valid UUID",
+        code: "INVALID_PROJECT_ID",
+      },
       { status: 400 },
     );
   }
 
-  // ── 4. Role check: user must be admin or editor ────────────────────────
+  // -- 4. Role check: user must be admin or editor --------------------------
   const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
     "admin",
     "editor",
   ]);
   if (!roleCheck.ok) return roleCheck.response;
 
-  // ── 5. Get user's tenant_id ────────────────────────────────────────────
+  // -- 5. Get user's tenant_id ----------------------------------------------
   const tenantId = await getUserTenantId(supabase);
   if (!tenantId) {
     return NextResponse.json(
@@ -77,7 +94,7 @@ export async function POST(
     );
   }
 
-  // ── 6. Collect files from form data ────────────────────────────────────
+  // -- 6. Collect files from form data --------------------------------------
   const files: File[] = [];
   for (const [, value] of formData.entries()) {
     if (value instanceof File && value !== null) {
@@ -85,7 +102,7 @@ export async function POST(
     }
   }
 
-  // ── 7. Validate file count ─────────────────────────────────────────────
+  // -- 7. Validate file count -----------------------------------------------
   if (files.length === 0) {
     return NextResponse.json(
       { error: "No files provided", code: "NO_FILES" },
@@ -94,12 +111,15 @@ export async function POST(
   }
   if (files.length > MAX_FILES) {
     return NextResponse.json(
-      { error: `Maximum ${MAX_FILES} files per bulk upload`, code: "TOO_MANY_FILES" },
+      {
+        error: `Maximum ${MAX_FILES} files per bulk upload`,
+        code: "TOO_MANY_FILES",
+      },
       { status: 400 },
     );
   }
 
-  // ── 8. Parse names (JSON array, optional) ──────────────────────────────
+  // -- 8. Parse names (JSON array, optional) --------------------------------
   let providedNames: string[] = [];
   const namesRaw = formData.get("names");
   if (namesRaw && typeof namesRaw === "string" && namesRaw.trim().length > 0) {
@@ -122,7 +142,7 @@ export async function POST(
     }
   }
 
-  // ── 9. Sequential processing of each file ──────────────────────────────
+  // -- 9. Sequential processing of each file --------------------------------
   const results: BulkUploadItem[] = [];
   let succeeded = 0;
   let failed = 0;
@@ -137,23 +157,25 @@ export async function POST(
     if (i < providedNames.length && providedNames[i].length > 0) {
       displayName = providedNames[i];
     } else {
-      // Use original filename, strip extension
       const dotIndex = file.name.lastIndexOf(".");
       displayName = dotIndex > 0 ? file.name.slice(0, dotIndex) : file.name;
     }
 
     try {
-      // ---- Validate file type ----
-      if (file.type !== "application/pdf") {
+      // ---- Validate file type (P3: 14 MIME types) ----
+      if (!isAllowedMimeType(file.type)) {
         results.push({
           status: "error",
-          error: "File is not a valid PDF",
+          error: `Unsupported file type: ${file.type}`,
           code: "INVALID_FILE_TYPE",
           name: file.name,
         });
         failed++;
         continue;
       }
+
+      const mimeType = file.type;
+      const ext = getFileExtension(mimeType);
 
       // ---- Validate file size ----
       if (file.size > MAX_FILE_SIZE) {
@@ -171,7 +193,7 @@ export async function POST(
         results.push({
           status: "error",
           error: "File is empty",
-          code: "INVALID_FILE_CONTENT",
+          code: "EMPTY_FILE",
           name: file.name,
         });
         failed++;
@@ -202,34 +224,21 @@ export async function POST(
       const fileCopy2 = raw.slice(0);
       const buffer = Buffer.from(fileCopy1 as ArrayBuffer);
 
-      // ---- Magic-byte check ----
-      const PDF_MAGIC = Buffer.from([0x25, 0x50, 0x44, 0x46]);
-      if (buffer.length < 4 || !buffer.subarray(0, 4).equals(PDF_MAGIC)) {
-        results.push({
-          status: "error",
-          error: "File content is not a valid PDF",
-          code: "INVALID_FILE_CONTENT",
-          name: file.name,
-        });
-        failed++;
-        continue;
-      }
-
-      // ---- Compute hashes and extract text ----
+      // ---- Compute hashes and extract text (P3: format-aware) ----
       const binaryHash = computeBinaryHash(buffer);
-      const extractedText = await extractPdfText(buffer);
+      const extractedText = await extractFileText(buffer, mimeType);
       const textHash = computeTextHash(extractedText);
 
-      // ---- Generate storage path ----
+      // ---- Generate storage path (P3: correct extension) ----
       const fileUuid = randomUUID();
-      const storagePath = `uploads/${year}/${projectId}/${fileUuid}.pdf`;
+      const storagePath = `uploads/${year}/${projectId}/${fileUuid}${ext}`;
 
       // ---- Upload to Storage ----
       const uploadData = fileCopy2 as ArrayBuffer;
       const { error: storageError } = await supabase.storage
         .from("pdf-uploads")
         .upload(storagePath, uploadData, {
-          contentType: "application/pdf",
+          contentType: mimeType,
           upsert: false,
         });
 
@@ -254,6 +263,7 @@ export async function POST(
           text_hash: textHash,
           extracted_text: extractedText,
           file_size_bytes: buffer.length,
+          mime_type: mimeType,
           tenant_id: tenantId,
           project_id: projectId,
           uploaded_by: user.id,
@@ -280,8 +290,8 @@ export async function POST(
       });
       succeeded++;
     } catch (err: unknown) {
-      // Catch-all for unexpected errors during per-file processing
-      const message = err instanceof Error ? err.message : "Unexpected error";
+      const message =
+        err instanceof Error ? err.message : "Unexpected error";
       results.push({
         status: "error",
         error: message,

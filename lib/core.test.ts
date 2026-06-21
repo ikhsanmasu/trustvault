@@ -4,9 +4,15 @@ import {
   computeBinaryHash,
   computeTextHash,
   extractPdfText,
+  extractFileText,
   buildComparePrompt,
   parseAIResponse,
+  isAllowedMimeType,
+  getFileExtension,
+  ALLOWED_MIME_TYPES,
+  MIME_TO_EXTENSION,
 } from "./core";
+import type { AllowedMimeType } from "./core";
 
 // ---------------------------------------------------------------------------
 // computeBinaryHash
@@ -1048,5 +1054,552 @@ describe("P2: AI prompt metadata isolation", () => {
     expect(prompt.user).toBeDefined();
     expect(prompt.system).toBeDefined();
     // The prompt text is the only thing the AI sees
+  });
+});
+
+// ============================================================================
+// P3: Multi-format MIME type validation
+// ============================================================================
+
+describe("P3: isAllowedMimeType", () => {
+  it("accepts all 14 allowed MIME types", () => {
+    for (const mime of ALLOWED_MIME_TYPES) {
+      expect(isAllowedMimeType(mime)).toBe(true);
+    }
+  });
+
+  it("rejects unknown MIME types", () => {
+    expect(isAllowedMimeType("image/png")).toBe(false);
+    expect(isAllowedMimeType("video/mp4")).toBe(false);
+    expect(isAllowedMimeType("application/zip")).toBe(false);
+    expect(isAllowedMimeType("")).toBe(false);
+    expect(isAllowedMimeType("application/octet-stream")).toBe(false);
+  });
+
+  it("rejects similar but different MIME types", () => {
+    expect(isAllowedMimeType("text/plain; charset=utf-8")).toBe(false);
+    expect(isAllowedMimeType("text/richtext")).toBe(false);
+    expect(isAllowedMimeType("application/pdf+xml")).toBe(false);
+  });
+
+  it("is case-sensitive (MIME types are lowercase)", () => {
+    expect(isAllowedMimeType("TEXT/PLAIN")).toBe(false);
+    expect(isAllowedMimeType("Application/PDF")).toBe(false);
+  });
+});
+
+// ============================================================================
+// P3: getFileExtension
+// ============================================================================
+
+describe("P3: getFileExtension", () => {
+  it("returns correct extensions for all 14 MIME types", () => {
+    const expected: Record<string, string> = {
+      "text/plain": ".txt",
+      "text/csv": ".csv",
+      "text/html": ".html",
+      "text/markdown": ".md",
+      "text/xml": ".xml",
+      "application/json": ".json",
+      "application/xml": ".xml",
+      "application/pdf": ".pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        ".docx",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        ".xlsx",
+      "application/vnd.ms-excel": ".xls",
+      "application/msword": ".doc",
+      "application/rtf": ".rtf",
+      "application/vnd.oasis.opendocument.text": ".odt",
+    };
+
+    for (const [mime, ext] of Object.entries(expected)) {
+      expect(getFileExtension(mime)).toBe(ext);
+    }
+  });
+
+  it("returns .bin for unknown MIME types", () => {
+    expect(getFileExtension("image/png")).toBe(".bin");
+    expect(getFileExtension("")).toBe(".bin");
+    expect(getFileExtension("unknown")).toBe(".bin");
+  });
+
+  it("all 14 MIME types are exactly defined", () => {
+    expect(ALLOWED_MIME_TYPES).toHaveLength(14);
+    const keys = Object.keys(MIME_TO_EXTENSION);
+    expect(keys).toHaveLength(14);
+    for (const mime of ALLOWED_MIME_TYPES) {
+      expect(MIME_TO_EXTENSION[mime]).toBeDefined();
+      expect(MIME_TO_EXTENSION[mime]).toMatch(/^\.[a-z0-9]+$/);
+    }
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — text-based formats (UTF-8 decode)
+// ============================================================================
+
+describe("P3: extractFileText — text formats", () => {
+  const textFormats: AllowedMimeType[] = [
+    "text/plain",
+    "text/csv",
+    "text/html",
+    "text/markdown",
+    "text/xml",
+    "application/json",
+    "application/xml",
+  ];
+
+  for (const mime of textFormats) {
+    it(`extracts text from ${mime} by decoding as UTF-8`, async () => {
+      const content = "Hello, TrustVault P3!  Testing multi-format support.";
+      const buffer = Buffer.from(content, "utf-8");
+      const result = await extractFileText(buffer, mime);
+      expect(result).toBe(content);
+    });
+  }
+
+  it("handles multiline text/plain", async () => {
+    const content = "Line 1\nLine 2\nLine 3";
+    const buffer = Buffer.from(content, "utf-8");
+    const result = await extractFileText(buffer, "text/plain");
+    expect(result).toBe(content);
+  });
+
+  it("handles CSV with commas and quotes", async () => {
+    const csv = 'Name,Amount,Date\n"Acme, Inc.",1000,2026-06-21';
+    const buffer = Buffer.from(csv, "utf-8");
+    const result = await extractFileText(buffer, "text/csv");
+    expect(result).toContain("Acme, Inc.");
+    expect(result).toContain("1000");
+  });
+
+  it("handles valid JSON text", async () => {
+    const json = JSON.stringify({ contract: "NDA", parties: ["A", "B"] });
+    const buffer = Buffer.from(json, "utf-8");
+    const result = await extractFileText(buffer, "application/json");
+    expect(result).toBe(json);
+    expect(() => JSON.parse(result)).not.toThrow();
+  });
+
+  it("handles XML text", async () => {
+    const xml = '<?xml version="1.0"?><root><item>Value</item></root>';
+    const buffer = Buffer.from(xml, "utf-8");
+    const result = await extractFileText(buffer, "text/xml");
+    expect(result).toContain("<root>");
+    expect(result).toContain("Value");
+  });
+
+  it("handles empty text file", async () => {
+    const buffer = Buffer.from("", "utf-8");
+    const result = await extractFileText(buffer, "text/plain");
+    expect(result).toBe("");
+  });
+
+  it("handles text with Unicode (non-ASCII)", async () => {
+    const content = "Documento en español: contraseña €50. 日本語のテキスト。";
+    const buffer = Buffer.from(content, "utf-8");
+    const result = await extractFileText(buffer, "text/plain");
+    expect(result).toBe(content);
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — PDF (delegates to extractPdfText)
+// ============================================================================
+
+describe("P3: extractFileText — PDF", () => {
+  it("delegates to extractPdfText for application/pdf", async () => {
+    const result = await extractFileText(
+      Buffer.from("not a pdf"),
+      "application/pdf",
+    );
+    expect(typeof result).toBe("string");
+  });
+
+  it("returns empty string for corrupt PDF", async () => {
+    const result = await extractFileText(
+      Buffer.from([0x00, 0xff, 0xfe]),
+      "application/pdf",
+    );
+    expect(result).toBe("");
+  });
+
+  it("never throws for any PDF input", async () => {
+    const inputs = [
+      Buffer.from(""),
+      Buffer.from("hello"),
+      Buffer.from([0xde, 0xad, 0xbe, 0xef]),
+      Buffer.alloc(1024, 0x41),
+    ];
+    for (const input of inputs) {
+      const result = await extractFileText(input, "application/pdf");
+      expect(typeof result).toBe("string");
+    }
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — DOCX via mammoth
+// ============================================================================
+
+describe("P3: extractFileText — DOCX", () => {
+  const DOCX_MIME =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+  it("returns a string (never throws) for non-DOCX data", async () => {
+    const result = await extractFileText(
+      Buffer.from("not a docx file"),
+      DOCX_MIME,
+    );
+    expect(typeof result).toBe("string");
+  });
+
+  it("returns empty string for corrupt/invalid DOCX data", async () => {
+    const result = await extractFileText(
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      DOCX_MIME,
+    );
+    expect(typeof result).toBe("string");
+  });
+
+  it("never throws", async () => {
+    const inputs = [
+      Buffer.from(""),
+      Buffer.from("garbage"),
+      Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]),
+    ];
+    for (const input of inputs) {
+      const result = await extractFileText(input, DOCX_MIME);
+      expect(typeof result).toBe("string");
+    }
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — XLSX / XLS
+// ============================================================================
+
+describe("P3: extractFileText — XLSX/XLS", () => {
+  const XLSX_MIME =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const XLS_MIME = "application/vnd.ms-excel";
+
+  it("returns a string (never throws) for non-Excel data (XLSX)", async () => {
+    const result = await extractFileText(
+      Buffer.from("not an excel file"),
+      XLSX_MIME,
+    );
+    expect(typeof result).toBe("string");
+  });
+
+  it("returns a string (never throws) for non-Excel data (XLS)", async () => {
+    const result = await extractFileText(
+      Buffer.from("not an excel file"),
+      XLS_MIME,
+    );
+    expect(typeof result).toBe("string");
+  });
+
+  it("never throws for XLSX", async () => {
+    const inputs = [
+      Buffer.from(""),
+      Buffer.from("garbage"),
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+    ];
+    for (const input of inputs) {
+      const result = await extractFileText(input, XLSX_MIME);
+      expect(typeof result).toBe("string");
+    }
+  });
+
+  it("never throws for XLS", async () => {
+    const inputs = [
+      Buffer.from(""),
+      Buffer.from("garbage"),
+      Buffer.from([0xd0, 0xcf, 0x11, 0xe0]),
+    ];
+    for (const input of inputs) {
+      const result = await extractFileText(input, XLS_MIME);
+      expect(typeof result).toBe("string");
+    }
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — RTF (best-effort control-word stripping)
+// ============================================================================
+
+describe("P3: extractFileText — RTF", () => {
+  it("extracts plain text from a simple RTF document", async () => {
+    const rtf = String.raw`{\rtf1\ansi\deff0
+{\fonttbl{\f0\fswiss Helvetica;}}
+\f0\pard Hello, this is plain text.\par
+More text here.\par
+}`;
+    const buffer = Buffer.from(rtf, "latin1");
+    const result = await extractFileText(buffer, "application/rtf");
+    expect(result).toContain("Hello, this is plain text.");
+    expect(result).toContain("More text here.");
+    expect(result).not.toContain("\\rtf1");
+    expect(result).not.toContain("\\fonttbl");
+    expect(result).not.toContain("\\pard");
+    expect(result).not.toContain("\\par");
+  });
+
+  it("returns empty string for empty RTF", async () => {
+    const result = await extractFileText(
+      Buffer.from("{\\rtf1\n}"),
+      "application/rtf",
+    );
+    expect(typeof result).toBe("string");
+  });
+
+  it("never throws", async () => {
+    const inputs = [
+      Buffer.from(""),
+      Buffer.from("not rtf at all"),
+      Buffer.from("{\\rtf1 garbage without closing brace"),
+    ];
+    for (const input of inputs) {
+      const result = await extractFileText(input, "application/rtf");
+      expect(typeof result).toBe("string");
+    }
+  });
+
+  it("strips font table and color table groups", async () => {
+    const rtf = String.raw`{\rtf1\ansi
+{\fonttbl{\f0\fswiss Arial;}{\f1\fmodern Courier;}}
+{\colortbl;\red0\green0\blue0;\red255\green0\blue0;}
+Actual document text here.\par
+}`;
+    const buffer = Buffer.from(rtf, "latin1");
+    const result = await extractFileText(buffer, "application/rtf");
+    expect(result).toContain("Actual document text here.");
+    expect(result).not.toContain("fonttbl");
+    expect(result).not.toContain("colortbl");
+    expect(result).not.toContain("Arial");
+    expect(result).not.toContain("Courier");
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — DOC (binary, best-effort)
+// ============================================================================
+
+describe("P3: extractFileText — DOC (binary)", () => {
+  it("extracts printable text runs from binary data", async () => {
+    const binary = Buffer.concat([
+      Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe]),
+      Buffer.from("CONTRACT AGREEMENT", "ascii"),
+      Buffer.from([0x00, 0x00, 0xff, 0x00]),
+      Buffer.from("Payment: $10,000", "ascii"),
+      Buffer.from([0x01, 0x02]),
+    ]);
+    const result = await extractFileText(binary, "application/msword");
+    expect(result).toContain("CONTRACT AGREEMENT");
+    expect(result).toContain("Payment: $10,000");
+  });
+
+  it("returns empty string when no printable runs found", async () => {
+    const binary = Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe, 0x00]);
+    const result = await extractFileText(binary, "application/msword");
+    expect(result).toBe("");
+  });
+
+  it("never throws", async () => {
+    const inputs = [
+      Buffer.from(""),
+      Buffer.alloc(100, 0x00),
+      Buffer.alloc(100, 0x41),
+    ];
+    for (const input of inputs) {
+      const result = await extractFileText(input, "application/msword");
+      expect(typeof result).toBe("string");
+    }
+  });
+
+  it("filters out runs shorter than minimum threshold", async () => {
+    const binary = Buffer.from("AB   XYZ", "ascii");
+    const result = await extractFileText(binary, "application/msword");
+    expect(result).not.toContain("AB");
+    expect(result).not.toContain("XYZ");
+  });
+
+  it("truncates output for very large binary files", async () => {
+    const chunk = Buffer.from("HELLO_WORLD_", "ascii");
+    const large = Buffer.concat(Array(10000).fill(chunk));
+    const result = await extractFileText(large, "application/msword");
+    expect(result.length).toBeLessThanOrEqual(200_000 + 100);
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — ODT (best-effort)
+// ============================================================================
+
+describe("P3: extractFileText — ODT", () => {
+  const ODT_MIME = "application/vnd.oasis.opendocument.text";
+
+  it("extracts text from text:p elements in ODT XML", async () => {
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<office:document-content xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">',
+      "<office:body>",
+      "<office:text>",
+      "<text:p>First paragraph of the ODT document.</text:p>",
+      "<text:p>Second paragraph with important content.</text:p>",
+      "<text:h>Heading Text</text:h>",
+      "</office:text>",
+      "</office:body>",
+      "</office:document-content>",
+    ].join("\n");
+    const buffer = Buffer.from(xml, "latin1");
+    const result = await extractFileText(buffer, ODT_MIME);
+    expect(result).toContain("First paragraph of the ODT document.");
+    expect(result).toContain("Second paragraph with important content.");
+    expect(result).toContain("Heading Text");
+  });
+
+  it("falls back to text:span extraction when no paragraphs found", async () => {
+    const xml = [
+      '<?xml version="1.0"?>',
+      '<office:document-content xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">',
+      "<office:body><office:text>",
+      '<text:span>Some inline text</text:span>',
+      '<text:span>More inline content</text:span>',
+      "</office:text></office:body>",
+      "</office:document-content>",
+    ].join("");
+    const buffer = Buffer.from(xml, "latin1");
+    const result = await extractFileText(buffer, ODT_MIME);
+    expect(result).toContain("Some inline text");
+    expect(result).toContain("More inline content");
+  });
+
+  it("returns empty string when no ODT text elements found", async () => {
+    const result = await extractFileText(
+      Buffer.from("not an odt file"),
+      ODT_MIME,
+    );
+    expect(result).toBe("");
+  });
+
+  it("never throws", async () => {
+    const inputs = [
+      Buffer.from(""),
+      Buffer.from("garbage data"),
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+    ];
+    for (const input of inputs) {
+      const result = await extractFileText(input, ODT_MIME);
+      expect(typeof result).toBe("string");
+    }
+  });
+
+  it("strips nested XML tags inside text:p", async () => {
+    const xml = [
+      '<?xml version="1.0"?>',
+      '<office:document-content xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">',
+      "<office:body><office:text>",
+      '<text:p>Plain <text:span>nested</text:span> content with <text:a xlink:href="http://example.com">a link</text:a> inside.</text:p>',
+      "</office:text></office:body>",
+      "</office:document-content>",
+    ].join("");
+    const buffer = Buffer.from(xml, "latin1");
+    const result = await extractFileText(buffer, ODT_MIME);
+    expect(result).toContain("Plain");
+    expect(result).toContain("nested");
+    expect(result).toContain("a link");
+    expect(result).not.toContain("text:span");
+    expect(result).not.toContain("text:a");
+    expect(result).not.toContain("xlink:href");
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — unknown MIME type
+// ============================================================================
+
+describe("P3: extractFileText — unknown MIME type", () => {
+  it("returns empty string for unsupported MIME types", async () => {
+    const result = await extractFileText(
+      Buffer.from("some content"),
+      "image/png",
+    );
+    expect(result).toBe("");
+  });
+
+  it("returns empty string for empty MIME type", async () => {
+    const result = await extractFileText(Buffer.from("content"), "");
+    expect(result).toBe("");
+  });
+
+  it("never throws for any MIME type", async () => {
+    const unknownTypes = [
+      "image/png",
+      "video/mp4",
+      "application/zip",
+      "application/octet-stream",
+      "",
+    ];
+    for (const mime of unknownTypes) {
+      const result = await extractFileText(Buffer.from("data"), mime);
+      expect(typeof result).toBe("string");
+      expect(result).toBe("");
+    }
+  });
+});
+
+// ============================================================================
+// P3: extractFileText — never throws contract
+// ============================================================================
+
+describe("P3: extractFileText — never throws contract", () => {
+  it("never throws for null/undefined-like buffers", async () => {
+    const result = await extractFileText(Buffer.alloc(0), "text/plain");
+    expect(typeof result).toBe("string");
+  });
+
+  it("never throws for extremely large inputs", async () => {
+    const large = Buffer.alloc(1_000_000, 0x41);
+    const result = await extractFileText(large, "text/plain");
+    expect(typeof result).toBe("string");
+    expect(result.length).toBe(1_000_000);
+  });
+
+  it("handles all 14 MIME types without throwing", async () => {
+    const testContent = Buffer.from("Test content for extraction");
+    for (const mime of ALLOWED_MIME_TYPES) {
+      const result = await extractFileText(testContent, mime);
+      expect(
+        typeof result,
+        `extractFileText should return a string for ${mime}`,
+      ).toBe("string");
+    }
+  });
+});
+
+// ============================================================================
+// P3: MIME_TO_EXTENSION consistency
+// ============================================================================
+
+describe("P3: MIME_TO_EXTENSION constraint", () => {
+  it("every extension starts with a dot", () => {
+    for (const [, ext] of Object.entries(MIME_TO_EXTENSION)) {
+      expect(ext.startsWith("."), `Extension ${ext} must start with dot`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("every extension is unique (except .xml which appears twice)", () => {
+    const exts = Object.values(MIME_TO_EXTENSION);
+    const xmlCount = exts.filter((e) => e === ".xml").length;
+    expect(xmlCount).toBe(2);
+
+    const nonXmlExts = exts.filter((e) => e !== ".xml");
+    const uniqueNonXml = new Set(nonXmlExts);
+    expect(uniqueNonXml.size).toBe(nonXmlExts.length);
   });
 });
