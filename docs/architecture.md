@@ -195,14 +195,25 @@ P2 will add tenant → project → document hierarchy, Supabase Auth, and RLS.
 
 ## 8. Handoff
 
-| Agent | Picks up |
-|---|---|
-| `database` | `docs/database.md` → create `supabase/migrations/` |
-| `backend` | `docs/api-spec.md` + `docs/database.md` → implement `lib/core.ts` + route handlers |
-| `frontend` | `docs/api-spec.md` + `docs/architecture.md` → build UI |
-| `deployment` | `docs/deployment.md` → wire CI + Vercel |
-| `security` | `docs/security.md` → audit after build |
+Build sequence — must run in this order:
 
-**`backend` and `frontend` may run in parallel once `api-spec.md` and `database.md` are locked. `database` may run in parallel with both once `database.md` is locked.**
+| Step | Agent | Picks up | Runs |
+|---|---|---|---|
+| 0 | `scaffold` | `docs/architecture.md` (Section 4 for module map) + `CLAUDE.md` (stack) | **Sequential, alone.** Creates the shared project skeleton before any build agent starts. |
+| 1 | `database` | `docs/database.md` → create `supabase/migrations/` | **Parallel** with backend + frontend (after scaffold done) |
+| 1 | `backend` | `docs/api-spec.md` + `docs/database.md` → implement `lib/core.ts` + route handlers | **Parallel** with database + frontend |
+| 1 | `frontend` | `docs/api-spec.md` + `docs/architecture.md` → build UI | **Parallel** with database + backend |
+| 2 | `qa` | `docs/roadmap.md` acceptance criteria → verify, write tests, build AI eval | **Sequential** after build (gate) |
+| 2 | `security` | `docs/security.md` → audit, report | **Sequential** after build (gate, read-only) |
+| 3 | `deployment` | `docs/deployment.md` → wire CI + Vercel | **Last**, after gates pass |
+
+**Critical: `scaffold` is a serial prerequisite.** No build agent (database, backend, frontend)
+may start before the project skeleton exists and compiles. This prevents conflicting
+`package.json` / config files from parallel worktree agents.
+
+**File ownership:** See `CLAUDE.md` for the full ownership matrix. Each agent owns a strict
+subset of paths. No agent may touch another agent's owned files. If a cross-owner change is
+needed (e.g., backend needs a new npm dependency), flag it to the conductor — do not edit
+another agent's files.
 
 Open questions for the human: none for P1 — all interfaces are fully specified.

@@ -36,18 +36,44 @@ This project is built by specialized agents (see `agents/`). The main session is
 **Pipeline & dependencies:**
 1. `architect` runs **FIRST** → produces the contracts in `docs/` (architecture, database,
    api-spec, security, deployment).
-2. `backend` & `frontend` build FROM `docs/api-spec.md` + `docs/database.md`. They may run in
-   parallel **only once those contracts are locked**.
-3. `qa` / `security` verify **AFTER** build — they are gates, not parallel peers.
+2. `scaffold` runs **SECOND** (sequential, alone) → creates the shared project skeleton:
+   `package.json`, tsconfig, next/tailwind/eslint/vitest configs, `app/layout.tsx`,
+   `app/globals.css`. This MUST complete before any build agent is spawned.
+3. `database`, `backend`, `frontend` run in **PARALLEL** → only after scaffold is committed.
+   They ADD their own files on top of the skeleton — they NEVER re-scaffold.
+4. `qa` / `security` verify **AFTER** build — they are gates, not parallel peers.
+5. `deployment` runs **LAST** — CI config + scripts once everything is verified.
 
 **Orchestration rules:**
 - Always run `architect` first; downstream agents must read the relevant `docs/` before implementing.
-- Do NOT parallelize dependent work. Parallelize only genuinely independent tasks (e.g., backend
-  vs frontend once the API contract is fixed).
+- Scaffold is a serial gate: no build agent starts before the skeleton exists and compiles.
+- Parallelize only genuinely independent tasks (backend vs frontend vs database — once the API
+  contract and project skeleton are fixed).
 - Treat `docs/api-spec.md` and `docs/database.md` as CONTRACTS: build agents must not silently
   change them — flag any needed change back to the architect.
 - Deterministic guardrails wrap probabilistic agent work: `scripts/verify.sh` runs
   `eslint` + `tsc --noEmit` + `vitest run`. Deployment is via Vercel/GitHub Actions, not an LLM agent.
+
+## File ownership matrix
+
+Each agent OWNS a set of paths it may create/edit. **No agent may touch another agent's
+owned paths.** This prevents parallel worktree conflicts.
+
+| Agent | Creates / edits | Never touches |
+|---|---|---|
+| `architect` | `docs/*.md` | All code, config, supabase/ |
+| `scaffold` | `package.json`, `tsconfig.json`, `next.config.ts`, `tailwind.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`, `vitest.config.ts`, `components.json`, `app/layout.tsx`, `app/globals.css`, `app/page.tsx` | `lib/`, `app/api/`, `supabase/`, `components/`, `.github/`, `scripts/` |
+| `database` | `supabase/migrations/`, `supabase/seed.sql` | `app/`, `lib/`, `components/`, config files |
+| `backend` | `lib/core.ts`, `lib/core.test.ts`, `lib/supabase/`, `app/api/**/route.ts`, `lib/types.ts` | `supabase/`, `app/**/page.tsx`, `app/layout.tsx`, `components/`, config files |
+| `frontend` | `app/**/page.tsx`, `components/**`, `hooks/`, `lib/api-client.ts` | `lib/core.ts`, `app/api/`, `supabase/`, config files |
+| `deployment` | `.github/workflows/ci.yml`, `scripts/verify.sh`, `scripts/deploy.sh` | All application code |
+| `qa` | `*.test.ts` (additions/edits only — never deletes existing tests), `tests/eval/` | All non-test code |
+| `security` | Nothing (read-only audit) | All files (read-only) |
+| `monitoring` | `lib/monitoring/`, instrumentation in `app/layout.tsx` (append only) | All business logic |
+
+**Critical rule:** If an agent discovers it needs a file owned by another agent (e.g., backend
+needs a new dependency in `package.json`), it flags the need to the conductor — it does NOT
+edit that file directly.
 
 ## Forward-compatible (so P2 is not a rewrite)
 P2 adds multi-tenancy and **projects** (documents grouped by use case). The hierarchy will be

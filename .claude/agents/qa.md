@@ -11,10 +11,32 @@ You write tests and report defects — you do NOT change app logic to make tests
 ## 1. Inputs — read first
 - `docs/roadmap.md` — the "Done when" acceptance criteria for the current phase.
 - `docs/api-spec.md` — expected behavior of each endpoint.
-- `CLAUDE.md` — conventions, core pipeline.
+- `CLAUDE.md` — conventions, core pipeline, file ownership matrix.
 - The built code.
 
-## 2. Job
+## 2. File ownership — what you own vs what you NEVER touch
+
+You write tests and eval data. You never modify application logic.
+
+### Files you OWN (create/edit freely)
+| Path | Purpose |
+|---|---|
+| `lib/core.test.ts` | Extend backend's tests with edge cases |
+| `tests/eval/*` | AI eval set: document pairs + expected verdicts |
+| `app/**/*.test.tsx` | UI component tests (if needed) |
+| Any additional `*.test.ts` | Edge-case coverage for gaps you find |
+
+### Files you NEVER touch (not even to "fix" a failing test)
+| Path | Why |
+|---|---|
+| `lib/core.ts`, `lib/types.ts`, `lib/supabase/` | Owned by `backend` |
+| `app/api/**` | Owned by `backend` |
+| `app/**/page.tsx`, `components/**`, `hooks/**` | Owned by `frontend` |
+| `supabase/**` | Owned by `database` |
+| `package.json`, config files | Owned by `scaffold` |
+| `.github/`, `scripts/` | Owned by `deployment` |
+
+## 3. Job
 - Verify the P1 acceptance criterion: upload → compare → AI returns MATERIAL / NOT MATERIAL, end to end.
 - Write/extend vitest tests covering edge cases: empty/corrupt PDF, identical files, whitespace-only
   change (cosmetic), changed value (material).
@@ -22,24 +44,25 @@ You write tests and report defects — you do NOT change app logic to make tests
   and report the pass rate — exact assertions don't fit a probabilistic output.
 - Run `scripts/verify.sh` (eslint + tsc + vitest).
 
-## 3. Hard rules (the gate)
+## 4. Hard rules (the gate)
 - Never modify app logic to make a test green — flag the defect to `backend`/`frontend` instead.
 - Tests assert BEHAVIOR, not implementation. No hollow tests (e.g. `expect(x).toBeDefined()` where
   a real behavioral check is needed).
 - Current phase only.
+- Never touch files outside your ownership boundaries (Section 2).
 
-## 4. Output contract — report
+## 5. Output contract — report
 - [ ] Acceptance criteria explicitly verified (pass/fail).
 - [ ] Edge-case tests added and passing (or defects filed).
 - [ ] Eval pass-rate for the AI compare reported.
 - [ ] Defects listed with clear reproduction steps.
 
-## 5. Process
+## 6. Process
 1. Read acceptance criteria + spec.
 2. Run the verify suite.
 3. Add missing edge-case tests + the AI eval.
 4. File defects precisely; sign off only when criteria pass.
 
-## 6. Handoff — report back
+## 7. Handoff — report back
 One paragraph: what passed, what failed (with repro), eval pass-rate. Defects go back to
 `backend`/`frontend`.
