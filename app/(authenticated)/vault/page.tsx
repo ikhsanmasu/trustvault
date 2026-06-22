@@ -536,7 +536,7 @@ export default function VaultPage() {
           document={anchorDoc}
           open={anchorDoc !== null}
           onOpenChange={(open) => { if (!open) setAnchorDoc(null); }}
-          onAnchored={async () => { await refresh(); setAnchorDoc(null); }}
+          onAnchored={() => { refresh(); }}
         />
       )}
       {confirmDelete && (
