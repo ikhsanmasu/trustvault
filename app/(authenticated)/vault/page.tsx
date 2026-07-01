@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSort } from "@/hooks/use-sort";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -20,7 +20,7 @@ import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/compon
 import { useDocuments } from "@/hooks/use-documents";
 import { useProjects } from "@/hooks/use-projects";
 import type { Document } from "@/lib/api-client";
-import { deleteDocument, restoreDocument, anchorAllDocuments, createProject } from "@/lib/api-client";
+import { deleteDocument, restoreDocument, createProject } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -31,6 +31,7 @@ import {
   IconPlus,
   IconFolder,
   IconShield,
+  IconShare,
 } from "@/components/icons";
 
 // ---- Type filter chips with counts -----------------------------------------
@@ -96,6 +97,18 @@ export default function VaultPage() {
   const [newProjectName, setNewProjectName] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkToast, setBulkToast] = useState<string | null>(null);
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    if (!typeDropdownOpen && !projectDropdownOpen) return;
+    function handleClick() { setTypeDropdownOpen(false); setProjectDropdownOpen(false); }
+    document.addEventListener("click", handleClick, { once: true });
+    return () => document.removeEventListener("click", handleClick);
+  }, [typeDropdownOpen, projectDropdownOpen]);
 
   // ---- Per-type counts (from currently loaded documents) --------------------
   const typeCounts = useMemo(() => {
@@ -231,24 +244,6 @@ export default function VaultPage() {
                 <IconRefresh className="h-4 w-4 mr-1.5" />
                 Refresh
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    const r = await anchorAllDocuments();
-                    setToast(`Anchored ${r.anchored} document${r.anchored !== 1 ? "s" : ""}${r.failed > 0 ? `, ${r.failed} failed` : ""}`);
-                    setTimeout(() => setToast(null), 4000);
-                    refresh();
-                  } catch { setToast("Anchor failed"); setTimeout(() => setToast(null), 4000); }
-                }}
-                className="transition-all duration-200 rounded-xl"
-                title="Anchor all un-anchored documents"
-                aria-label="Anchor all documents"
-              >
-                <IconShield className="h-4 w-4 mr-1.5" />
-                Anchor All
-              </Button>
             </div>
           </div>
         </div>
@@ -275,76 +270,103 @@ export default function VaultPage() {
         </div>
       </div>
 
-      {/* ---- Filter: File types ---------------------------------------------- */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-muted-foreground mr-1 shrink-0 uppercase tracking-wider">
-          Type
-        </span>
-        {TYPE_FILTERS.map((chip) => {
-          const count = typeCounts.get(chip.value);
-          const isActive = fileType === chip.value;
-          return (
-            <button
-              key={chip.value}
-              type="button"
-              onClick={() => setFileType(chip.value)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
-                isActive
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                  : "bg-card text-muted-foreground border-border hover:border-primary/30 hover:text-foreground hover:shadow-sm",
-              )}
-              aria-pressed={isActive}
-            >
-              {chip.label}
-              {count !== undefined && (
-                <span
+      {/* ---- Filter: Type + Project (dropdown) -------------------------------- */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Type dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => { setTypeDropdownOpen(!typeDropdownOpen); setProjectDropdownOpen(false); }}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors"
+          >
+            {fileType ? TYPE_FILTERS.find(f => f.value === fileType)?.label ?? "Type" : "All Types"}
+            <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {typeDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1">
+              {TYPE_FILTERS.map((chip) => (
+                <button
+                  key={chip.value}
+                  type="button"
+                  onClick={() => { setFileType(chip.value); setTypeDropdownOpen(false); }}
                   className={cn(
-                    "inline-flex items-center justify-center rounded-full px-1.5 py-0 text-[10px] font-semibold tabular-nums",
-                    isActive
-                      ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-muted text-muted-foreground",
+                    "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
+                    fileType === chip.value && "bg-primary/10 text-primary font-medium",
                   )}
                 >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+                  <span className={cn("h-3 w-3 rounded border border-border flex items-center justify-center shrink-0",
+                    fileType === chip.value && "bg-primary border-primary",
+                  )}>
+                    {fileType === chip.value && (
+                      <svg className="h-2.5 w-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+                    )}
+                  </span>
+                  {chip.label}
+                  {typeCounts.get(chip.value) !== undefined && (
+                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">{typeCounts.get(chip.value)}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
-      {/* ---- Filter: Projects ------------------------------------------------ */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-muted-foreground mr-1 shrink-0 uppercase tracking-wider">
-          Project
-        </span>
-        {isLoadingProjects ? (
-          <>
-            <Skeleton className="h-7 w-24 rounded-full" />
-            <Skeleton className="h-7 w-20 rounded-full" />
-          </>
-        ) : (
-          projectChips.map((chip) => {
-            const isActive = selectedProjectId === chip.value;
-            return (
+        {/* Project dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => { setProjectDropdownOpen(!projectDropdownOpen); setTypeDropdownOpen(false); }}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors"
+          >
+            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Project" : "All Projects"}
+            <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {projectDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 z-30 w-56 rounded-xl border border-border bg-card shadow-lg py-1 max-h-64 overflow-y-auto">
               <button
-                key={chip.value}
                 type="button"
-                onClick={() => setSelectedProjectId(chip.value)}
+                onClick={() => { setSelectedProjectId(""); setProjectDropdownOpen(false); }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
-                  isActive
-                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                    : "bg-card text-muted-foreground border-border hover:border-primary/30 hover:text-foreground hover:shadow-sm",
+                  "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
+                  !selectedProjectId && "bg-primary/10 text-primary font-medium",
                 )}
-                aria-pressed={isActive}
               >
-                {chip.label}
+                <span className={cn("h-3 w-3 rounded border border-border flex items-center justify-center shrink-0",
+                  !selectedProjectId && "bg-primary border-primary",
+                )}>
+                  {!selectedProjectId && (
+                    <svg className="h-2.5 w-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+                  )}
+                </span>
+                All Projects
               </button>
-            );
-          })
-        )}
+              {isLoadingProjects ? (
+                <div className="px-3 py-2"><Skeleton className="h-5 w-full" /></div>
+              ) : (
+                projectChips.map((chip) => (
+                  <button
+                    key={chip.value}
+                    type="button"
+                    onClick={() => { setSelectedProjectId(chip.value); setProjectDropdownOpen(false); }}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
+                      selectedProjectId === chip.value && "bg-primary/10 text-primary font-medium",
+                    )}
+                  >
+                    <span className={cn("h-3 w-3 rounded border border-border flex items-center justify-center shrink-0",
+                      selectedProjectId === chip.value && "bg-primary border-primary",
+                    )}>
+                      {selectedProjectId === chip.value && (
+                        <svg className="h-2.5 w-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
+                      )}
+                    </span>
+                    {chip.label}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ---- Filter: Deleted ------------------------------------------------- */}
@@ -377,6 +399,9 @@ export default function VaultPage() {
       )}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-5 py-3 text-sm font-medium shadow-lg animate-fade-in">{toast}</div>
+      )}
+      {bulkToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-primary text-primary-foreground px-5 py-3 text-sm font-medium shadow-lg animate-fade-in">{bulkToast}</div>
       )}
 
       {/* ---- Action bar: Create Project + Upload ---------------------------- */}
@@ -532,12 +557,92 @@ export default function VaultPage() {
           ))}
         </div>
       ) : (
-        /* ---- Table view ----------------------------------------------------- */
+        <>
+        {/* ---- Bulk action bar ------------------------------------------------ */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 mb-4 px-4 py-3 rounded-xl bg-primary/5 border border-primary/20">
+            <span className="text-sm font-medium text-primary mr-2">
+              {selectedIds.size} selected
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                setBulkToast("Anchoring…");
+                for (const id of selectedIds) {
+                  try { await fetch("/api/anchor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ documentId: id }) }); } catch {}
+                }
+                setBulkToast(`Anchored ${selectedIds.size} document(s)`);
+                setTimeout(() => setBulkToast(null), 3000);
+                setSelectedIds(new Set());
+                refresh();
+              }}
+            >
+              <IconShield className="h-4 w-4 mr-1.5" /> Anchor
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const firstId = Array.from(selectedIds)[0];
+                const doc = visibleDocs.find(d => d.id === firstId);
+                if (doc) setShareDoc(doc);
+              }}
+            >
+              <IconShare className="h-4 w-4 mr-1.5" /> Share
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => router.push("/assistant")}>
+              <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              Ask AI
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10"
+              onClick={async () => {
+                setBulkToast(`Deleting ${selectedIds.size} document(s)…`);
+                for (const id of selectedIds) {
+                  try { await deleteDocument(id); } catch {}
+                }
+                setBulkToast(`Deleted ${selectedIds.size} document(s)`);
+                setTimeout(() => setBulkToast(null), 3000);
+                setSelectedIds(new Set());
+                refresh();
+              }}
+            >
+              Delete
+            </Button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="ml-auto text-sm text-muted-foreground hover:text-foreground"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
+
+        {/* ---- Table view ----------------------------------------------------- */}
         <div className="overflow-hidden rounded-2xl border bg-card shadow-elevation-1">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
+                  <th className="w-10 px-3 py-3.5">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                      checked={visibleDocs.length > 0 && selectedIds.size === visibleDocs.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(new Set(visibleDocs.map(d => d.id)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                      aria-label="Select all"
+                    />
+                  </th>
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("name")}>
                     Name <span className="ml-0.5">{sortIndicator("name")}</span>
                   </th>
@@ -569,6 +674,20 @@ export default function VaultPage() {
                         doc.deleted_at && "bg-muted/20 opacity-60 dark:bg-neutral-900/30 dark:opacity-50",
                       )}
                     >
+                      <td className="w-10 px-3 py-3.5">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                          checked={selectedIds.has(doc.id)}
+                          onChange={() => {
+                            const next = new Set(selectedIds);
+                            if (next.has(doc.id)) next.delete(doc.id);
+                            else next.add(doc.id);
+                            setSelectedIds(next);
+                          }}
+                          aria-label={`Select ${doc.name}`}
+                        />
+                      </td>
                       <td className="px-4 py-3.5">
                         <span className={cn("text-sm font-medium truncate block max-w-[220px]", doc.deleted_at && "line-through text-muted-foreground/60")}>
                           {doc.name}
@@ -623,6 +742,7 @@ export default function VaultPage() {
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* ---- Compare Modal --------------------------------------------------- */}

@@ -97,6 +97,8 @@ interface VaultDocumentRowProps {
   onShare?: (doc: Document) => void;
   /** "row" = horizontal table row, "card" = vertical card for grid view */
   variant?: "row" | "card";
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 export function VaultDocumentRow({
@@ -108,6 +110,8 @@ export function VaultDocumentRow({
   onAnchor,
   onShare,
   variant = "row",
+  selected = false,
+  onToggleSelect,
 }: VaultDocumentRowProps) {
   const isDeleted = !!document.deleted_at;
   const isAnchored = !!document.fingerprint;
@@ -255,6 +259,20 @@ export function VaultDocumentRow({
     >
       {/* Subtle hover glow */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 dark:from-primary/[0.04]" />
+
+      {/* Checkbox */}
+      {onToggleSelect && (
+        <div className="shrink-0 flex items-center pr-2">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+            checked={selected}
+            onChange={() => onToggleSelect(document.id)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${document.name}`}
+          />
+        </div>
+      )}
 
       {/* File type icon */}
       <div
