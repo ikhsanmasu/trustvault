@@ -726,6 +726,9 @@ export default function VaultPage() {
                           <button type="button" onClick={() => setViewDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="View" aria-label={`View ${doc.name}`}>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                           </button>
+                          <button type="button" onClick={() => setShareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors" title="Share" aria-label={`Share ${doc.name}`}>
+                            <IconShare className="h-[15px] w-[15px]" />
+                          </button>
                           <button type="button" onClick={() => setConfirmDelete(doc)} className={doc.deleted_at ? "inline-flex items-center justify-center h-8 w-8 rounded-lg text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" : "inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"} title={doc.deleted_at ? "Restore" : "Delete"} aria-label={doc.deleted_at ? `Restore ${doc.name}` : `Delete ${doc.name}`}>
                             {doc.deleted_at ? (
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
