@@ -164,6 +164,19 @@ export interface DashboardStats {
   document_count: number;
   total_storage_bytes: number;
   recent_documents: Document[];
+  // P7: Enhanced analytics (optional for backward compat with existing code)
+  total_users?: number;
+  anchored_count?: number;
+  active_shares?: number;
+  documents_by_type?: {
+    type: string;
+    count: number;
+  }[];
+  documents_by_month?: {
+    month: string; // "2026-07"
+    count: number;
+  }[];
+  total_chunks?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,4 +341,53 @@ export interface ListSessionsResponse {
 export interface GetSessionResponse {
   session: ChatSession;
   messages: ChatMessage[];
+}
+
+// ---------------------------------------------------------------------------
+// P8: Document Sharing
+// ---------------------------------------------------------------------------
+
+export interface SharedLink {
+  id: string;
+  project_id: string;
+  document_ids: string[];
+  token: string;
+  created_by: string;
+  allow_download: boolean;
+  allow_chat: boolean;
+  title: string;
+  is_active: boolean;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface CreateShareRequest {
+  projectId: string;
+  documentIds: string[];
+  allowDownload: boolean;
+  allowChat: boolean;
+  title?: string;
+}
+
+export interface CreateShareResponse {
+  share: SharedLink;
+  url: string;
+}
+
+export interface ListSharesResponse {
+  shares: SharedLink[];
+}
+
+export interface PublicShareResponse {
+  share: SharedLink;
+  documents: Document[];
+}
+
+export interface PublicChatRequest {
+  message: string;
+  history?: { role: "user" | "assistant"; content: string }[];
+}
+
+export interface RevokeShareResponse {
+  revoked: boolean;
 }

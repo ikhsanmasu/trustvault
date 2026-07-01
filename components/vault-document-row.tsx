@@ -94,6 +94,7 @@ interface VaultDocumentRowProps {
   onDelete?: (doc: Document) => void;
   onView?: (doc: Document) => void;
   onAnchor?: (doc: Document) => void;
+  onShare?: (doc: Document) => void;
   /** "row" = horizontal table row, "card" = vertical card for grid view */
   variant?: "row" | "card";
 }
@@ -105,6 +106,7 @@ export function VaultDocumentRow({
   onDelete,
   onView,
   onAnchor,
+  onShare,
   variant = "row",
 }: VaultDocumentRowProps) {
   const isDeleted = !!document.deleted_at;
@@ -176,6 +178,17 @@ export function VaultDocumentRow({
 
         {/* Action buttons */}
         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-1 relative z-10">
+          {onShare && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onShare(document); }}
+              className="cursor-pointer inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+              title="Share"
+              aria-label={`Share ${document.name}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            </button>
+          )}
           {onAnchor && (
             <button
               type="button"
@@ -288,6 +301,17 @@ export function VaultDocumentRow({
 
       {/* Action buttons */}
       <div className="shrink-0 flex items-center gap-0.5">
+        {onShare && (
+          <button
+            type="button"
+            onClick={() => onShare(document)}
+            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+            title="Share document"
+            aria-label={`Share ${document.name}`}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          </button>
+        )}
         {onAnchor && (
           <button
             type="button"

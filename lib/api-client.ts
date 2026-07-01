@@ -89,6 +89,13 @@ export interface DashboardStats {
   document_count: number;
   total_storage_bytes: number;
   recent_documents: Document[];
+  // P7: Enhanced analytics
+  total_users: number;
+  anchored_count: number;
+  active_shares: number;
+  documents_by_type: { type: string; count: number }[];
+  documents_by_month: { month: string; count: number }[];
+  total_chunks: number;
 }
 
 export interface CreateProjectRequest {
@@ -644,4 +651,235 @@ export async function verifyDocument(
     body: JSON.stringify({ documentId }),
   });
   return handleResponse<VerifyResponse>(response);
+}
+
+// ===== P8: Document Sharing =====
+
+// Backend DB shape (shared with lib/types.ts)
+export interface SharedLink {
+  id: string;
+  project_id: string;
+  document_ids: string[];
+  token: string;
+  created_by: string;
+  allow_download: boolean;
+  allow_chat: boolean;
+  title: string;
+  is_active: boolean;
+  created_at: string;
+  expires_at: string | null;
+}
+
+// Frontend-compatible alias (kept for backward compat with components/hooks)
+/** @deprecated Use SharedLink instead */
+export type ShareLink = SharedLink;
+
+/** @deprecated Use CreateShareRequest instead — kept for backward compat with share-modal */
+export interface CreateShareRequestCompat {
+  project_id: string;
+  title: string;
+  document_ids: string[];
+  allow_download: boolean;
+  allow_chat: boolean;
+}
+
+// New canonical request type (matches backend POST /api/share)
+export interface CreateShareRequest {
+  projectId: string;
+  documentIds: string[];
+  allowDownload: boolean;
+  allowChat: boolean;
+  title?: string;
+}
+
+export interface CreateShareResponse {
+  share: SharedLink;
+  url: string;
+}
+
+export interface ListSharesResponse {
+  shares: SharedLink[];
+}
+
+// Frontend expects this shape from the public share page
+export interface SharePublicData {
+  share: {
+    id: string;
+    token: string;
+    project_id: string;
+    document_ids: string[];
+    title: string;
+    allow_download: boolean;
+    allow_chat: boolean;
+    is_active: boolean;
+    created_at: string;
+    expires_at: string | null;
+  };
+  documents: Document[];
+}
+
+/**
+ * POST /api/share — create a share link.
+ * Accepts both new (camelCase) and legacy (snake_case) request shapes.
+ */
+export async function createShare(
+  data: CreateShareRequest | CreateShareRequestCompat,
+): Promise<CreateShareResponse> {
+  // Normalize legacy shape to canonical shape
+  const body = "projectId" in data
+    ? data
+    : {
+        projectId: (data as CreateShareRequestCompat).project_id,
+        documentIds: (data as CreateShareRequestCompat).document_ids,
+        allowDownload: (data as CreateShareRequestCompat).allow_download,
+        allowChat: (data as CreateShareRequestCompat).allow_chat,
+        title: (data as CreateShareRequestCompat).title,
+      };
+  const response = await fetch("/api/share", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return handleResponse<CreateShareResponse>(response);
+}
+
+/**
+ * GET /api/share?projectId=... — list share links for a project.
+ */
+export async function listShares(
+  projectId: string,
+): Promise<ListSharesResponse> {
+  const response = await fetch(
+    `/api/share?projectId=${encodeURIComponent(projectId)}`,
+  );
+  return handleResponse<ListSharesResponse>(response);
+}
+
+/**
+ * DELETE /api/share/[tokenOrId] — revoke a share link.
+ * Accepts either the share's UUID id or its hex token.
+ */
+export async function revokeShare(tokenOrId: string): Promise<{ revoked: boolean }> {
+  const response = await fetch(`/api/share/${encodeURIComponent(tokenOrId)}`, {
+    method: "DELETE",
+  });
+  return handleResponse<{ revoked: boolean }>(response);
+}
+
+/**
+ * GET /api/share/[token] — get public share details + documents (no auth required).
+ */
+export async function getShareByToken(
+  token: string,
+): Promise<SharePublicData> {
+  const response = await fetch(`/api/share/${encodeURIComponent(token)}`);
+  const raw = await handleResponse<{
+    share: SharedLink;
+    documents: Document[];
+  }>(response);
+  // Map to frontend-compatible shape
+  return {
+    share: {
+      id: raw.share.id,
+      token: raw.share.token,
+      project_id: raw.share.project_id,
+      document_ids: raw.share.document_ids,
+      title: raw.share.title,
+      allow_download: raw.share.allow_download,
+      allow_chat: raw.share.allow_chat,
+      is_active: raw.share.is_active,
+      created_at: raw.share.created_at,
+      expires_at: raw.share.expires_at,
+    },
+    documents: raw.documents,
+  };
+}
+
+// Also export under the spec name for direct use
+export { getShareByToken as getPublicShare };
+
+/**
+ * POST /api/share/[token]/chat — chat with shared documents via SSE (no auth required).
+ */
+export function shareChat(
+  token: string,
+  message: string,
+  {
+    onToken,
+    onDone,
+    onError,
+  }: {
+    onToken: (token: string) => void;
+    onDone: (sessionId: string, messageId: string) => void;
+    onError: (error: string, code?: string) => void;
+  },
+): AbortController {
+  const controller = new AbortController();
+
+  fetch(`/api/share/${encodeURIComponent(token)}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        let body: { error?: string; code?: string } = {};
+        try { body = await response.json(); } catch { /* ignore */ }
+        onError(body.error || `HTTP ${response.status}`, body.code);
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) { onError("No response body"); return; }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            // event type header — data follows
+            continue;
+          } else if (line.startsWith("data: ")) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.token) onToken(payload.token);
+              else if (payload.complete !== undefined) {
+                // Public chat has no session/message persistence;
+                // send placeholder IDs the frontend can use
+                onDone("public-share", `msg-${Date.now()}`);
+              } else if (payload.error) onError(payload.error, payload.code);
+            } catch { /* ignore malformed */ }
+          }
+        }
+      }
+
+      // Process remaining buffer
+      if (buffer.trim()) {
+        const dataLine = buffer.split("\n").find((l) => l.startsWith("data: "));
+        if (dataLine) {
+          try {
+            const payload = JSON.parse(dataLine.slice(6));
+            if (payload.complete !== undefined) {
+              onDone("public-share", `msg-${Date.now()}`);
+            } else if (payload.error) onError(payload.error, payload.code);
+          } catch { /* ignore */ }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== "AbortError") {
+        onError(err.message || "Network error");
+      }
+    });
+
+  return controller;
 }

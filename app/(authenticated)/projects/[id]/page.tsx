@@ -22,10 +22,13 @@ import MemberList from "@/components/member-list";
 import ProjectForm from "@/components/project-form";
 import type { Document } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { IconChevronLeft, IconDocument, IconSearch, IconRefresh, IconUsers, IconStar, IconUpload, IconPlus } from "@/components/icons";
+import { IconChevronLeft, IconDocument, IconSearch, IconRefresh, IconUsers, IconStar, IconUpload, IconPlus, IconShare } from "@/components/icons";
 import { UploadModal } from "@/components/upload-modal";
+import { ShareModal } from "@/components/share/share-modal";
+import { ShareLinkCard } from "@/components/share/share-link-card";
+import { useShares, useRevokeShare } from "@/hooks/use-share";
 
-type Tab = "documents" | "members";
+type Tab = "documents" | "members" | "shares";
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -44,6 +47,10 @@ export default function ProjectDetailPage() {
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
   const [anchorDoc, setAnchorDoc] = useState<Document | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Document | null>(null);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+
+  const { shares, isLoading: isLoadingShares, error: sharesError, refresh: refreshShares } = useShares(projectId);
+  const { revokeLink, isLoading: isRevoking } = useRevokeShare();
 
   const canUpload = currentUserRole === "admin" || currentUserRole === "editor";
   const isAdmin = currentUserRole === "admin";
@@ -55,6 +62,7 @@ export default function ProjectDetailPage() {
   const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: "documents", label: "Documents", icon: <IconDocument className="h-4 w-4" />, count: docTotal },
     { key: "members", label: "Members", icon: <IconUsers className="h-4 w-4" />, count: members.length },
+    { key: "shares", label: "Shares", icon: <IconShare className="h-4 w-4" />, count: shares.filter((s) => s.is_active).length },
   ];
 
   return (
@@ -152,13 +160,79 @@ export default function ProjectDetailPage() {
             ) : (
               <div className="space-y-1.5">
                 {documents.map((doc) => (
-                  <VaultDocumentRow key={doc.id} document={doc} onCompare={(d) => setCompareDoc(d)} onView={(d) => setViewDoc(d)} onAnchor={(d) => setAnchorDoc(d)} onDelete={(d) => setConfirmDelete(d)} />
+                  <VaultDocumentRow key={doc.id} document={doc} onCompare={(d) => setCompareDoc(d)} onView={(d) => setViewDoc(d)} onAnchor={(d) => setAnchorDoc(d)} onDelete={(d) => setConfirmDelete(d)} onShare={() => setShareModalOpen(true)} />
                 ))}
               </div>
             )}
           </div>
         )}
 
+
+        {/* Shares Tab */}
+        {activeTab === "shares" && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="flex-1" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshShares}
+                className="rounded-lg"
+              >
+                <IconRefresh className="h-3.5 w-3.5 mr-1.5" />
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShareModalOpen(true)}
+                className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold rounded-lg"
+              >
+                <IconPlus className="h-3.5 w-3.5 mr-1.5" />
+                New Share Link
+              </Button>
+            </div>
+
+            {sharesError && (
+              <Alert variant="destructive">
+                <AlertDescription>{sharesError}</AlertDescription>
+              </Alert>
+            )}
+
+            {isLoadingShares ? (
+              <div className="space-y-3">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <Skeleton key={i} className="h-24 w-full rounded-2xl" />
+                ))}
+              </div>
+            ) : shares.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/30 mb-4">
+                  <IconShare className="h-7 w-7 text-muted-foreground/30" />
+                </div>
+                <p className="text-sm font-semibold text-muted-foreground">
+                  No share links yet.
+                </p>
+                <p className="text-sm text-muted-foreground/60 mt-1">
+                  Create a share link to let others view these documents.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {shares.map((share) => (
+                  <ShareLinkCard
+                    key={share.id}
+                    share={share}
+                    documents={documents}
+                    onRevoke={async (token) => {
+                      const ok = await revokeLink(token);
+                      if (ok) refreshShares();
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Members Tab */}
         {activeTab === "members" && (
@@ -176,6 +250,16 @@ export default function ProjectDetailPage() {
 
       {/* Upload Modal */}
       <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} projectId={projectId} onSuccess={() => { refreshDocs(); setUploadOpen(false); }} />
+      {/* Share Modal */}
+      <ShareModal
+        open={shareModalOpen}
+        onOpenChange={setShareModalOpen}
+        projectId={projectId}
+        documents={documents}
+        onCreated={() => {
+          refreshShares();
+        }}
+      />
       {/* Modals */}
       {project && <ProjectForm open={editDialogOpen} onOpenChange={setEditDialogOpen} onSubmit={async (data) => await updateProjectDetails(data)} title="Edit Project" initialName={project.name} initialDescription={project.description} isEdit />}
       {compareDoc && <CompareModal document={compareDoc} open={compareDoc !== null} onOpenChange={(open) => { if (!open) setCompareDoc(null); }} />}
