@@ -47,7 +47,7 @@ export interface Document {
   file_size_bytes: number;
   file_type: string;
   tenant_id: string;
-  project_id: string;
+  project_id: string | null;
   uploaded_by: string;
   created_at: string;
   deleted_at?: string | null;
@@ -79,7 +79,7 @@ export interface BulkUploadItem {
 }
 
 export interface BulkUploadResult {
-  project_id: string;
+  project_id: string | null;
   results: BulkUploadItem[];
   succeeded: number;
   failed: number;
@@ -460,12 +460,12 @@ export interface ListDocumentsParams {
 export async function uploadDocument(
   file: File,
   name: string,
-  projectId: string,
+  projectId?: string | null,
 ): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("name", name);
-  formData.append("project_id", projectId);
+  if (projectId) formData.append("project_id", projectId);
 
   const response = await fetch("/api/documents", {
     method: "POST",
@@ -514,14 +514,14 @@ export async function getDocument(
 export async function bulkUploadDocuments(
   files: File[],
   names: string[],
-  projectId: string,
+  projectId?: string | null,
 ): Promise<BulkUploadResponse> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("files", file);
   }
   formData.append("names", JSON.stringify(names));
-  formData.append("project_id", projectId);
+  if (projectId) formData.append("project_id", projectId);
 
   const response = await fetch("/api/documents/bulk", {
     method: "POST",
@@ -683,7 +683,7 @@ export async function verifyDocument(
 // Backend DB shape (shared with lib/types.ts)
 export interface SharedLink {
   id: string;
-  project_id: string;
+  project_id: string | null;
   document_ids: string[];
   token: string;
   created_by: string;
@@ -701,7 +701,7 @@ export type ShareLink = SharedLink;
 
 /** @deprecated Use CreateShareRequest instead — kept for backward compat with share-modal */
 export interface CreateShareRequestCompat {
-  project_id: string;
+  project_id: string | null;
   title: string;
   document_ids: string[];
   allow_download: boolean;
@@ -710,7 +710,7 @@ export interface CreateShareRequestCompat {
 
 // New canonical request type (matches backend POST /api/share)
 export interface CreateShareRequest {
-  projectId: string;
+  projectId?: string | null;
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;
@@ -731,7 +731,7 @@ export interface SharePublicData {
   share: {
     id: string;
     token: string;
-    project_id: string;
+    project_id: string | null;
     document_ids: string[];
     title: string;
     allow_download: boolean;

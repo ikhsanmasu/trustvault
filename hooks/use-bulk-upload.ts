@@ -30,7 +30,7 @@ interface UseBulkUploadReturn {
   error: string | null;
 }
 
-export function useBulkUpload(projectId: string): UseBulkUploadReturn {
+export function useBulkUpload(projectId: string = ""): UseBulkUploadReturn {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [result, setResult] = useState<BulkUploadResult | null>(null);

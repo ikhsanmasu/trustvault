@@ -592,7 +592,7 @@ export async function chatCompletionStream(
 
 export interface ChunkRecord {
   document_id: string;
-  project_id: string;
+  project_id: string | null;
   chunk_index: number;
   content: string;
   embedding: number[] | null;
@@ -610,7 +610,7 @@ export interface ChunkRecord {
  */
 export async function ingestDocument(
   documentId: string,
-  projectId: string,
+  projectId: string | null,
   extractedText: string,
 ): Promise<ChunkRecord[]> {
   if (!extractedText || extractedText.trim().length === 0) {

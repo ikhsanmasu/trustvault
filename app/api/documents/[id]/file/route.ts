@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/supabase/auth";
+import { requireAuth, getUserTenantId } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -17,9 +17,10 @@ export async function GET(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
 
+  // Fetch document — RLS enforces tenant-scoped access (P11)
   const { data: doc, error } = await supabase
     .from("documents")
-    .select("storage_path, project_id, file_type, name, deleted_at")
+    .select("storage_path, tenant_id, file_type, name, deleted_at")
     .eq("id", id)
     .single();
 
@@ -31,14 +32,9 @@ export async function GET(
     return NextResponse.json({ error: "This document has been deleted", code: "GONE" }, { status: 410 });
   }
 
-  const { data: member } = await supabase
-    .from("project_members")
-    .select("role")
-    .eq("project_id", doc.project_id)
-    .eq("user_id", user.id)
-    .single();
-
-  if (!member) {
+  // P11: verify tenant access (handle null project_id gracefully)
+  const tenantId = await getUserTenantId(supabase, user.id);
+  if (!tenantId || doc.tenant_id !== tenantId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -113,17 +113,20 @@ export async function POST(
         continue;
       }
 
-      // 3c. Role check: must be admin or editor
-      const roleCheck = await requireProjectRole(
-        supabase,
-        user.id,
-        document.project_id as string,
-        ["admin", "editor"],
-      );
-      if (!roleCheck.ok) {
-        failed++;
-        errors.push(`Document ${documentId}: FORBIDDEN`);
-        continue;
+      // 3c. Role check: must be admin or editor (P11: null-safe)
+      const docProjectId: string | null = (document.project_id as string | null) ?? null;
+      if (docProjectId) {
+        const roleCheck = await requireProjectRole(
+          supabase,
+          user.id,
+          docProjectId,
+          ["admin", "editor"],
+        );
+        if (!roleCheck.ok) {
+          failed++;
+          errors.push(`Document ${documentId}: FORBIDDEN`);
+          continue;
+        }
       }
 
       // 3d. Check for empty text
@@ -137,7 +140,7 @@ export async function POST(
       // 3e. Chunk + embed via core library
       const chunkRecords = await ingestDocument(
         documentId,
-        document.project_id as string,
+        (document.project_id as string | null) ?? null,
         extractedText,
       );
 

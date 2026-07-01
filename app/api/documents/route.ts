@@ -114,20 +114,13 @@ export async function POST(
     );
   }
 
-  // -- 7. Validate project_id (P2: required) --------------------------------
-  if (
-    !projectIdRaw ||
-    typeof projectIdRaw !== "string" ||
-    projectIdRaw.trim().length === 0
-  ) {
-    return NextResponse.json(
-      { error: "project_id is required", code: "MISSING_PROJECT_ID" },
-      { status: 400 },
-    );
-  }
+  // -- 7. Validate project_id (P11: optional) ---------------------------------
+  const projectId: string | null =
+    projectIdRaw && typeof projectIdRaw === "string" && projectIdRaw.trim().length > 0
+      ? projectIdRaw.trim()
+      : null;
 
-  const projectId = projectIdRaw.trim();
-  if (!UUID_RE.test(projectId)) {
+  if (projectId && !UUID_RE.test(projectId)) {
     return NextResponse.json(
       {
         error: "project_id must be a valid UUID",
@@ -137,12 +130,14 @@ export async function POST(
     );
   }
 
-  // -- 8. Role check: user must be admin or editor --------------------------
-  const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-    "admin",
-    "editor",
-  ]);
-  if (!roleCheck.ok) return roleCheck.response;
+  // -- 8. Role check (only when project_id is provided) ----------------------
+  if (projectId) {
+    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
+      "admin",
+      "editor",
+    ]);
+    if (!roleCheck.ok) return roleCheck.response;
+  }
 
   // -- 9. Get user's tenant_id ----------------------------------------------
   const tenantId = await getUserTenantId(supabase, user.id);
@@ -164,11 +159,11 @@ export async function POST(
   const extractedText = await extractFileText(buffer, mimeType);
   const textHash = computeTextHash(extractedText);
 
-  // -- 12. Generate storage path (P3: correct extension for file type) ------
+  // -- 12. Generate storage path (P3: correct extension for file type, P11: no project in path) --
   const year = new Date().getUTCFullYear().toString();
   const fileUuid = randomUUID();
   const ext = getFileExtension(mimeType);
-  const storagePath = `uploads/${year}/${projectId}/${fileUuid}${ext}`;
+  const storagePath = `uploads/${year}/${fileUuid}${ext}`;
 
   // -- 13. Upload to Supabase Storage (user-scoped client) ------------------
   const uploadData = fileCopy2 as ArrayBuffer;
@@ -284,7 +279,7 @@ export async function GET(
 
   const searchParams = request.nextUrl.searchParams;
 
-  // -- 2. Parse optional project_id (P3: optional for cross-project vault) ----
+  // -- 2. Parse optional project_id (P11: optional, tenant-scoped fallback) ---
   const projectIdRaw = searchParams.get("project_id");
   const projectId = projectIdRaw?.trim();
   if (projectId !== undefined && projectId.length > 0 && !UUID_RE.test(projectId)) {
@@ -294,8 +289,17 @@ export async function GET(
     );
   }
 
-  // -- 3. Resolve which projects to query --------------------------------------
-  let queryProjectIds: string[];
+  // -- 3. Get user's tenant_id -----------------------------------------------
+  const tenantId = await getUserTenantId(supabase, user.id);
+  if (!tenantId) {
+    return NextResponse.json(
+      { error: "User profile not found", code: "NOT_FOUND" },
+      { status: 404 },
+    );
+  }
+
+  // -- 4. Resolve scoping (P11: project-scoped or tenant-scoped) --------------
+  let useTenantScoping = false;
   if (projectId) {
     // Scoped to a single project -- verify membership first
     const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
@@ -307,17 +311,9 @@ export async function GET(
         { status: 403 },
       );
     }
-    queryProjectIds = [projectId];
   } else {
-    // No project_id — fetch all user's projects
-    const { data: memberships } = await supabase
-      .from("project_members")
-      .select("project_id")
-      .eq("user_id", user.id);
-    queryProjectIds = (memberships ?? []).map((m: { project_id: string }) => m.project_id);
-    if (queryProjectIds.length === 0) {
-      return NextResponse.json({ documents: [], total: 0 });
-    }
+    // No project_id — return all documents for the tenant (RLS-enforced)
+    useTenantScoping = true;
   }
 
   // -- 4. Parse & validate query parameters ---------------------------------
@@ -350,12 +346,16 @@ export async function GET(
     );
   }
 
-  // -- 5. Build query -- filter by resolved project IDs (P3: cross-project) ----
+  // -- 5. Build query -- filter by project_id or tenant_id (P11: tenant-scoped fallback)
   const includeDeleted = searchParams.get("include_deleted") === "true";
   let query = supabase
     .from("documents")
     .select("*", { count: "exact" })
-    .in("project_id", queryProjectIds);
+    .eq("tenant_id", tenantId);
+
+  if (!useTenantScoping && projectId) {
+    query = query.eq("project_id", projectId);
+  }
 
   // Default: exclude soft-deleted documents unless explicitly requested
   if (!includeDeleted) {

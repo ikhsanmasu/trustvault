@@ -55,21 +55,14 @@ export async function POST(
     );
   }
 
-  // -- 3. Validate project_id -----------------------------------------------
+  // -- 3. Validate project_id (P11: optional) ----------------------------------
   const projectIdRaw = formData.get("project_id");
-  if (
-    !projectIdRaw ||
-    typeof projectIdRaw !== "string" ||
-    projectIdRaw.trim().length === 0
-  ) {
-    return NextResponse.json(
-      { error: "project_id is required", code: "MISSING_PROJECT_ID" },
-      { status: 400 },
-    );
-  }
+  const projectId: string | null =
+    projectIdRaw && typeof projectIdRaw === "string" && projectIdRaw.trim().length > 0
+      ? projectIdRaw.trim()
+      : null;
 
-  const projectId = projectIdRaw.trim();
-  if (!UUID_RE.test(projectId)) {
+  if (projectId && !UUID_RE.test(projectId)) {
     return NextResponse.json(
       {
         error: "project_id must be a valid UUID",
@@ -79,12 +72,14 @@ export async function POST(
     );
   }
 
-  // -- 4. Role check: user must be admin or editor --------------------------
-  const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-    "admin",
-    "editor",
-  ]);
-  if (!roleCheck.ok) return roleCheck.response;
+  // -- 4. Role check (only when project_id is provided) -----------------------
+  if (projectId) {
+    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
+      "admin",
+      "editor",
+    ]);
+    if (!roleCheck.ok) return roleCheck.response;
+  }
 
   // -- 5. Get user's tenant_id ----------------------------------------------
   const tenantId = await getUserTenantId(supabase, user.id);
@@ -230,9 +225,9 @@ export async function POST(
       const extractedText = await extractFileText(buffer, mimeType);
       const textHash = computeTextHash(extractedText);
 
-      // ---- Generate storage path (P3: correct extension) ----
+      // ---- Generate storage path (P3: correct extension, P11: no project in path) ----
       const fileUuid = randomUUID();
-      const storagePath = `uploads/${year}/${projectId}/${fileUuid}${ext}`;
+      const storagePath = `uploads/${year}/${fileUuid}${ext}`;
 
       // ---- Upload to Storage ----
       const uploadData = fileCopy2 as ArrayBuffer;

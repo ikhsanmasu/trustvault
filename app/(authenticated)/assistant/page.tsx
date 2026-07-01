@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
-import { useProjects } from "@/hooks/use-projects";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { ChatMessageBubble, StreamingBubble } from "@/components/chat/chat-message";
 import { ChatInput } from "@/components/chat/chat-input";
@@ -16,37 +15,7 @@ import { cn } from "@/lib/utils";
 
 // ---- Empty state ------------------------------------------------------------
 
-function EmptyState({ hasProject }: { hasProject: boolean }) {
-  if (!hasProject) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center max-w-md">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-8 w-8 text-primary"
-              aria-hidden="true"
-            >
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-semibold text-foreground mb-2">
-            Select a Group
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Choose a group above to start asking questions about your documents.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+function EmptyState() {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="text-center max-w-md">
@@ -69,7 +38,7 @@ function EmptyState({ hasProject }: { hasProject: boolean }) {
           Ask a Question About Your Documents
         </h3>
         <p className="text-sm text-muted-foreground mb-6">
-          Start a new chat to ask questions about the documents in this group.
+          Start a new chat to ask questions about your documents.
           The AI will search through your documents and provide answers with citations.
         </p>
 
@@ -148,10 +117,6 @@ function Toast({ toast, onDismiss }: { toast: ToastData | null; onDismiss: () =>
 export default function AssistantPage() {
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuthContext();
-  const {
-    projects,
-    isLoading: isProjectsLoading,
-  } = useProjects();
 
   const {
     messages,
@@ -165,20 +130,11 @@ export default function AssistantPage() {
     selectSession,
     newSession,
     deleteSession,
-    refreshSessions,
   } = useAssistantChat();
 
   const { toast, showToast, dismissToast } = useToastState();
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-select first project
-  useEffect(() => {
-    if (!selectedProjectId && projects.length > 0) {
-      setSelectedProjectId(projects[0].id);
-    }
-  }, [projects, selectedProjectId]);
 
   // ---- Auth guard -----------------------------------------------------------
 
@@ -187,15 +143,6 @@ export default function AssistantPage() {
       router.push("/login");
     }
   }, [isAuthLoading, user, router]);
-
-  // ---- Load sessions when project changes -----------------------------------
-
-  useEffect(() => {
-    if (selectedProjectId) {
-      refreshSessions(selectedProjectId);
-      newSession();
-    }
-  }, [selectedProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Show chat errors as toasts -------------------------------------------
 
@@ -215,10 +162,9 @@ export default function AssistantPage() {
 
   const handleSendMessage = useCallback(
     (message: string) => {
-      if (!selectedProjectId) return;
-      sendMessage(selectedProjectId, message);
+      sendMessage(message);
     },
-    [selectedProjectId, sendMessage],
+    [sendMessage],
   );
 
   const handleSelectSession = useCallback(
@@ -243,9 +189,6 @@ export default function AssistantPage() {
     return null;
   }
 
-  const hasProject = selectedProjectId !== "";
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
-
   // ---- Render ---------------------------------------------------------------
 
   return (
@@ -263,7 +206,7 @@ export default function AssistantPage() {
           <ChatSessionList
             sessions={sessions}
             currentSessionId={currentSessionId}
-            isLoading={isProjectsLoading || (hasProject && sessions.length === 0 && isChatLoading)}
+            isLoading={sessions.length === 0 && isChatLoading}
             onSelectSession={handleSelectSession}
             onNewSession={newSession}
             onDeleteSession={deleteSession}
@@ -272,10 +215,8 @@ export default function AssistantPage() {
 
         {/* ---- Right: Chat area ---- */}
         <div className="flex-1 flex flex-col min-w-0">
-          {!hasProject ? (
-            <EmptyState hasProject={false} />
-          ) : !currentSessionId && messages.length === 0 && !isStreaming ? (
-            <EmptyState hasProject={true} />
+          {!currentSessionId && messages.length === 0 && !isStreaming ? (
+            <EmptyState />
           ) : (
             <>
               {/* Error banner */}
@@ -330,12 +271,8 @@ export default function AssistantPage() {
             onSend={handleSendMessage}
             isStreaming={isStreaming}
             isLoading={isChatLoading}
-            disabled={!hasProject}
-            placeholder={
-              hasProject
-                ? "Ask a question about your documents…"
-                : "Ask a question about your documents…"
-            }
+            disabled={false}
+            placeholder="Ask a question about your documents…"
           />
         </div>
       </div>

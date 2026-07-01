@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useSort } from "@/hooks/use-sort";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
@@ -18,7 +18,6 @@ import { EditDocumentModal } from "@/components/edit-document-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
-import { useProjects } from "@/hooks/use-projects";
 import type { Document } from "@/lib/api-client";
 import { deleteDocument, restoreDocument, editDocument } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
@@ -60,7 +59,6 @@ export default function VaultPage() {
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuthContext();
 
-  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
   const {
@@ -74,13 +72,10 @@ export default function VaultPage() {
     setFileType,
     refresh,
   } = useDocuments({
-    projectId: selectedProjectId || undefined,
     includeDeleted: true, // Default: show deleted docs (grayed out)
   });
 
   const [showDeleted, setShowDeleted] = useState(false);
-
-  const { projects, isLoading: isLoadingProjects } = useProjects();
 
   const { sorted: sortedDocs, toggleSort, sortIndicator } = useSort(documents, "created_at", "desc");
   const visibleDocs = showDeleted ? sortedDocs : sortedDocs.filter((d: Document) => !d.deleted_at);
@@ -100,34 +95,14 @@ export default function VaultPage() {
   const [editDocId, setEditDocId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
-  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
 
   // Click outside to close dropdowns
   useEffect(() => {
-    if (!typeDropdownOpen && !projectDropdownOpen) return;
-    function handleClick() { setTypeDropdownOpen(false); setProjectDropdownOpen(false); }
+    if (!typeDropdownOpen) return;
+    function handleClick() { setTypeDropdownOpen(false); }
     document.addEventListener("click", handleClick, { once: true });
     return () => document.removeEventListener("click", handleClick);
-  }, [typeDropdownOpen, projectDropdownOpen]);
-
-  // ---- Project lookup map ---------------------------------------------------
-
-  const projectMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of projects) {
-      map.set(p.id, p.name);
-    }
-    return map;
-  }, [projects]);
-
-  // ---- Project chips --------------------------------------------------------
-
-  const projectChips = useMemo(() => {
-    return [
-      { value: "", label: "All groups" },
-      ...projects.map((p) => ({ value: p.id, label: p.name })),
-    ];
-  }, [projects]);
+  }, [typeDropdownOpen]);
 
   // ---- Auth gate -------------------------------------------------------------
 
@@ -147,7 +122,7 @@ export default function VaultPage() {
   }
 
   const hasActiveFilters =
-    search !== "" || selectedProjectId !== "" || fileType !== "";
+    search !== "" || fileType !== "";
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -263,7 +238,7 @@ export default function VaultPage() {
         <div className="relative">
           <button
             type="button"
-            onClick={() => { setTypeDropdownOpen(!typeDropdownOpen); setProjectDropdownOpen(false); }}
+            onClick={() => { setTypeDropdownOpen(!typeDropdownOpen); }}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
           >
             {fileType ? TYPE_FILTERS.find(f => f.value === fileType)?.label ?? "Type" : "Type"}
@@ -295,62 +270,6 @@ export default function VaultPage() {
           )}
         </div>
 
-        {/* Project dropdown - right side */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => { setProjectDropdownOpen(!projectDropdownOpen); setTypeDropdownOpen(false); }}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
-          >
-            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Workspace" : "Workspace"}
-            <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          {projectDropdownOpen && (
-            <div className="absolute top-full right-0 mt-1 z-30 w-56 rounded-xl border border-border bg-card shadow-lg py-1 max-h-64 overflow-y-auto">
-              <button
-                type="button"
-                onClick={() => { setSelectedProjectId(""); setProjectDropdownOpen(false); }}
-                className={cn(
-                  "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
-                  !selectedProjectId && "bg-primary/10 text-primary font-medium",
-                )}
-              >
-                <span className={cn("h-3 w-3 rounded border border-border flex items-center justify-center shrink-0",
-                  !selectedProjectId && "bg-primary border-primary",
-                )}>
-                  {!selectedProjectId && (
-                    <svg className="h-2.5 w-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
-                  )}
-                </span>
-                All Groups
-              </button>
-              {isLoadingProjects ? (
-                <div className="px-3 py-2"><Skeleton className="h-5 w-full" /></div>
-              ) : (
-                projectChips.map((chip) => (
-                  <button
-                    key={chip.value}
-                    type="button"
-                    onClick={() => { setSelectedProjectId(chip.value); setProjectDropdownOpen(false); }}
-                    className={cn(
-                      "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
-                      selectedProjectId === chip.value && "bg-primary/10 text-primary font-medium",
-                    )}
-                  >
-                    <span className={cn("h-3 w-3 rounded border border-border flex items-center justify-center shrink-0",
-                      selectedProjectId === chip.value && "bg-primary border-primary",
-                    )}>
-                      {selectedProjectId === chip.value && (
-                        <svg className="h-2.5 w-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
-                      )}
-                    </span>
-                    {chip.label}
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ---- Filter: Deleted ------------------------------------------------- */}
@@ -404,9 +323,7 @@ export default function VaultPage() {
           <p className="mt-2 text-sm text-muted-foreground max-w-sm">
             {hasActiveFilters
               ? "Try adjusting your filters or search query to find what you are looking for."
-              : !isLoadingProjects && projects.length === 0
-                ? "Create a group from the dashboard to start uploading documents."
-                : "Upload documents to your groups to start tracking their integrity over time."}
+              : "Upload documents to start tracking their integrity over time."}
           </p>
           {hasActiveFilters && (
             <Button
@@ -416,17 +333,15 @@ export default function VaultPage() {
               onClick={() => {
                 setSearch("");
                 setFileType("");
-                setSelectedProjectId("");
               }}
             >
               Clear all filters
             </Button>
           )}
-          {!hasActiveFilters && projects.length > 0 && (
+          {!hasActiveFilters && (
             <Button
               size="sm"
               className="mt-5"
-              disabled={!selectedProjectId}
               onClick={() => setShowUpload(true)}
             >
               <IconPlus className="mr-1.5 h-4 w-4" />
@@ -442,7 +357,6 @@ export default function VaultPage() {
               key={doc.id}
               document={doc}
               variant="card"
-              projectName={projectMap.get(doc.project_id)}
               onCompare={(d) => setCompareDoc(d)}
               onView={(d) => setViewDoc(d)}
               onShare={(d) => setShareDoc(d)}
@@ -558,7 +472,6 @@ export default function VaultPage() {
               </thead>
               <tbody>
                 {visibleDocs.map((doc) => {
-                  const projName = projectMap.get(doc.project_id);
                   return (
                     <tr
                       key={doc.id}
@@ -664,7 +577,7 @@ export default function VaultPage() {
         <ShareModal
           open={shareDoc !== null}
           onOpenChange={(open) => { if (!open) { setShareDoc(null); setBulkShareIds([]); } }}
-          projectId={shareDoc.project_id}
+          projectId={shareDoc.project_id ?? ""}
           documents={visibleDocs}
           preselectedIds={bulkShareIds.length > 0 ? bulkShareIds : [shareDoc.id]}
           onCreated={() => { setShareDoc(null); setBulkShareIds([]); setSelectedIds(new Set()); refresh(); }}
@@ -673,7 +586,6 @@ export default function VaultPage() {
       <UploadModal
         open={showUpload}
         onOpenChange={setShowUpload}
-        projectId={selectedProjectId}
         onSuccess={() => { setShowUpload(false); refresh(); }}
       />
       {/* ---- Edit Modal -------------------------------------------------------- */}

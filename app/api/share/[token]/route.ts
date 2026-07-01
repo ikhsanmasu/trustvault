@@ -163,12 +163,14 @@ export async function DELETE(
     );
   }
 
-  // -- 3. Check project role (editor or admin) ------------------------------
-  const roleCheck = await requireProjectRole(supabase, user.id, share.project_id, [
-    "admin",
-    "editor",
-  ]);
-  if (!roleCheck.ok) return roleCheck.response;
+  // -- 3. Check project role (P11: only when share has a project) -----------
+  if (share.project_id) {
+    const roleCheck = await requireProjectRole(supabase, user.id, share.project_id, [
+      "admin",
+      "editor",
+    ]);
+    if (!roleCheck.ok) return roleCheck.response;
+  }
 
   // -- 4. Set is_active = false (by id to be unambiguous) -------------------
   const { error: updateError } = await supabase

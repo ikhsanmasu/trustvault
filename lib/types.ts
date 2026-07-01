@@ -94,7 +94,7 @@ export interface Document {
   file_size_bytes: number;
   file_type: string; // P3: tracked so downstream code knows the file format
   tenant_id: string;
-  project_id: string;
+  project_id: string | null;
   uploaded_by: string;
   created_at: string;
   deleted_at?: string | null;
@@ -151,7 +151,7 @@ export interface BulkUploadItem {
 }
 
 export interface BulkUploadResult {
-  project_id: string;
+  project_id: string | null;
   results: BulkUploadItem[];
   succeeded: number;
   failed: number;
@@ -353,7 +353,7 @@ export interface GetSessionResponse {
 
 export interface SharedLink {
   id: string;
-  project_id: string;
+  project_id: string | null;
   document_ids: string[];
   token: string;
   created_by: string;
@@ -366,7 +366,7 @@ export interface SharedLink {
 }
 
 export interface CreateShareRequest {
-  projectId: string;
+  projectId?: string | null;
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;

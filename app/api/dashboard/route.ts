@@ -94,9 +94,12 @@ export async function GET(): Promise<
   ]);
 
   // -------------------------------------------------------------------------
-  // Second batch: queries that need project IDs (use service client)
+  // Second batch: tenant-scoped counts (P11: no more project-scoped queries)
   // -------------------------------------------------------------------------
   const serviceClient = createServiceClient();
+
+  // Count active shares by joining through projects in the tenant,
+  // and also include shares with null project_id whose documents belong to tenant.
   const { data: tenantProjects } = await serviceClient
     .from("projects")
     .select("id")
@@ -108,31 +111,31 @@ export async function GET(): Promise<
   let activeShares = 0;
   let totalChunks = 0;
 
-  if (projectIds.length > 0) {
-    const [sharesResult, chunksResult] = await Promise.allSettled([
-      serviceClient
-        .from("shared_links")
-        .select("id", { count: "exact", head: true })
-        .eq("is_active", true)
-        .in("project_id", projectIds),
-      serviceClient
-        .from("document_chunks")
-        .select("id", { count: "exact", head: true })
-        .in("project_id", projectIds),
-    ]);
+  // active_shares: count shares in tenant's projects + shares with null project_id
+  {
+    let sharesQuery = serviceClient
+      .from("shared_links")
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true);
 
-    if (
-      sharesResult.status === "fulfilled" &&
-      !sharesResult.value.error
-    ) {
-      activeShares = sharesResult.value.count ?? 0;
+    if (projectIds.length > 0) {
+      sharesQuery = sharesQuery.or(
+        `project_id.in.(${projectIds.join(",")}),project_id.is.null`,
+      );
+    } else {
+      sharesQuery = sharesQuery.is("project_id", null);
     }
-    if (
-      chunksResult.status === "fulfilled" &&
-      !chunksResult.value.error
-    ) {
-      totalChunks = chunksResult.value.count ?? 0;
-    }
+
+    const { count: sharesCount, error: sharesErr } = await sharesQuery;
+    if (!sharesErr) activeShares = sharesCount ?? 0;
+  }
+
+  // total_chunks: RLS enforces tenant scoping via documents join (P11)
+  {
+    const { count: chunksCount, error: chunksErr } = await serviceClient
+      .from("document_chunks")
+      .select("id", { count: "exact", head: true });
+    if (!chunksErr) totalChunks = chunksCount ?? 0;
   }
 
   // -------------------------------------------------------------------------

@@ -80,13 +80,22 @@ export async function PATCH(
 
   const action = body.action === "restore" ? "restore" : body.action === "move" ? "move" : body.action === "edit" ? "edit" : "delete";
 
-  // Verify membership via project
+  // P11: Verify tenant-level access (project_id may be null)
   const { data: doc } = await supabase.from("documents").select("project_id, tenant_id").eq("id", id).single();
   if (!doc) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-  const { data: member } = await supabase.from("project_members").select("role").eq("project_id", doc.project_id).eq("user_id", user.id).single();
-  if (!member || !["admin", "editor"].includes(member.role)) {
+  // Verify user belongs to same tenant
+  const { data: profile } = await supabase.from("profiles").select("tenant_id").eq("id", user.id).single();
+  if (!profile || profile.tenant_id !== doc.tenant_id) {
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  // If document has a project, verify editor/admin role; if no project, any tenant member can edit
+  if (doc.project_id) {
+    const { data: member } = await supabase.from("project_members").select("role").eq("project_id", doc.project_id).eq("user_id", user.id).single();
+    if (!member || !["admin", "editor"].includes(member.role)) {
+      return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+    }
   }
 
   // ---- Edit: update description, notes, and/or project ----

@@ -48,10 +48,15 @@ export async function POST(
 
   const { projectId, documentIds, allowDownload, allowChat, title } = body;
 
-  // Validate projectId
-  if (!projectId || typeof projectId !== "string" || !UUID_RE.test(projectId)) {
+  // Validate projectId (P11: optional, allow null)
+  const resolvedProjectId: string | null =
+    projectId && typeof projectId === "string" && UUID_RE.test(projectId)
+      ? projectId
+      : null;
+
+  if (projectId && typeof projectId === "string" && !UUID_RE.test(projectId)) {
     return NextResponse.json(
-      { error: "Valid projectId (UUID) is required", code: "INVALID_PROJECT_ID" },
+      { error: "Invalid projectId format (must be a UUID)", code: "INVALID_PROJECT_ID" },
       { status: 400 },
     );
   }
@@ -91,19 +96,23 @@ export async function POST(
     );
   }
 
-  // -- 3. Check project role (editor or admin) ------------------------------
-  const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-    "admin",
-    "editor",
-  ]);
-  if (!roleCheck.ok) return roleCheck.response;
+  // -- 3. Check project role (P11: only when projectId is provided) ----------
+  if (resolvedProjectId) {
+    const roleCheck = await requireProjectRole(supabase, user.id, resolvedProjectId, [
+      "admin",
+      "editor",
+    ]);
+    if (!roleCheck.ok) return roleCheck.response;
+  }
 
-  // -- 4. Verify all documentIds belong to projectId ------------------------
-  const { data: docs, error: docsError } = await supabase
-    .from("documents")
-    .select("id")
-    .eq("project_id", projectId)
-    .in("id", documentIds);
+  // -- 4. Verify all documentIds are accessible (P11: project-scoped or tenant-scoped)
+  let docsQuery = supabase.from("documents").select("id").in("id", documentIds);
+  if (resolvedProjectId) {
+    docsQuery = docsQuery.eq("project_id", resolvedProjectId);
+  }
+  // When no projectId, RLS ensures tenant-scoped access
+
+  const { data: docs, error: docsError } = await docsQuery;
 
   if (docsError || !docs) {
     return NextResponse.json(
@@ -117,8 +126,8 @@ export async function POST(
   if (missing.length > 0) {
     return NextResponse.json(
       {
-        error: `Documents not found in project: ${missing.join(", ")}`,
-        code: "DOCUMENT_NOT_IN_PROJECT",
+        error: `Documents not found: ${missing.join(", ")}`,
+        code: "DOCUMENT_NOT_FOUND",
       },
       { status: 400 },
     );
@@ -131,7 +140,7 @@ export async function POST(
   const { data: share, error: insertError } = await supabase
     .from("shared_links")
     .insert({
-      project_id: projectId,
+      project_id: resolvedProjectId,
       document_ids: documentIds,
       token,
       created_by: user.id,
@@ -192,8 +201,14 @@ export async function GET(
     const { data: memberships } = await supabase
       .from("project_members").select("project_id").eq("user_id", user.id);
     const projectIds = (memberships ?? []).map((m: { project_id: string }) => m.project_id);
-    if (projectIds.length === 0) return NextResponse.json({ shares: [] });
-    query = query.in("project_id", projectIds);
+    // P11: include shares with null project_id as well
+    if (projectIds.length > 0) {
+      query = query.or(
+        `project_id.in.(${projectIds.join(",")}),project_id.is.null`,
+      );
+    } else {
+      query = query.is("project_id", null);
+    }
   }
 
   const { data: shares, error } = await query.order("created_at", { ascending: false });

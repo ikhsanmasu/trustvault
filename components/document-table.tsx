@@ -27,8 +27,6 @@ interface DocumentTableProps {
   search: string;
   onSearchChange: (search: string) => void;
   onRefresh: () => void;
-  projectId?: string;
-  projectName?: string;
   userRole?: "admin" | "editor" | "viewer" | null;
 }
 
@@ -40,8 +38,6 @@ export default function DocumentTable({
   search,
   onSearchChange,
   onRefresh,
-  projectId,
-  projectName,
   userRole,
 }: DocumentTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -75,9 +71,7 @@ export default function DocumentTable({
           <div>
             <CardTitle>Documents</CardTitle>
             <CardDescription>
-              {projectName
-                ? `${total} document${total !== 1 ? "s" : ""} in ${projectName}`
-                : `${total} document${total !== 1 ? "s" : ""} uploaded`}
+              {`${total} document${total !== 1 ? "s" : ""} uploaded`}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -199,7 +193,7 @@ export default function DocumentTable({
               <span>{documents.find((d) => d.id === selectedArray[1])?.name}</span>
             </div>
             <Link
-              href={`/compare?docA=${selectedArray[0]}&docB=${selectedArray[1]}${projectId ? `&projectId=${projectId}` : ""}`}
+              href={`/compare?docA=${selectedArray[0]}&docB=${selectedArray[1]}`}
               className={buttonVariants({ variant: "default" })}
             >
               Compare Selected

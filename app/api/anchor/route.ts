@@ -84,14 +84,25 @@ export async function POST(
     );
   }
 
-  // -- 6. Role check: must be admin or editor of the document's project -----
-  const roleCheck = await requireProjectRole(
-    supabase,
-    user.id,
-    doc.project_id,
-    ["admin", "editor"],
-  );
-  if (!roleCheck.ok) return roleCheck.response;
+  // -- 6. Role check: admin/editor of document's project, or tenant member if no project (P11)
+  if (doc.project_id) {
+    const roleCheck = await requireProjectRole(
+      supabase,
+      user.id,
+      doc.project_id,
+      ["admin", "editor"],
+    );
+    if (!roleCheck.ok) return roleCheck.response;
+  } else {
+    // No project — verify tenant access
+    const { data: profile } = await supabase.from("profiles").select("tenant_id").eq("id", user.id).single();
+    if (!profile || profile.tenant_id !== doc.tenant_id) {
+      return NextResponse.json(
+        { error: "Access denied", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+  }
 
   // -- 7. Compute fingerprint -----------------------------------------------
   const fingerprint = computeFingerprint(doc.binary_hash, doc.text_hash);

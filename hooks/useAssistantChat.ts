@@ -22,11 +22,11 @@ export interface UseAssistantChatReturn {
   streamingContent: string;
   citations: Citation[] | null;
   error: string | null;
-  sendMessage: (projectId: string, message: string) => Promise<void>;
+  sendMessage: (message: string) => Promise<void>;
   selectSession: (sessionId: string) => void;
   newSession: () => void;
   deleteSession: (sessionId: string) => Promise<boolean>;
-  refreshSessions: (projectId: string) => Promise<void>;
+  refreshSessions: () => Promise<void>;
 }
 
 // ---- Hook ------------------------------------------------------------------
@@ -45,9 +45,9 @@ export function useAssistantChat(): UseAssistantChatReturn {
 
   // ---- Load sessions for a project -----------------------------------------
 
-  const refreshSessions = useCallback(async (projectId: string) => {
+  const refreshSessions = useCallback(async () => {
     try {
-      const result = await listSessions(projectId);
+      const result = await listSessions();
       setSessions(result.sessions);
     } catch (err) {
       // Session list failure is non-critical — log but do not block UI
@@ -127,7 +127,7 @@ export function useAssistantChat(): UseAssistantChatReturn {
   // ---- Send a message (streaming SSE) --------------------------------------
 
   const sendMessage = useCallback(
-    async (projectId: string, message: string) => {
+    async (message: string) => {
       // Cancel any previous in-progress stream
       if (abortRef.current) {
         abortRef.current.abort();
@@ -158,7 +158,6 @@ export function useAssistantChat(): UseAssistantChatReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId: currentSessionId || undefined,
-            projectId,
             message,
           }),
           signal: controller.signal,
@@ -299,7 +298,7 @@ export function useAssistantChat(): UseAssistantChatReturn {
         if (finalSessionId && finalSessionId !== currentSessionId) {
           setCurrentSessionId(finalSessionId);
           // Refresh the session list so the new session appears
-          refreshSessions(projectId);
+          refreshSessions();
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {

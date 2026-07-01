@@ -89,7 +89,6 @@ function getFileTypeIconBg(mimeType: string): string {
 
 interface VaultDocumentRowProps {
   document: Document;
-  projectName?: string;
   onCompare: (doc: Document) => void;
   onDelete?: (doc: Document) => void;
   onView?: (doc: Document) => void;
@@ -103,7 +102,6 @@ interface VaultDocumentRowProps {
 
 export function VaultDocumentRow({
   document,
-  projectName,
   onCompare,
   onDelete,
   onView,
@@ -161,13 +159,6 @@ export function VaultDocumentRow({
           </p>
           {isDeleted && (
             <Badge className="mb-2 text-[10px] px-1.5 py-0 font-medium bg-neutral-400/20 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 border-0 w-fit">Deleted</Badge>
-          )}
-
-          {/* Project name */}
-          {projectName && (
-            <p className="text-xs text-muted-foreground/80 truncate mb-3">
-              {projectName}
-            </p>
           )}
 
           {/* Spacer */}
@@ -300,11 +291,6 @@ export function VaultDocumentRow({
             <Badge className="shrink-0 text-[10px] px-1.5 py-0 font-medium bg-neutral-400/20 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 border-0">Deleted</Badge>
           )}
         </div>
-        {projectName && (
-          <p className="mt-0.5 text-xs text-muted-foreground/80 truncate">
-            {projectName}
-          </p>
-        )}
       </div>
 
       {/* Size */}

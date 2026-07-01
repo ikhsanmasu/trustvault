@@ -121,11 +121,12 @@ export async function ingestDocuments(
  * GET /api/assistant/sessions — list chat sessions for a project.
  */
 export async function listSessions(
-  projectId: string,
+  projectId: string = "",
 ): Promise<ListSessionsResponse> {
-  const response = await fetch(
-    `/api/assistant/sessions?project_id=${encodeURIComponent(projectId)}`,
-  );
+  const params = projectId
+    ? `?project_id=${encodeURIComponent(projectId)}`
+    : "";
+  const response = await fetch(`/api/assistant/sessions${params}`);
   return handleResponse<ListSessionsResponse>(response);
 }
 
