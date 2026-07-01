@@ -283,33 +283,44 @@ export async function POST(
         continue;
       }
 
+      // ---- Auto-ingest: await chunk + embed ----
+      const docId = (document as Record<string, unknown>).id as string;
+      let ingestion: { status: string; chunks?: number; error?: string } = { status: "skipped" };
+
+      try {
+        if (!extractedText || extractedText.trim().length === 0) {
+          ingestion = { status: "empty_text", chunks: 0 };
+        } else {
+          const records = await ingestDocument(docId, projectId, extractedText);
+          ingestion = { status: records.length > 0 ? "ok" : "no_chunks", chunks: records.length };
+          if (records.length > 0) {
+            const { error: insErr } = await supabase.from("document_chunks").insert(
+              records.map((r) => ({
+                document_id: r.document_id,
+                project_id: r.project_id,
+                chunk_index: r.chunk_index,
+                content: r.content,
+                embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
+                token_count: r.token_count,
+              })),
+            );
+            if (insErr) {
+              ingestion = { status: "insert_error", error: JSON.stringify(insErr) };
+            }
+          }
+        }
+      } catch (err) {
+        ingestion = { status: "error", error: String(err) };
+      }
+
       // ---- Success ----
       results.push({
         status: "ok",
         document: document as unknown as Document,
         name: file.name,
+        ingestion,
       });
       succeeded++;
-
-      // ---- Auto-ingest: await chunk + embed ----
-      const docId = (document as Record<string, unknown>).id as string;
-      try {
-        const records = await ingestDocument(docId, projectId, extractedText);
-        if (records.length > 0) {
-          await supabase.from("document_chunks").insert(
-            records.map((r) => ({
-              document_id: r.document_id,
-              project_id: r.project_id,
-              chunk_index: r.chunk_index,
-              content: r.content,
-              embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
-              token_count: r.token_count,
-            })),
-          );
-        }
-      } catch {
-        // ingestion failure doesn't block upload
-      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Unexpected error";

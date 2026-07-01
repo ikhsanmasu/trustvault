@@ -144,6 +144,7 @@ export interface BulkUploadItem {
   error?: string;
   code?: string;
   name?: string;
+  ingestion?: { status: string; chunks?: number; error?: string };
 }
 
 export interface BulkUploadResult {
