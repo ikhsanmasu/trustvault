@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useAuthContext } from "@/components/auth-provider";
-import { useProjects } from "@/hooks/use-projects";
 import { useShares, useRevokeShare } from "@/hooks/use-share";
 import { ShareLinkCard } from "@/components/share/share-link-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,9 +9,7 @@ import { IconRefresh, IconShare } from "@/components/icons";
 
 export default function SharesPage() {
   const { isLoading: isAuthLoading } = useAuthContext();
-  const { projects, isLoading: projLoading } = useProjects();
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const { shares, isLoading: sharesLoading, error, refresh } = useShares(selectedProjectId || undefined);
+  const { shares, isLoading: sharesLoading, error, refresh } = useShares();
   const { revokeLink } = useRevokeShare();
 
   if (isAuthLoading) {
@@ -45,25 +41,6 @@ export default function SharesPage() {
         </button>
       </div>
 
-      <div className="mb-6 max-w-xs">
-        {projLoading ? (
-          <Skeleton className="h-9 w-48" />
-        ) : (
-          <select
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
       {sharesLoading && (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -82,9 +59,7 @@ export default function SharesPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <IconShare className="h-12 w-12 text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">
-            {selectedProjectId
-              ? "No shared links in this project yet."
-              : "Select a project to view its shared links."}
+            No shared links yet. Create one from My Vault.
           </p>
         </div>
       )}

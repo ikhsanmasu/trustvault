@@ -21,7 +21,7 @@ interface UseSharesReturn {
   refresh: () => void;
 }
 
-export function useShares(projectId: string | undefined): UseSharesReturn {
+export function useShares(projectId?: string): UseSharesReturn {
   const [shares, setShares] = useState<SharedLink[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

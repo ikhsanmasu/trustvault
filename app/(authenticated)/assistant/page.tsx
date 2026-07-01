@@ -252,13 +252,7 @@ export default function AssistantPage() {
     <div className="flex flex-col h-[calc(100vh-10rem)] max-h-[860px]">
       {/* ---- Header ---- */}
       <div className="shrink-0 flex items-center gap-4 pb-4">
-        <div className="flex-1">
-          {selectedProject && (
-            <span className="text-sm text-muted-foreground">
-              Context: <span className="font-medium text-foreground">{selectedProject.name}</span>
-            </span>
-          )}
-        </div>
+        <div className="flex-1" />
 
         {/* Active project name display */}
         {selectedProject && (
