@@ -20,7 +20,7 @@ import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/compon
 import { useDocuments } from "@/hooks/use-documents";
 import { useProjects } from "@/hooks/use-projects";
 import type { Document } from "@/lib/api-client";
-import { deleteDocument, restoreDocument, createProject } from "@/lib/api-client";
+import { deleteDocument, restoreDocument, createProject, moveDocument } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -100,16 +100,17 @@ export default function VaultPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
+  const [moveDocId, setMoveDocId] = useState<string | null>(null);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
 
   // Click outside to close dropdowns
   useEffect(() => {
-    if (!typeDropdownOpen && !projectDropdownOpen) return;
-    function handleClick() { setTypeDropdownOpen(false); setProjectDropdownOpen(false); }
+    if (!typeDropdownOpen && !projectDropdownOpen && !moveDocId) return;
+    function handleClick() { setTypeDropdownOpen(false); setProjectDropdownOpen(false); setMoveDocId(null); }
     document.addEventListener("click", handleClick, { once: true });
     return () => document.removeEventListener("click", handleClick);
-  }, [typeDropdownOpen, projectDropdownOpen]);
+  }, [typeDropdownOpen, projectDropdownOpen, moveDocId]);
 
   // ---- Per-type counts (from currently loaded documents) --------------------
   const typeCounts = useMemo(() => {
@@ -729,6 +730,32 @@ export default function VaultPage() {
                           <button type="button" onClick={() => setShareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors" title="Share" aria-label={`Share ${doc.name}`}>
                             <IconShare className="h-[15px] w-[15px]" />
                           </button>
+                          <div className="relative">
+                            <button type="button" onClick={() => setMoveDocId(moveDocId === doc.id ? null : doc.id)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950 transition-colors" title="Move to project" aria-label={`Move ${doc.name}`}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M21 9l-3 3 3 3"/><path d="M3 12h18"/></svg>
+                            </button>
+                            {moveDocId === doc.id && (
+                              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-border bg-card shadow-lg py-1">
+                                {projects.filter(p => p.id !== doc.project_id).length === 0 ? (
+                                  <p className="px-3 py-2 text-xs text-muted-foreground">No other projects</p>
+                                ) : (
+                                  projects.filter(p => p.id !== doc.project_id).map(p => (
+                                    <button key={p.id} type="button" onClick={async () => {
+                                      try {
+                                        await moveDocument(doc.id, p.id);
+                                        setToast(`Moved to ${p.name}`);
+                                        setTimeout(() => setToast(null), 3000);
+                                        setMoveDocId(null);
+                                        refresh();
+                                      } catch { setToast("Move failed"); setTimeout(() => setToast(null), 3000); }
+                                    }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors">
+                                      {p.name}
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </div>
                           <button type="button" onClick={() => setConfirmDelete(doc)} className={doc.deleted_at ? "inline-flex items-center justify-center h-8 w-8 rounded-lg text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" : "inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"} title={doc.deleted_at ? "Restore" : "Delete"} aria-label={doc.deleted_at ? `Restore ${doc.name}` : `Delete ${doc.name}`}>
                             {doc.deleted_at ? (
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
