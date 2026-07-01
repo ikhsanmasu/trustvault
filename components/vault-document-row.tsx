@@ -98,6 +98,7 @@ interface VaultDocumentRowProps {
   variant?: "row" | "card";
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
+  labels?: { id: string; name: string; color: string }[];
 }
 
 export function VaultDocumentRow({
@@ -110,6 +111,7 @@ export function VaultDocumentRow({
   variant = "row",
   selected = false,
   onToggleSelect,
+  labels,
 }: VaultDocumentRowProps) {
   const isDeleted = !!document.deleted_at;
   const isAnchored = !!document.fingerprint;
@@ -157,6 +159,19 @@ export function VaultDocumentRow({
           <p className={cn("text-sm font-semibold leading-snug line-clamp-2 group-hover:text-foreground transition-colors", isDeleted && "line-through text-muted-foreground/60")}>
             {document.name}
           </p>
+          {labels && labels.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {labels.map((label) => (
+                <span
+                  key={label.id}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] text-white"
+                  style={{ backgroundColor: label.color }}
+                >
+                  {label.name}
+                </span>
+              ))}
+            </div>
+          )}
           {isDeleted && (
             <Badge className="mb-2 text-[10px] px-1.5 py-0 font-medium bg-neutral-400/20 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 border-0 w-fit">Deleted</Badge>
           )}
@@ -290,6 +305,15 @@ export function VaultDocumentRow({
           {isDeleted && (
             <Badge className="shrink-0 text-[10px] px-1.5 py-0 font-medium bg-neutral-400/20 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 border-0">Deleted</Badge>
           )}
+          {labels && labels.length > 0 && labels.map((label) => (
+            <span
+              key={label.id}
+              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] text-white"
+              style={{ backgroundColor: label.color }}
+            >
+              {label.name}
+            </span>
+          ))}
         </div>
       </div>
 

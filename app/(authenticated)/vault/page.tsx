@@ -149,7 +149,7 @@ export default function VaultPage() {
   }
 
   const hasActiveFilters =
-    search !== "" || fileType !== "";
+    search !== "" || fileType !== "" || selectedLabelId !== "";
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -261,6 +261,47 @@ export default function VaultPage() {
           />
         </div>
 
+        {/* Label dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setLabelDropdownOpen(!labelDropdownOpen)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
+          >
+            {selectedLabelId ? labels.find(l => l.id === selectedLabelId)?.name ?? "Label" : "Label"}
+            <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {labelDropdownOpen && (
+            <div className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1">
+              <button
+                type="button"
+                onClick={() => { setSelectedLabelId(""); setLabelDropdownOpen(false); }}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
+                  selectedLabelId === "" && "bg-primary/10 text-primary font-medium",
+                )}
+              >
+                <span className="h-3 w-3 rounded-full border border-border shrink-0" />
+                All Labels
+              </button>
+              {labels.map((label) => (
+                <button
+                  key={label.id}
+                  type="button"
+                  onClick={() => { setSelectedLabelId(label.id); setLabelDropdownOpen(false); }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
+                    selectedLabelId === label.id && "bg-primary/10 text-primary font-medium",
+                  )}
+                >
+                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                  {label.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Type dropdown - right side */}
         <div className="relative">
           <button
@@ -337,7 +378,7 @@ export default function VaultPage() {
       {/* ---- Content: Loading | Empty | Grid | Table ------------------------- */}
       {isLoadingDocs ? (
         <DocumentListSkeleton viewMode={viewMode} />
-      ) : visibleDocs.length === 0 ? (
+      ) : labelFilteredDocs.length === 0 ? (
         /* ---- Empty state --------------------------------------------------- */
         <div className="flex flex-col items-center justify-center py-20 text-center rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/5">
           <div className="relative mb-6">
@@ -360,6 +401,7 @@ export default function VaultPage() {
               onClick={() => {
                 setSearch("");
                 setFileType("");
+                setSelectedLabelId("");
               }}
             >
               Clear all filters
@@ -379,11 +421,12 @@ export default function VaultPage() {
       ) : viewMode === "grid" ? (
         /* ---- Grid view ------------------------------------------------------ */
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {visibleDocs.map((doc) => (
+          {labelFilteredDocs.map((doc) => (
             <VaultDocumentRow
               key={doc.id}
               document={doc}
               variant="card"
+              labels={labels.filter(l => (docLabels.get(doc.id) ?? []).includes(l.id))}
               onCompare={(d) => setCompareDoc(d)}
               onView={(d) => setViewDoc(d)}
               onShare={(d) => setShareDoc(d)}
@@ -469,10 +512,10 @@ export default function VaultPage() {
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                      checked={visibleDocs.length > 0 && selectedIds.size === visibleDocs.length}
+                      checked={labelFilteredDocs.length > 0 && selectedIds.size === labelFilteredDocs.length}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedIds(new Set(visibleDocs.map(d => d.id)));
+                          setSelectedIds(new Set(labelFilteredDocs.map(d => d.id)));
                         } else {
                           setSelectedIds(new Set());
                         }
@@ -498,7 +541,7 @@ export default function VaultPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleDocs.map((doc) => {
+                {labelFilteredDocs.map((doc) => {
                   return (
                     <tr
                       key={doc.id}
@@ -522,9 +565,28 @@ export default function VaultPage() {
                         />
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={cn("text-sm font-medium truncate block max-w-[220px]", doc.deleted_at && "line-through text-muted-foreground/60")}>
-                          {doc.name}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={cn("text-sm font-medium truncate block max-w-[220px]", doc.deleted_at && "line-through text-muted-foreground/60")}>
+                            {doc.name}
+                          </span>
+                          {(docLabels.get(doc.id) ?? []).length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {(docLabels.get(doc.id) ?? []).map((labelId) => {
+                                const label = labels.find(l => l.id === labelId);
+                                if (!label) return null;
+                                return (
+                                  <span
+                                    key={labelId}
+                                    className="rounded-full px-1.5 py-0.5 text-[10px] text-white"
+                                    style={{ backgroundColor: label.color }}
+                                  >
+                                    {label.name}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="hidden sm:table-cell px-4 py-3.5">
                         <Badge
