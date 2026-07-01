@@ -8,7 +8,6 @@ import {
   getFileExtension,
 } from "@/lib/core";
 import { ingestDocument } from "@/lib/ai-assistant";
-import { createServiceClient } from "@/lib/supabase/client";
 import {
   requireAuth,
   requireProjectRole,
@@ -297,8 +296,7 @@ export async function POST(
       try {
         const records = await ingestDocument(docId, projectId, extractedText);
         if (records.length > 0) {
-          const serviceClient = createServiceClient();
-          await serviceClient.from("document_chunks").insert(
+          await supabase.from("document_chunks").insert(
             records.map((r) => ({
               document_id: r.document_id,
               project_id: r.project_id,

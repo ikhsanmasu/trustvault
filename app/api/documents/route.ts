@@ -13,7 +13,6 @@ import {
   getUserTenantId,
 } from "@/lib/supabase/auth";
 import { ingestDocument } from "@/lib/ai-assistant";
-import { createServiceClient } from "@/lib/supabase/client";
 import type {
   UploadResponse,
   ListDocumentsResponse,
@@ -226,28 +225,50 @@ export async function POST(
     );
   }
 
-  // -- 15. Auto-ingest: await chunk + embed (Vercel kills async after response)
+  // -- 15. Auto-ingest: await chunk + embed
   const doc = document as Record<string, unknown>;
   const docId = doc.id as string;
-  const docText = extractedText as string;
+  const docText = (extractedText ?? "") as string;
+
+  console.log("[upload] starting auto-ingest:", {
+    docId,
+    projectId,
+    textLen: docText.length,
+    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+    hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+
   try {
     const records = await ingestDocument(docId, projectId, docText);
+    console.log("[upload] ingestDocument returned:", {
+      chunkCount: records.length,
+      firstHasEmbedding: records[0]?.embedding?.length ?? 0,
+    });
+
     if (records.length > 0) {
-      const serviceClient = createServiceClient();
-      await serviceClient.from("document_chunks").insert(
-        records.map((r) => ({
-          document_id: r.document_id,
-          project_id: r.project_id,
-          chunk_index: r.chunk_index,
-          content: r.content,
-          embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
-          token_count: r.token_count,
-        })),
-      );
+      // Use user-scoped client — RLS allows editor insert (user role already verified)
+      const { error: insertError } = await supabase
+        .from("document_chunks")
+        .insert(
+          records.map((r) => ({
+            document_id: r.document_id,
+            project_id: r.project_id,
+            chunk_index: r.chunk_index,
+            content: r.content,
+            embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
+            token_count: r.token_count,
+          })),
+        );
+      if (insertError) {
+        console.error("[upload] chunk insert error:", JSON.stringify(insertError));
+      } else {
+        console.log("[upload] auto-ingest complete:", records.length, "chunks");
+      }
+    } else {
+      console.log("[upload] no chunks generated (empty text?)");
     }
   } catch (err) {
-    console.error("[upload] auto-ingest failed:", err);
-    // ingestion failure doesn't block the upload response
+    console.error("[upload] auto-ingest failed:", String(err));
   }
 
   return NextResponse.json(
