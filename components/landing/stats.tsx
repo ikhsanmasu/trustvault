@@ -71,13 +71,13 @@ export function Stats() {
         {/* Section header — matches Features/HowItWorks/UseCases style */}
         <div className="text-center max-w-2xl mx-auto">
           <span className="text-base font-bold text-secondary uppercase tracking-widest">
-            TrustVault in Numbers
+            Current Usage
           </span>
           <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            Trusted document integrity at scale
+            TrustVault by the numbers
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Real-time stats from the TrustVault platform — every document, every
+            Real-time stats from the platform — every document, every
             blockchain anchor, every shared link.
           </p>
         </div>

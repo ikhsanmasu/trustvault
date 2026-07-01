@@ -44,7 +44,7 @@ export default function LoginForm() {
       if (signInError) {
         setError(signInError);
       } else {
-        router.push("/projects");
+        router.push("/dashboard");
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");

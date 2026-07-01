@@ -19,7 +19,7 @@ import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/compon
 import { useDocuments } from "@/hooks/use-documents";
 import { useProjects } from "@/hooks/use-projects";
 import type { Document } from "@/lib/api-client";
-import { deleteDocument, restoreDocument, anchorAllDocuments } from "@/lib/api-client";
+import { deleteDocument, restoreDocument, anchorAllDocuments, createProject } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -91,6 +91,9 @@ export default function VaultPage() {
   const [confirmDelete, setConfirmDelete] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [creatingProject, setCreatingProject] = useState(false);
 
   // ---- Per-type counts (from currently loaded documents) --------------------
   const typeCounts = useMemo(() => {
@@ -372,6 +375,83 @@ export default function VaultPage() {
       )}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-5 py-3 text-sm font-medium shadow-lg animate-fade-in">{toast}</div>
+      )}
+
+      {/* ---- Action bar: Create Project + Upload ---------------------------- */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { setShowNewProject(!showNewProject); setNewProjectName(""); }}
+        >
+          <IconPlus className="mr-1.5 h-4 w-4" />
+          Create Project
+        </Button>
+        <Link
+          href="/upload"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+        >
+          <IconPlus className="h-4 w-4" />
+          Upload
+        </Link>
+      </div>
+
+      {/* ---- Inline create project form -------------------------------------- */}
+      {showNewProject && (
+        <div className="mb-5 flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+          <input
+            type="text"
+            placeholder="Project name"
+            value={newProjectName}
+            onChange={(e) => setNewProjectName(e.target.value)}
+            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            onKeyDown={async (e) => {
+              if (e.key === "Enter" && newProjectName.trim()) {
+                setCreatingProject(true);
+                try {
+                  await createProject({ name: newProjectName.trim() });
+                  setNewProjectName("");
+                  setShowNewProject(false);
+                  setToast("Project created!");
+                  // reload projects
+                  window.location.reload();
+                } catch {
+                  setError("Failed to create project");
+                } finally {
+                  setCreatingProject(false);
+                }
+              }
+            }}
+          />
+          <Button
+            size="sm"
+            disabled={!newProjectName.trim() || creatingProject}
+            onClick={async () => {
+              if (!newProjectName.trim()) return;
+              setCreatingProject(true);
+              try {
+                await createProject({ name: newProjectName.trim() });
+                setNewProjectName("");
+                setShowNewProject(false);
+                setToast("Project created!");
+                window.location.reload();
+              } catch {
+                setError("Failed to create project");
+              } finally {
+                setCreatingProject(false);
+              }
+            }}
+          >
+            {creatingProject ? "Creating…" : "Create"}
+          </Button>
+          <button
+            type="button"
+            onClick={() => setShowNewProject(false)}
+            className="text-muted-foreground hover:text-foreground text-sm"
+          >
+            Cancel
+          </button>
+        </div>
       )}
 
       {/* ---- Content: Loading | Empty | Grid | Table ------------------------- */}
