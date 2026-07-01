@@ -185,7 +185,7 @@ export default function ProjectDetailPage() {
           document={anchorDoc}
           open={anchorDoc !== null}
           onOpenChange={(open) => { if (!open) setAnchorDoc(null); }}
-          onAnchored={async () => { await refreshDocs(); setAnchorDoc(null); }}
+          onAnchored={() => { refreshDocs(); }}
         />
       )}
       {confirmDelete && (

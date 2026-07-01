@@ -274,3 +274,58 @@ export interface VerifyResponse {
   txHash: string | null;
   chain: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// P6: AI Vault Assistant
+// ---------------------------------------------------------------------------
+
+export interface Citation {
+  document_id: string;
+  document_name: string;
+  chunk_index: number;
+  snippet: string;
+}
+
+export interface ChatSession {
+  id: string;
+  project_id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations: Citation[] | null;
+  created_at: string;
+}
+
+export interface IngestRequest {
+  documentIds: string[];
+}
+
+export interface IngestResponse {
+  ingested: number;
+  failed: number;
+  totalChunks: number;
+  errors: string[];
+}
+
+export interface ChatRequest {
+  sessionId?: string;
+  projectId: string;
+  message: string;
+}
+
+export interface ListSessionsResponse {
+  sessions: ChatSession[];
+}
+
+export interface GetSessionResponse {
+  session: ChatSession;
+  messages: ChatMessage[];
+}

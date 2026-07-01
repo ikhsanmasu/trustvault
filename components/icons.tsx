@@ -916,3 +916,27 @@ export function IconTrendNeutral({ className }: IconProps) {
     </svg>
   );
 }
+
+// ---- P6: AI Assistant ------------------------------------------------------
+
+export function IconMessageBot({ className }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("h-5 w-5 shrink-0", className)}
+      role="img"
+      aria-label="AI Assistant"
+    >
+      <title>AI Assistant</title>
+      <path d="M12 2a3 3 0 0 1 3 3v1h2a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-2l-3 3-3-3H7a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h2V5a3 3 0 0 1 3-3z" />
+      <circle cx="9" cy="12" r="1" fill="currentColor" />
+      <circle cx="15" cy="12" r="1" fill="currentColor" />
+    </svg>
+  );
+}

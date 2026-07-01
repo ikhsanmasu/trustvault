@@ -995,3 +995,432 @@ CREATE POLICY "documents_update_anchor" ON public.documents
 - Existing queries (SELECT, INSERT) on `documents` continue to work without modification.
 - The four new columns are all nullable with default NULL, so existing INSERT statements (which do not mention the new columns) continue to work.
 - The `documents` type in `lib/types.ts` must add optional fields for the new columns, maintaining backward compatibility with existing code that destructures Document objects.
+
+---
+---
+
+## 12. P6 Additions: AI Vault Assistant (pgvector + Chat)
+
+### 12a. Overview
+
+P6 adds an AI-powered conversational assistant that answers questions about vault documents using Retrieval-Augmented Generation (RAG). The system uses:
+
+- **pgvector** for storing and querying document embeddings (semantic search).
+- **DeepSeek API** for generating embeddings via OpenAI-compatible `/embeddings` endpoint (model: `deepseek-chat`).
+- **DeepSeek `deepseek-chat`** for the chat LLM (consistent with P1-P5 AI provider).
+- **Supabase** for storing chat sessions, messages, and document chunks.
+
+The ingestion pipeline runs when documents are uploaded: text is chunked, embeddings are generated, and chunks are stored in `document_chunks`. At query time, the user's question is embedded, similar chunks are retrieved via cosine similarity, and the LLM answers with context + citations.
+
+### 12b. New Extension
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+```
+
+The `pgvector` extension must be enabled before creating any vector columns.
+
+### 12c. New Table: `document_chunks`
+
+#### Purpose
+
+Stores text chunks extracted from uploaded documents, each with a vector embedding for semantic similarity search. Used by the RAG pipeline to retrieve relevant context for AI chat queries.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `document_id` | `uuid` | NOT NULL | -- | FK to `documents.id`. The source document. ON DELETE CASCADE. |
+| `project_id` | `uuid` | NOT NULL | -- | FK to `projects.id`. Denormalised for RLS efficiency. |
+| `chunk_index` | `integer` | NOT NULL | -- | 0-based position within the document's chunk sequence. |
+| `content` | `text` | NOT NULL | -- | The chunk's text content (500-1000 characters). |
+| `embedding` | `vector(1536)` | NULL | NULL | DeepSeek embedding (OpenAI-compatible endpoint). Nullable for degraded-mode (embedding generation can fail gracefully). |
+| `token_count` | `integer` | NOT NULL | `0` | Approximate token count of the chunk content. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC). |
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (document_id) REFERENCES public.documents(id) ON DELETE CASCADE` — deleting a document removes its chunks.
+- `FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE`
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `document_chunks_pkey` | `id` | Primary key lookup |
+| `document_chunks_document_id_idx` | `document_id` | Fetch all chunks for a document |
+| `document_chunks_project_id_idx` | `project_id` | RLS + project-scoped queries |
+| `document_chunks_embedding_idx` | `embedding` | **IVFFlat index** for cosine similarity search (`vector_cosine_ops`). Created after data exists. |
+
+**Note:** The IVFFlat index on `embedding` uses `vector_cosine_ops` for cosine similarity search. It is created with `lists = 100` (suitable for up to ~1M chunks). The index is created AFTER the table exists (in the migration) so pgvector can build it.
+
+### 12d. New Table: `chat_sessions`
+
+#### Purpose
+
+Stores chat conversation sessions. Each session belongs to a user within a project context. The session has a title and tracks when it was created and last updated.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `project_id` | `uuid` | NOT NULL | -- | FK to `projects.id`. The project context for this chat. |
+| `user_id` | `uuid` | NOT NULL | -- | FK to `auth.users.id`. The user who owns this session. |
+| `title` | `text` | NOT NULL | `'New Chat'` | Display title for the session sidebar. Updated from first user message. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Session creation timestamp (UTC). |
+| `updated_at` | `timestamptz` | NOT NULL | `now()` | Last message timestamp (UTC). |
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE`
+- `FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE`
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `chat_sessions_pkey` | `id` | Primary key lookup |
+| `chat_sessions_project_user_idx` | `project_id`, `user_id` | List user's sessions in a project |
+| `chat_sessions_updated_at_idx` | `updated_at DESC` | Order by most recently active |
+
+### 12e. New Table: `chat_messages`
+
+#### Purpose
+
+Stores individual messages within a chat session. Each message has a role (user/assistant), content, and optional citations (for assistant messages that reference document chunks).
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `session_id` | `uuid` | NOT NULL | -- | FK to `chat_sessions.id`. ON DELETE CASCADE. |
+| `role` | `text` | NOT NULL | -- | `'user'` or `'assistant'`. CHECK constraint enforces. |
+| `content` | `text` | NOT NULL | -- | The message text content. |
+| `citations` | `jsonb` | NULL | `NULL` | Array of citation objects (only for assistant messages). See citation shape below. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Message creation timestamp (UTC). |
+
+#### Citation Shape (JSONB)
+
+```ts
+type Citation = {
+  document_id: string;      // UUID of the source document
+  document_name: string;    // Display name of the source document
+  chunk_index: number;      // Index of the chunk within the document
+  snippet: string;          // Short excerpt (first ~150 chars of chunk content)
+};
+```
+
+The `citations` column stores `Citation[]` as JSONB, or `NULL` for user messages.
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (session_id) REFERENCES public.chat_sessions(id) ON DELETE CASCADE`
+- `CHECK (role IN ('user', 'assistant'))`
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `chat_messages_pkey` | `id` | Primary key lookup |
+| `chat_messages_session_id_idx` | `session_id`, `created_at` | Fetch messages in a session, ordered by time |
+
+### 12f. RLS Policies (P6)
+
+#### Table: `document_chunks`
+
+```sql
+ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: user can see chunks from documents in projects they are a member of
+CREATE POLICY "document_chunks_select_member" ON public.document_chunks
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = document_chunks.project_id AND user_id = auth.uid()
+    )
+  );
+
+-- INSERT: user must be admin or editor of the project
+CREATE POLICY "document_chunks_insert_editor" ON public.document_chunks
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = document_chunks.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  );
+
+-- DELETE: admins and editors can delete chunks (e.g., re-ingestion)
+CREATE POLICY "document_chunks_delete_editor" ON public.document_chunks
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = document_chunks.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  );
+```
+
+#### Table: `chat_sessions`
+
+```sql
+ALTER TABLE public.chat_sessions ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: user can see their own sessions in projects they belong to
+CREATE POLICY "chat_sessions_select_own" ON public.chat_sessions
+  FOR SELECT
+  USING (user_id = auth.uid());
+
+-- INSERT: user can create sessions in projects they are a member of
+CREATE POLICY "chat_sessions_insert_member" ON public.chat_sessions
+  FOR INSERT
+  WITH CHECK (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = chat_sessions.project_id AND user_id = auth.uid()
+    )
+  );
+
+-- UPDATE: user can update their own sessions (title, updated_at)
+CREATE POLICY "chat_sessions_update_own" ON public.chat_sessions
+  FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- DELETE: user can delete their own sessions
+CREATE POLICY "chat_sessions_delete_own" ON public.chat_sessions
+  FOR DELETE
+  USING (user_id = auth.uid());
+```
+
+#### Table: `chat_messages`
+
+```sql
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: user can see messages from their own sessions
+CREATE POLICY "chat_messages_select_own" ON public.chat_messages
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.chat_sessions
+      WHERE id = chat_messages.session_id AND user_id = auth.uid()
+    )
+  );
+
+-- INSERT: user can insert messages into their own sessions
+CREATE POLICY "chat_messages_insert_own" ON public.chat_messages
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.chat_sessions
+      WHERE id = chat_messages.session_id AND user_id = auth.uid()
+    )
+  );
+```
+
+### 12g. Migration File
+
+**File:** `supabase/migrations/20260701000000_p6_ai_assistant.sql`
+
+```sql
+-- ============================================================================
+-- TrustVault P6: AI Vault Assistant (pgvector + chat)
+-- Migration: 20260701000000_p6_ai_assistant.sql
+-- Prerequisite: 20260622000000_p5_blockchain_anchor.sql
+-- ============================================================================
+
+-- --------------------------------------------------------------------------
+-- 1. ENABLE pgvector EXTENSION
+-- --------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+
+-- --------------------------------------------------------------------------
+-- 2. DOCUMENT CHUNKS TABLE (for RAG embeddings)
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.document_chunks (
+  id            uuid          NOT NULL DEFAULT gen_random_uuid(),
+  document_id   uuid          NOT NULL,
+  project_id    uuid          NOT NULL,
+  chunk_index   integer       NOT NULL,
+  content       text          NOT NULL,
+  embedding     vector(1536)  NULL DEFAULT NULL,
+  token_count   integer       NOT NULL DEFAULT 0,
+  created_at    timestamptz   NOT NULL DEFAULT now(),
+
+  CONSTRAINT document_chunks_pkey PRIMARY KEY (id),
+  CONSTRAINT document_chunks_document_id_fkey FOREIGN KEY (document_id)
+    REFERENCES public.documents(id) ON DELETE CASCADE,
+  CONSTRAINT document_chunks_project_id_fkey FOREIGN KEY (project_id)
+    REFERENCES public.projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS document_chunks_document_id_idx
+  ON public.document_chunks (document_id);
+
+CREATE INDEX IF NOT EXISTS document_chunks_project_id_idx
+  ON public.document_chunks (project_id);
+
+-- IVFFlat index for cosine similarity search on embeddings.
+-- Lists = 100 is suitable for up to ~1 million chunks.
+-- The index is created immediately; pgvector builds it as data is inserted.
+CREATE INDEX IF NOT EXISTS document_chunks_embedding_idx
+  ON public.document_chunks
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+
+-- --------------------------------------------------------------------------
+-- 3. CHAT SESSIONS TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.chat_sessions (
+  id            uuid          NOT NULL DEFAULT gen_random_uuid(),
+  project_id    uuid          NOT NULL,
+  user_id       uuid          NOT NULL,
+  title         text          NOT NULL DEFAULT 'New Chat',
+  created_at    timestamptz   NOT NULL DEFAULT now(),
+  updated_at    timestamptz   NOT NULL DEFAULT now(),
+
+  CONSTRAINT chat_sessions_pkey PRIMARY KEY (id),
+  CONSTRAINT chat_sessions_project_id_fkey FOREIGN KEY (project_id)
+    REFERENCES public.projects(id) ON DELETE CASCADE,
+  CONSTRAINT chat_sessions_user_id_fkey FOREIGN KEY (user_id)
+    REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS chat_sessions_project_user_idx
+  ON public.chat_sessions (project_id, user_id);
+
+CREATE INDEX IF NOT EXISTS chat_sessions_updated_at_idx
+  ON public.chat_sessions (updated_at DESC);
+
+-- --------------------------------------------------------------------------
+-- 4. CHAT MESSAGES TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.chat_messages (
+  id            uuid          NOT NULL DEFAULT gen_random_uuid(),
+  session_id    uuid          NOT NULL,
+  role          text          NOT NULL CHECK (role IN ('user', 'assistant')),
+  content       text          NOT NULL,
+  citations     jsonb         NULL DEFAULT NULL,
+  created_at    timestamptz   NOT NULL DEFAULT now(),
+
+  CONSTRAINT chat_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT chat_messages_session_id_fkey FOREIGN KEY (session_id)
+    REFERENCES public.chat_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS chat_messages_session_id_idx
+  ON public.chat_messages (session_id, created_at);
+
+-- --------------------------------------------------------------------------
+-- 5. RLS POLICIES
+-- --------------------------------------------------------------------------
+
+-- --- document_chunks ---
+ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "document_chunks_select_member" ON public.document_chunks
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = document_chunks.project_id AND user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "document_chunks_insert_editor" ON public.document_chunks
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = document_chunks.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  );
+
+CREATE POLICY "document_chunks_delete_editor" ON public.document_chunks
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = document_chunks.project_id
+        AND user_id = auth.uid()
+        AND role IN ('admin', 'editor')
+    )
+  );
+
+-- --- chat_sessions ---
+ALTER TABLE public.chat_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "chat_sessions_select_own" ON public.chat_sessions
+  FOR SELECT
+  USING (user_id = auth.uid());
+
+CREATE POLICY "chat_sessions_insert_member" ON public.chat_sessions
+  FOR INSERT
+  WITH CHECK (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_id = chat_sessions.project_id AND user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "chat_sessions_update_own" ON public.chat_sessions
+  FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "chat_sessions_delete_own" ON public.chat_sessions
+  FOR DELETE
+  USING (user_id = auth.uid());
+
+-- --- chat_messages ---
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "chat_messages_select_own" ON public.chat_messages
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.chat_sessions
+      WHERE id = chat_messages.session_id AND user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "chat_messages_insert_own" ON public.chat_messages
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.chat_sessions
+      WHERE id = chat_messages.session_id AND user_id = auth.uid()
+    )
+  );
+```
+
+### 12h. Migration Strategy
+
+- **Additive only:** The migration adds new tables, indexes, and RLS policies. No existing tables or data are modified.
+- **Existing rows:** No backfill needed. Existing documents will not have chunks until explicitly ingested.
+- **New documents:** Documents uploaded after P6 should be automatically ingested (chunked + embedded) via the `POST /api/documents` and `POST /api/documents/bulk` route handlers calling the ingestion pipeline.
+- **Rollback:** Drop RLS policies, drop tables (CASCADE), drop extension. Purely additive migration with a clean reverse path.
+- **pgvector extension:** Uses `CREATE EXTENSION IF NOT EXISTS` — safe to run multiple times.
+
+### 12i. No Breaking Changes
+
+- All existing tables, columns, constraints, indexes, and RLS policies from P1-P5 are preserved.
+- Existing queries and API endpoints continue to work without modification.
+- The new tables are only accessed by the new P6 API endpoints and library code.
+- The `Document` type in `lib/types.ts` is unchanged — chunk data is separate.

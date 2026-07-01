@@ -1219,3 +1219,346 @@ Example (hash mismatch -- tampering detected):
 | `ANCHOR_PRIVATE_KEY` | `createSigner()` -- signs anchor transactions. **Server-only, never prefixed with `NEXT_PUBLIC_`** |
 
 These are in addition to the P2 environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DEEPSEEK_API_KEY`).
+
+---
+
+## P6 Endpoint Index — AI Vault Assistant
+
+| Method | Path | Auth | Role Required | Description |
+|---|---|---|---|---|
+| `POST` | `/api/assistant/ingest` | Yes | editor/admin | Ingest document(s) into vector store |
+| `POST` | `/api/assistant/chat` | Yes | member | Send a chat message (streaming SSE response) |
+| `GET` | `/api/assistant/sessions` | Yes | member | List chat sessions for a project |
+| `GET` | `/api/assistant/sessions/[id]` | Yes | owner | Get chat session with messages |
+| `DELETE` | `/api/assistant/sessions/[id]` | Yes | owner | Delete a chat session |
+| `GET` | `/api/assistant/sessions/[id]/messages` | Yes | owner | Get messages for a session |
+
+---
+
+## P6 Shared Types
+
+```ts
+// ===== Document Chunk =====
+
+type DocumentChunk = {
+  id: string;            // UUID
+  document_id: string;   // UUID of source document
+  project_id: string;    // UUID of project
+  chunk_index: number;   // 0-based position in document
+  content: string;       // chunk text
+  token_count: number;   // approximate token count
+  created_at: string;    // ISO 8601 UTC
+};
+
+// ===== Chat Session =====
+
+type ChatSession = {
+  id: string;            // UUID
+  project_id: string;    // UUID
+  user_id: string;       // UUID of auth.users
+  title: string;         // display title
+  created_at: string;    // ISO 8601 UTC
+  updated_at: string;    // ISO 8601 UTC
+};
+
+// ===== Chat Message =====
+
+type Citation = {
+  document_id: string;     // UUID
+  document_name: string;   // display name
+  chunk_index: number;     // chunk index
+  snippet: string;         // ~150 char excerpt
+};
+
+type ChatMessage = {
+  id: string;              // UUID
+  session_id: string;      // UUID
+  role: 'user' | 'assistant';
+  content: string;
+  citations: Citation[] | null;  // only for assistant messages
+  created_at: string;      // ISO 8601 UTC
+};
+
+// ===== Ingest =====
+
+type IngestRequest = {
+  documentIds: string[];   // UUIDs of documents to ingest
+};
+
+type IngestResponse = {
+  ingested: number;        // number of documents successfully processed
+  failed: number;          // number that failed
+  totalChunks: number;     // total chunks created
+  errors: string[];        // per-document error messages
+};
+
+// ===== Chat (SSE) =====
+
+type ChatRequest = {
+  sessionId?: string;      // existing session UUID, or omit to create new
+  projectId: string;       // project context for RAG
+  message: string;         // user's question
+};
+
+// SSE event types:
+// - "token": { token: string } — streaming token from LLM
+// - "citations": { citations: Citation[] } — source citations
+// - "done": { sessionId: string, messageId: string } — completion
+// - "error": { error: string, code: string } — error
+```
+
+---
+
+## P6 Endpoints
+
+---
+
+### POST /api/assistant/ingest
+
+Ingest one or more documents into the vector store. This chunks the document text, generates embeddings via OpenAI, and stores the chunks in `document_chunks`. Documents that already have chunks are skipped (idempotent).
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type IngestRequest = {
+  documentIds: string[];  // 1-50 document UUIDs
+};
+```
+
+#### Processing
+
+1. `requireAuth()` — return 401 if no session.
+2. Validate `documentIds` is a non-empty array, max 50 entries. Each must be a valid UUID.
+3. For each document ID:
+   a. Fetch the document from `documents`. RLS ensures user has access.
+   b. Return per-document error if not found/accessible.
+   c. Check if chunks already exist for this document. If yes, skip (idempotent).
+   d. **Role check:** user must be `admin` or `editor` of the document's project.
+   e. Call `chunkDocument(document)` to split `extracted_text` into overlapping chunks.
+   f. For each chunk, call `generateEmbedding(chunk)` via OpenAI API.
+   g. Insert chunks into `document_chunks` (user-scoped client, RLS-enforced).
+4. Return 200 with `IngestResponse`.
+
+#### Response -- 200 OK
+
+```ts
+type IngestResponse = {
+  ingested: number;
+  failed: number;
+  totalChunks: number;
+  errors: string[];
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_DOCUMENT_IDS` | `documentIds` missing, empty, or > 50 |
+| 400 | `INVALID_DOCUMENT_ID` | An entry in `documentIds` is not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 500 | `EMBEDDING_ERROR` | OpenAI embedding API call failed |
+| 500 | `DB_ERROR` | Postgres insert failed |
+
+Per-document errors (in `errors[]`): `NOT_FOUND`, `FORBIDDEN`, `EMBEDDING_ERROR`, `EMPTY_TEXT` (document has no extracted text).
+
+---
+
+### POST /api/assistant/chat
+
+Send a chat message and receive a streaming SSE response. This is the core RAG endpoint: embed the question → retrieve similar chunks → build prompt with context → stream LLM response.
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type ChatRequest = {
+  sessionId?: string;    // existing session UUID; omit to create a new session
+  projectId: string;     // project context for RAG (required)
+  message: string;       // user's question (1-4000 characters)
+};
+```
+
+#### Processing
+
+1. `requireAuth()` — return 401 if no session.
+2. Validate `projectId` is a valid UUID. Validate `message` is non-empty, <= 4000 chars.
+3. Verify user is a member of the project. Return 403 if not.
+4. **Session resolution:**
+   - If `sessionId` provided: fetch session, verify it belongs to the user. Return 404 if not found.
+   - If no `sessionId`: create a new `chat_sessions` row with `title = message.slice(0, 100)`.
+5. Insert the user message into `chat_messages`.
+6. **RAG pipeline:**
+   a. Generate embedding for the user's message via OpenAI.
+   b. Query `document_chunks` where `project_id = projectId`, ordered by `embedding <=> queryEmbedding` (cosine distance), LIMIT 5.
+   c. If no chunks found (project has no ingested documents): return a plain chat response (no context).
+7. **Build RAG prompt:**
+   - System: "You are TrustVault AI Assistant. Answer questions based on the provided document excerpts. Cite sources when possible. If the answer cannot be found in the excerpts, say so honestly."
+   - User prompt: context chunks + conversation history (last 10 messages) + current question.
+8. **Stream response via SSE:**
+   - Call DeepSeek `chat/completions` with `stream: true`.
+   - Emit `token` events as tokens arrive.
+   - After stream completes, extract citations from the full response.
+   - Emit `citations` event.
+   - Save the assistant message to `chat_messages` with citations.
+   - Update `chat_sessions.updated_at` and `title` (from first user message if new).
+   - Emit `done` event with `sessionId` and `messageId`.
+9. On error, emit `error` event and close the stream.
+
+#### Response -- 200 OK (SSE stream)
+
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+
+event: token
+data: {"token":"Based"}
+
+event: token
+data: {"token":" on"}
+
+event: token
+data: {"token":" the"}
+
+...
+
+event: citations
+data: {"citations":[{"document_id":"...","document_name":"contract.pdf","chunk_index":2,"snippet":"Payment terms: ..."}]}
+
+event: done
+data: {"sessionId":"...","messageId":"..."}
+```
+
+#### Errors (non-streaming — returned as JSON before SSE starts)
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `MISSING_PROJECT_ID` | `projectId` missing or not a valid UUID |
+| 400 | `MISSING_MESSAGE` | `message` missing or empty |
+| 400 | `MESSAGE_TOO_LONG` | `message` > 4000 characters |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is not a member of the project |
+| 404 | `SESSION_NOT_FOUND` | `sessionId` provided but not found or not owned by user |
+| 500 | `EMBEDDING_ERROR` | OpenAI embedding API call failed |
+| 500 | `AI_API_ERROR` | DeepSeek API call failed |
+| 500 | `DB_ERROR` | Postgres query/insert failed |
+
+---
+
+### GET /api/assistant/sessions
+
+List chat sessions for a project. Returns sessions ordered by `updated_at` descending (most recent first). Only returns sessions owned by the current user.
+
+#### Request
+
+`Content-Type: none` (GET with query parameters)
+
+| Query param | Type | Required | Description |
+|---|---|---|---|
+| `project_id` | string (UUID) | Yes | Project to list sessions for |
+
+#### Processing
+
+1. `requireAuth()` — return 401 if no session.
+2. Validate `project_id` is a valid UUID.
+3. Verify user is a member of the project. Return 403 if not.
+4. Query `chat_sessions` where `project_id = :project_id AND user_id = :userId`, ordered by `updated_at DESC`.
+5. Return the list.
+
+#### Response -- 200 OK
+
+```ts
+type ListSessionsResponse = {
+  sessions: ChatSession[];
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `MISSING_PROJECT_ID` | `project_id` missing or not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is not a member of the project |
+| 500 | `DB_ERROR` | Postgres query failed |
+
+---
+
+### GET /api/assistant/sessions/[id]
+
+Get a single chat session with its messages.
+
+#### Request
+
+`Content-Type: none` (GET with path parameter)
+
+| Path param | Type | Required | Description |
+|---|---|---|---|
+| `id` | string (UUID) | Yes | The session UUID |
+
+#### Processing
+
+1. `requireAuth()` — return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch session. RLS ensures user can only see their own sessions.
+4. Return 404 if not found.
+5. Fetch messages for the session, ordered by `created_at ASC`.
+6. Return session + messages.
+
+#### Response -- 200 OK
+
+```ts
+type GetSessionResponse = {
+  session: ChatSession;
+  messages: ChatMessage[];
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_ID` | `id` not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 404 | `NOT_FOUND` | Session not found or not owned by user |
+| 500 | `DB_ERROR` | Postgres query failed |
+
+---
+
+### DELETE /api/assistant/sessions/[id]
+
+Delete a chat session and all its messages (CASCADE).
+
+#### Processing
+
+1. `requireAuth()` — return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Delete session. RLS ensures user can only delete their own sessions.
+4. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{ "deleted": true }
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_ID` | `id` not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 404 | `NOT_FOUND` | Session not found or not owned by user |
+| 500 | `DB_ERROR` | Postgres delete failed |
+
+---
+
+## P6 Environment Variables
+
+P6 uses the existing `DEEPSEEK_API_KEY` for both chat completions and embeddings (OpenAI-compatible `/embeddings` endpoint at `https://api.deepseek.com/embeddings`). **No new environment variables are required for P6.**
+
+The DeepSeek API key (`DEEPSEEK_API_KEY`) is already configured from P1-P5 for the compare pipeline.
