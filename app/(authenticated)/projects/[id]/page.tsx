@@ -55,9 +55,9 @@ export default function ProjectDetailPage() {
   const canUpload = currentUserRole === "admin" || currentUserRole === "editor";
   const isAdmin = currentUserRole === "admin";
 
-  if (!isAuthLoading && !user) { router.push("/login"); return <div className="flex min-h-[50vh] items-center justify-center"><Alert variant="destructive"><AlertDescription>Please log in to access projects.</AlertDescription></Alert></div>; }
+  if (!isAuthLoading && !user) { router.push("/login"); return <div className="flex min-h-[50vh] items-center justify-center"><Alert variant="destructive"><AlertDescription>Please log in to access groups.</AlertDescription></Alert></div>; }
   if (isAuthLoading || isLoadingProject) return <ProjectDetailSkeleton />;
-  if (projectError || !project) return <div className="space-y-4"><Alert variant="destructive"><AlertDescription>{projectError || "Project not found."}</AlertDescription></Alert><Link href="/projects" className={buttonVariants({ variant: "outline" })}>Back to Projects</Link></div>;
+  if (projectError || !project) return <div className="space-y-4"><Alert variant="destructive"><AlertDescription>{projectError || "Group not found."}</AlertDescription></Alert><Link href="/projects" className={buttonVariants({ variant: "outline" })}>Back to Groups</Link></div>;
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: "documents", label: "Documents", icon: <IconDocument className="h-4 w-4" />, count: docTotal },
@@ -70,7 +70,7 @@ export default function ProjectDetailPage() {
       {/* Breadcrumb + Hero Header */}
       <div>
         <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 mb-4">
-          <IconChevronLeft className="h-4 w-4" /> Back to Projects
+          <IconChevronLeft className="h-4 w-4" /> Back to Groups
         </Link>
         <section className="relative overflow-hidden rounded-2xl hero-gradient">
           <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)", backgroundSize: "24px 24px" }} aria-hidden="true" />
@@ -78,7 +78,7 @@ export default function ProjectDetailPage() {
           <div className="relative px-6 py-8 sm:py-10">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1 min-w-0">
-                <span className="text-xs font-semibold text-secondary uppercase tracking-widest">Project</span>
+                <span className="text-xs font-semibold text-secondary uppercase tracking-widest">Group</span>
                 <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground text-balance truncate">{project.name}</h1>
                 {project.description && <p className="text-sm text-muted-foreground leading-relaxed max-w-xl line-clamp-2">{project.description}</p>}
                 {members.length > 0 && (
@@ -261,7 +261,7 @@ export default function ProjectDetailPage() {
         }}
       />
       {/* Modals */}
-      {project && <ProjectForm open={editDialogOpen} onOpenChange={setEditDialogOpen} onSubmit={async (data) => await updateProjectDetails(data)} title="Edit Project" initialName={project.name} initialDescription={project.description} isEdit />}
+      {project && <ProjectForm open={editDialogOpen} onOpenChange={setEditDialogOpen} onSubmit={async (data) => await updateProjectDetails(data)} title="Edit Group" initialName={project.name} initialDescription={project.description} isEdit />}
       {compareDoc && <CompareModal document={compareDoc} open={compareDoc !== null} onOpenChange={(open) => { if (!open) setCompareDoc(null); }} />}
       {viewDoc && <DocumentPreviewModal document={viewDoc} open={viewDoc !== null} onOpenChange={(open) => { if (!open) setViewDoc(null); }} />}
       {anchorDoc && (

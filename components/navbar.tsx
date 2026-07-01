@@ -55,7 +55,7 @@ export function Navbar() {
               href="/projects"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-muted"
             >
-              Projects
+              Groups
             </Link>
             <Link
               href="/dashboard"
@@ -99,7 +99,7 @@ export function Navbar() {
                   Dashboard
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push("/projects")}>
-                  Projects
+                  Groups
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push("/vault")}>
                   My Vault

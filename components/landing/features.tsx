@@ -101,7 +101,7 @@ const features = [
   {
     title: "Team Ready",
     description:
-      "Built for teams with project-level organization, role-based access control, and full member management. Multi-tenant from day one.",
+      "Built for teams with group-level organization, role-based access control, and full member management. Multi-tenant from day one.",
     icon: (
       <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path

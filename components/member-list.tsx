@@ -214,7 +214,7 @@ export default function MemberList({
         <DialogHeader>
           <DialogTitle>Add Member</DialogTitle>
           <DialogDescription>
-            Add a user to this project by their user ID. They must be in your tenant.
+            Add a user to this group by their user ID. They must be in your tenant.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleAdd}>

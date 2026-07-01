@@ -47,14 +47,14 @@ function ComparePageInner() {
               href={`/projects/${projectId}`}
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >
-              Back to Project
+              Back to Group
             </Link>
           ) : (
             <Link
               href="/projects"
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >
-              Projects
+              Groups
             </Link>
           )}
           <Link
@@ -72,7 +72,7 @@ function ComparePageInner() {
       {projectId && (
         <div className="mb-4 rounded-md border bg-muted/30 px-4 py-3">
           <p className="text-sm text-muted-foreground">
-            Comparing documents within project{" "}
+            Comparing documents within group{" "}
             <Badge variant="secondary" className="font-mono text-xs">
               {projectId.slice(0, 8)}…
             </Badge>
@@ -83,7 +83,7 @@ function ComparePageInner() {
       {docA && docB && (
         <div className="mb-4 rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
           Pre-filled from document selection. Documents must be in the same
-          project for comparison to succeed.
+          group for comparison to succeed.
         </div>
       )}
 

@@ -29,7 +29,7 @@ export default function ProjectForm({
   open,
   onOpenChange,
   onSubmit,
-  title = "Create Project",
+  title = "Create Group",
   initialName = "",
   initialDescription = "",
   isEdit = false,
@@ -54,11 +54,11 @@ export default function ProjectForm({
     setError(null);
 
     if (!name.trim()) {
-      setError("Project name is required.");
+      setError("Group name is required.");
       return;
     }
     if (name.trim().length > 255) {
-      setError("Project name must be 255 characters or fewer.");
+      setError("Group name must be 255 characters or fewer.");
       return;
     }
 
@@ -72,7 +72,7 @@ export default function ProjectForm({
         handleOpenChange(false);
       }
     } catch {
-      setError("Failed to save project.");
+      setError("Failed to save group.");
     } finally {
       setIsSubmitting(false);
     }
@@ -84,14 +84,14 @@ export default function ProjectForm({
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
           {isEdit
-            ? "Update the project name and description."
-            : "Create a new project to organise documents."}
+            ? "Update the group name and description."
+            : "Create a new group to organise documents."}
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit}>
         <DialogContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="project-name">Project Name</Label>
+            <Label htmlFor="project-name">Group Name</Label>
             <Input
               id="project-name"
               placeholder="e.g. Q4 Contracts"
@@ -108,7 +108,7 @@ export default function ProjectForm({
             <Label htmlFor="project-description">Description (optional)</Label>
             <Textarea
               id="project-description"
-              placeholder="What is this project about?"
+              placeholder="What is this group about?"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={isSubmitting}
@@ -138,7 +138,7 @@ export default function ProjectForm({
                 : "Creating…"
               : isEdit
                 ? "Save Changes"
-                : "Create Project"}
+                : "Create Group"}
           </Button>
         </DialogFooter>
       </form>

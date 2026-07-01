@@ -274,7 +274,7 @@ function ProfileTab() {
             />
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
-                This name will be shown to other members in your projects.
+                This name will be shown to other members in your groups.
               </p>
               <p className="text-xs text-muted-foreground/70 tabular-nums shrink-0 ml-4">
                 {displayName.length}/255
@@ -650,10 +650,10 @@ function MembersTab() {
   return (
     <Card className="shadow-sm">
       <CardHeader>
-        <CardTitle className="text-xl">Project Members</CardTitle>
+        <CardTitle className="text-xl">Group Members</CardTitle>
         <CardDescription>
-          View member roles across your projects. Role management is available
-          on each project&apos;s detail page.
+          View member roles across your groups. Role management is available
+          on each group&apos;s detail page.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -662,9 +662,9 @@ function MembersTab() {
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted/30 mb-4">
               <IconUser className="h-8 w-8 text-muted-foreground/40" />
             </div>
-            <h3 className="text-base font-semibold text-muted-foreground">No projects yet</h3>
+            <h3 className="text-base font-semibold text-muted-foreground">No groups yet</h3>
             <p className="mt-1.5 text-sm text-muted-foreground/60 max-w-xs">
-              Create a project first, then add members to collaborate.
+              Create a group first, then add members to collaborate.
             </p>
           </div>
         ) : (
@@ -781,7 +781,7 @@ function ProjectMemberList({ projectId }: { projectId: string }) {
   if (members.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-2 text-center">
-        No members in this project yet.
+        No members in this group yet.
       </p>
     );
   }

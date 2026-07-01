@@ -217,7 +217,7 @@ export function ShareModal({
                   ))}
                 {documents.filter((d) => !d.deleted_at).length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    No active documents in this project
+                    No active documents in this group
                   </p>
                 )}
               </div>

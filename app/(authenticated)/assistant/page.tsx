@@ -37,10 +37,10 @@ function EmptyState({ hasProject }: { hasProject: boolean }) {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-foreground mb-2">
-            Select a Project
+            Select a Group
           </h3>
           <p className="text-sm text-muted-foreground">
-            Choose a project above to start asking questions about your documents.
+            Choose a group above to start asking questions about your documents.
           </p>
         </div>
       </div>
@@ -69,7 +69,7 @@ function EmptyState({ hasProject }: { hasProject: boolean }) {
           Ask a Question About Your Documents
         </h3>
         <p className="text-sm text-muted-foreground mb-6">
-          Start a new chat to ask questions about the documents in this project.
+          Start a new chat to ask questions about the documents in this group.
           The AI will search through your documents and provide answers with citations.
         </p>
 

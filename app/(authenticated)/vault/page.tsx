@@ -124,7 +124,7 @@ export default function VaultPage() {
 
   const projectChips = useMemo(() => {
     return [
-      { value: "", label: "All projects" },
+      { value: "", label: "All groups" },
       ...projects.map((p) => ({ value: p.id, label: p.name })),
     ];
   }, [projects]);
@@ -176,7 +176,7 @@ export default function VaultPage() {
               </span>
               <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-balance">
                 {total.toLocaleString()} document{total !== 1 ? "s" : ""}
-                {selectedProjectId ? " in project" : " across projects"}
+                {selectedProjectId ? " in group" : " across groups"}
               </h1>
               <p className="mt-3 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-2xl text-pretty">
                 Manage, search, and compare your document versions with confidence.
@@ -303,7 +303,7 @@ export default function VaultPage() {
             onClick={() => { setProjectDropdownOpen(!projectDropdownOpen); setTypeDropdownOpen(false); }}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
           >
-            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Project" : "Project"}
+            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Group" : "Group"}
             <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {projectDropdownOpen && (
@@ -323,7 +323,7 @@ export default function VaultPage() {
                     <svg className="h-2.5 w-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>
                   )}
                 </span>
-                All Projects
+                All Groups
               </button>
               {isLoadingProjects ? (
                 <div className="px-3 py-2"><Skeleton className="h-5 w-full" /></div>
@@ -406,8 +406,8 @@ export default function VaultPage() {
             {hasActiveFilters
               ? "Try adjusting your filters or search query to find what you are looking for."
               : !isLoadingProjects && projects.length === 0
-                ? "Create a project from the dashboard to start uploading documents."
-                : "Upload documents to your projects to start tracking their integrity over time."}
+                ? "Create a group from the dashboard to start uploading documents."
+                : "Upload documents to your groups to start tracking their integrity over time."}
           </p>
           {hasActiveFilters && (
             <Button
@@ -547,7 +547,7 @@ export default function VaultPage() {
                     Type <span className="ml-0.5">{sortIndicator("file_type")}</span>
                   </th>
                   <th className="hidden lg:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
-                    Project
+                    Group
                   </th>
                   <th className="hidden md:table-cell px-4 py-3.5 text-right text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_size_bytes")}>
                     Size <span className="ml-0.5">{sortIndicator("file_size_bytes")}</span>

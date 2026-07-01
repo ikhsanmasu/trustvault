@@ -10,7 +10,7 @@ const PLANS = [
     description: "Perfect for individuals and small teams getting started.",
     features: [
       "Up to 50 documents",
-      "3 projects",
+      "3 workspaces",
       "SHA-256 integrity hashing",
       "AI change analysis (10/month)",
       "Basic document preview",
@@ -27,7 +27,7 @@ const PLANS = [
     description: "For growing teams that need advanced integrity features.",
     features: [
       "Unlimited documents",
-      "Unlimited projects",
+      "Unlimited workspaces",
       "Blockchain anchoring",
       "AI change analysis (unlimited)",
       "AI Vault Assistant (RAG chat)",

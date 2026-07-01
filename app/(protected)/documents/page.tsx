@@ -26,7 +26,7 @@ export default function DocumentsRedirectPage() {
         <Skeleton className="h-8 w-48" />
       ) : (
         <Alert variant="destructive">
-          <AlertDescription>Redirecting to projects…</AlertDescription>
+          <AlertDescription>Redirecting to groups…</AlertDescription>
         </Alert>
       )}
     </main>

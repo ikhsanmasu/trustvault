@@ -89,9 +89,9 @@ export function IconBriefcase({ className }: IconProps) {
       strokeLinejoin="round"
       className={cn("h-5 w-5 shrink-0", className)}
       role="img"
-      aria-label="Projects"
+      aria-label="Groups"
     >
-      <title>Projects</title>
+      <title>Groups</title>
       <rect x="2" y="7" width="20" height="14" rx="2" />
       <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
       <line x1="12" y1="12" x2="12" y2="16" />

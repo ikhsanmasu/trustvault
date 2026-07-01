@@ -250,7 +250,7 @@ export default function DashboardPage() {
               label="Total Documents"
               value={stats.document_count.toLocaleString()}
               icon={<IconDocument className="h-5 w-5" />}
-              description="Across all projects"
+              description="Across all groups"
               trend={
                 sortedRecent.length > 0
                   ? {
@@ -264,10 +264,10 @@ export default function DashboardPage() {
               iconBg="from-blue-500/15 via-blue-500/10 to-blue-500/5"
             />
             <StatsCard
-              label="Projects"
+              label="Groups"
               value={stats.project_count.toLocaleString()}
               icon={<IconBriefcase className="h-5 w-5" />}
-              description="Active projects"
+              description="Active groups"
               accentColor="border-l-violet-500 dark:border-l-violet-400"
               iconBg="from-violet-500/15 via-violet-500/10 to-violet-500/5"
             />
@@ -292,7 +292,7 @@ export default function DashboardPage() {
               label="Total Users"
               value={stats.total_users.toLocaleString()}
               icon={<IconUsers className="h-5 w-5" />}
-              description="Across all projects"
+              description="Across all groups"
               accentColor="border-l-cyan-500 dark:border-l-cyan-400"
               iconBg="from-cyan-500/15 via-cyan-500/10 to-cyan-500/5"
             />
@@ -441,8 +441,8 @@ function DashboardEmptyState() {
         Welcome to TrustVault
       </h2>
       <p className="mt-2 text-sm text-muted-foreground max-w-md">
-        Your dashboard will populate once you create a project and upload your
-        first document. Get started by visiting the Vault or Projects page.
+        Your dashboard will populate once you create a group and upload your
+        first document. Get started by visiting the Vault or Groups page.
       </p>
       <div className="mt-6 flex gap-3">
         <Link
@@ -456,7 +456,7 @@ function DashboardEmptyState() {
           href="/projects"
           className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-elevation-1 hover:bg-muted/50 transition-colors"
         >
-          Manage Projects
+          Manage Groups
         </Link>
       </div>
     </div>

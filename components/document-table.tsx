@@ -112,7 +112,7 @@ export default function DocumentTable({
             <p className="text-sm text-muted-foreground">
               {search
                 ? "No documents match your search."
-                : "No documents in this project yet."}
+                : "No documents in this group yet."}
             </p>
             {!search && canUpload && (
               <p className="text-sm text-muted-foreground mt-2">

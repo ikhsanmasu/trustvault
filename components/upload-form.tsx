@@ -77,7 +77,7 @@ export default function UploadForm({ projectId, onSuccess }: UploadFormProps) {
       <CardHeader>
         <CardTitle>Upload Document</CardTitle>
         <CardDescription>
-          Upload a PDF to this project. Hashes are computed automatically.
+          Upload a PDF to this group. Hashes are computed automatically.
         </CardDescription>
       </CardHeader>
       <CardContent>
