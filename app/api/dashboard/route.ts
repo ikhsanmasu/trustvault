@@ -32,7 +32,6 @@ export async function GET(): Promise<
   // -------------------------------------------------------------------------
 
   const [
-    projectCountResult,
     docCountResult,
     sizeResult,
     recentResult,
@@ -41,19 +40,13 @@ export async function GET(): Promise<
     docsByTypeResult,
     docsByMonthResult,
   ] = await Promise.allSettled([
-    // 1. Project count
-    supabase
-      .from("project_members")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id),
-
-    // 2. Document count
+    // 1. Document count
     supabase
       .from("documents")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId),
 
-    // 3. Total storage (fetch all file_size_bytes)
+    // 2. Total storage (fetch all file_size_bytes)
     supabase
       .from("documents")
       .select("file_size_bytes")
@@ -155,7 +148,6 @@ export async function GET(): Promise<
   // Extract results
   // -------------------------------------------------------------------------
 
-  const projectCount = unwrapCount(projectCountResult);
   const docCount = unwrapCount(docCountResult);
 
   // Total storage
@@ -232,7 +224,6 @@ export async function GET(): Promise<
 
   return NextResponse.json({
     stats: {
-      project_count: projectCount,
       document_count: docCount,
       total_storage_bytes: totalStorageBytes,
       recent_documents: recentDocs,

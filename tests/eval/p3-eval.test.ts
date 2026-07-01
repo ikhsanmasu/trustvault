@@ -479,13 +479,11 @@ describe("P3: Flow B compare — pipeline integration", () => {
 describe("P3: Dashboard endpoint contracts", () => {
   it("DashboardStats type has all required fields", () => {
     const stats: DashboardStats = {
-      project_count: 5,
       document_count: 42,
       total_storage_bytes: 1048576,
       recent_documents: [],
     };
 
-    expect(typeof stats.project_count).toBe("number");
     expect(typeof stats.document_count).toBe("number");
     expect(typeof stats.total_storage_bytes).toBe("number");
     expect(Array.isArray(stats.recent_documents)).toBe(true);
@@ -558,13 +556,11 @@ describe("P3: Dashboard endpoint contracts", () => {
 
   it("dashboard handles zero state (new tenant with no data)", () => {
     const emptyStats: DashboardStats = {
-      project_count: 0,
       document_count: 0,
       total_storage_bytes: 0,
       recent_documents: [],
     };
 
-    expect(emptyStats.project_count).toBe(0);
     expect(emptyStats.document_count).toBe(0);
     expect(emptyStats.total_storage_bytes).toBe(0);
     expect(emptyStats.recent_documents).toHaveLength(0);

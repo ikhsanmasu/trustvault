@@ -9,7 +9,6 @@ import {
 } from "@/lib/core";
 import {
   requireAuth,
-  requireProjectRole,
   getUserTenantId,
 } from "@/lib/supabase/auth";
 import { ingestDocument } from "@/lib/ai-assistant";
@@ -28,10 +27,6 @@ const MAX_FILE_SIZE = 20_971_520; // 20 MB in bytes
 const MAX_NAME_LENGTH = 255;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-
-/** Loosely validates that a string looks like a UUID. */
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // POST /api/documents -- Upload a document (P3: all 14 MIME types accepted)
@@ -58,7 +53,6 @@ export async function POST(
 
   const file = formData.get("file");
   const name = formData.get("name");
-  const projectIdRaw = formData.get("project_id");
 
   // -- 3. Validate file presence --------------------------------------------
   if (!file || !(file instanceof File)) {
@@ -114,32 +108,7 @@ export async function POST(
     );
   }
 
-  // -- 7. Validate project_id (P11: optional) ---------------------------------
-  const projectId: string | null =
-    projectIdRaw && typeof projectIdRaw === "string" && projectIdRaw.trim().length > 0
-      ? projectIdRaw.trim()
-      : null;
-
-  if (projectId && !UUID_RE.test(projectId)) {
-    return NextResponse.json(
-      {
-        error: "project_id must be a valid UUID",
-        code: "INVALID_PROJECT_ID",
-      },
-      { status: 400 },
-    );
-  }
-
-  // -- 8. Role check (only when project_id is provided) ----------------------
-  if (projectId) {
-    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-      "admin",
-      "editor",
-    ]);
-    if (!roleCheck.ok) return roleCheck.response;
-  }
-
-  // -- 9. Get user's tenant_id ----------------------------------------------
+  // -- 7. Get user's tenant_id ----------------------------------------------
   const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
@@ -199,7 +168,6 @@ export async function POST(
       file_size_bytes: buffer.length,
       file_type: mimeType,
       tenant_id: tenantId,
-      project_id: projectId,
       uploaded_by: user.id,
     })
     .select("*")
@@ -231,7 +199,7 @@ export async function POST(
     if (docText.trim().length === 0) {
       ingestion = { status: "empty_text", chunks: 0 };
     } else {
-      const records = await ingestDocument(docId, projectId, docText);
+      const records = await ingestDocument(docId, null, docText);
       ingestion = {
         status: records.length > 0 ? "ok" : "no_chunks",
         chunks: records.length,
@@ -279,17 +247,7 @@ export async function GET(
 
   const searchParams = request.nextUrl.searchParams;
 
-  // -- 2. Parse optional project_id (P11: optional, tenant-scoped fallback) ---
-  const projectIdRaw = searchParams.get("project_id");
-  const projectId = projectIdRaw?.trim();
-  if (projectId !== undefined && projectId.length > 0 && !UUID_RE.test(projectId)) {
-    return NextResponse.json(
-      { error: "project_id must be a valid UUID", code: "INVALID_PROJECT_ID" },
-      { status: 400 },
-    );
-  }
-
-  // -- 3. Get user's tenant_id -----------------------------------------------
+  // -- 2. Get user's tenant_id -----------------------------------------------
   const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
@@ -298,25 +256,7 @@ export async function GET(
     );
   }
 
-  // -- 4. Resolve scoping (P11: project-scoped or tenant-scoped) --------------
-  let useTenantScoping = false;
-  if (projectId) {
-    // Scoped to a single project -- verify membership first
-    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-      "admin", "editor", "viewer",
-    ]);
-    if (!roleCheck.ok) {
-      return NextResponse.json(
-        { error: "Access denied", code: "FORBIDDEN" },
-        { status: 403 },
-      );
-    }
-  } else {
-    // No project_id — return all documents for the tenant (RLS-enforced)
-    useTenantScoping = true;
-  }
-
-  // -- 4. Parse & validate query parameters ---------------------------------
+  // -- 3. Parse & validate query parameters ---------------------------------
   const search = searchParams.get("search")?.trim() || undefined;
 
   const limitRaw = searchParams.get("limit") ?? String(DEFAULT_LIMIT);
@@ -346,16 +286,12 @@ export async function GET(
     );
   }
 
-  // -- 5. Build query -- filter by project_id or tenant_id (P11: tenant-scoped fallback)
+  // -- 4. Build query -- filter by tenant_id
   const includeDeleted = searchParams.get("include_deleted") === "true";
   let query = supabase
     .from("documents")
     .select("*", { count: "exact" })
     .eq("tenant_id", tenantId);
-
-  if (!useTenantScoping && projectId) {
-    query = query.eq("project_id", projectId);
-  }
 
   // Default: exclude soft-deleted documents unless explicitly requested
   if (!includeDeleted) {

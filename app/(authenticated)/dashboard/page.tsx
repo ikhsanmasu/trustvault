@@ -264,10 +264,10 @@ export default function DashboardPage() {
               iconBg="from-blue-500/15 via-blue-500/10 to-blue-500/5"
             />
             <StatsCard
-              label="Groups"
-              value={stats.project_count.toLocaleString()}
+              label="Total Chunks"
+              value={stats.total_chunks.toLocaleString()}
               icon={<IconBriefcase className="h-5 w-5" />}
-              description="Active groups"
+              description="AI-indexed chunks"
               accentColor="border-l-violet-500 dark:border-l-violet-400"
               iconBg="from-violet-500/15 via-violet-500/10 to-violet-500/5"
             />

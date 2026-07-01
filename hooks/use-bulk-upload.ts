@@ -90,7 +90,6 @@ export function useBulkUpload(projectId: string = ""): UseBulkUploadReturn {
       const response = await bulkUploadDocuments(
         files.map((f) => f.file),
         files.map((f) => f.name),
-        projectId,
       );
       setResult(response);
       setStatus("done");

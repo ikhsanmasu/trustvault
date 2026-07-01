@@ -164,7 +164,7 @@ export async function POST(
 // ---------------------------------------------------------------------------
 
 export async function PATCH(
-  request: NextRequest,
+  _request: NextRequest,
 ): Promise<NextResponse<{ anchored: number; skipped: number; failed: number; errors: string[] } | ErrorResponse>> {
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;

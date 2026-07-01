@@ -19,24 +19,6 @@ export interface Tenant {
   created_at: string;
 }
 
-export interface Project {
-  id: string;
-  tenant_id: string;
-  name: string;
-  description: string;
-  created_at: string;
-}
-
-export type MemberRole = "admin" | "editor" | "viewer";
-
-export interface ProjectMember {
-  id: string;
-  project_id: string;
-  user_id: string;
-  role: MemberRole;
-  created_at: string;
-}
-
 export interface Document {
   id: string;
   name: string;
@@ -47,7 +29,7 @@ export interface Document {
   file_size_bytes: number;
   file_type: string;
   tenant_id: string;
-  project_id: string | null;
+  project_id?: string | null;
   uploaded_by: string;
   created_at: string;
   deleted_at?: string | null;
@@ -79,7 +61,6 @@ export interface BulkUploadItem {
 }
 
 export interface BulkUploadResult {
-  project_id: string | null;
   results: BulkUploadItem[];
   succeeded: number;
   failed: number;
@@ -87,7 +68,6 @@ export interface BulkUploadResult {
 
 // Matches backend GET /api/dashboard response
 export interface DashboardStats {
-  project_count: number;
   document_count: number;
   total_storage_bytes: number;
   recent_documents: Document[];
@@ -98,25 +78,6 @@ export interface DashboardStats {
   documents_by_type: { type: string; count: number }[];
   documents_by_month: { month: string; count: number }[];
   total_chunks: number;
-}
-
-export interface CreateProjectRequest {
-  name: string;
-  description?: string;
-}
-
-export interface UpdateProjectRequest {
-  name?: string;
-  description?: string;
-}
-
-export interface AddMemberRequest {
-  user_id: string;
-  role: MemberRole;
-}
-
-export interface UpdateMemberRoleRequest {
-  role: MemberRole;
 }
 
 export interface UpdateProfileRequest {
@@ -152,35 +113,6 @@ export interface UpdateTenantResponse {
 
 export interface DashboardResponse {
   stats: DashboardStats;
-}
-
-export interface CreateProjectResponse {
-  project: Project;
-}
-
-export interface ListProjectsResponse {
-  projects: Project[];
-  total: number;
-}
-
-export interface GetProjectResponse {
-  project: Project;
-}
-
-export interface UpdateProjectResponse {
-  project: Project;
-}
-
-export interface ListMembersResponse {
-  members: ProjectMember[];
-}
-
-export interface AddMemberResponse {
-  member: ProjectMember;
-}
-
-export interface UpdateMemberRoleResponse {
-  member: ProjectMember;
 }
 
 export interface UploadResponse {
@@ -303,150 +235,9 @@ export async function getDashboard(): Promise<DashboardResponse> {
   return handleResponse<DashboardResponse>(response);
 }
 
-// ===== Projects =====
-
-/**
- * POST /api/projects — create a new project.
- */
-export async function createProject(
-  data: CreateProjectRequest,
-): Promise<CreateProjectResponse> {
-  const response = await fetch("/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return handleResponse<CreateProjectResponse>(response);
-}
-
-export interface ListProjectsParams {
-  search?: string;
-  limit?: number;
-  offset?: number;
-}
-
-/**
- * GET /api/projects — list user's projects.
- */
-export async function listProjects(
-  params?: ListProjectsParams,
-): Promise<ListProjectsResponse> {
-  const sp = new URLSearchParams();
-  if (params?.search) sp.set("search", params.search);
-  if (params?.limit !== undefined) sp.set("limit", String(params.limit));
-  if (params?.offset !== undefined) sp.set("offset", String(params.offset));
-
-  const qs = sp.toString();
-  const url = `/api/projects${qs ? `?${qs}` : ""}`;
-
-  const response = await fetch(url);
-  return handleResponse<ListProjectsResponse>(response);
-}
-
-/**
- * GET /api/projects/[id] — get project details.
- */
-export async function getProject(id: string): Promise<GetProjectResponse> {
-  const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
-  return handleResponse<GetProjectResponse>(response);
-}
-
-/**
- * PATCH /api/projects/[id] — update project name/description.
- */
-export async function updateProject(
-  id: string,
-  data: UpdateProjectRequest,
-): Promise<UpdateProjectResponse> {
-  const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return handleResponse<UpdateProjectResponse>(response);
-}
-
-/**
- * DELETE /api/projects/[id] — delete a project.
- */
-export async function deleteProject(id: string): Promise<{ deleted: boolean }> {
-  const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
-  return handleResponse<{ deleted: boolean }>(response);
-}
-
-// ===== Project Members =====
-
-/**
- * GET /api/projects/[id]/members — list project members.
- */
-export async function listMembers(
-  projectId: string,
-): Promise<ListMembersResponse> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/members`,
-  );
-  return handleResponse<ListMembersResponse>(response);
-}
-
-/**
- * POST /api/projects/[id]/members — add a member to project.
- */
-export async function addMember(
-  projectId: string,
-  data: AddMemberRequest,
-): Promise<AddMemberResponse> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/members`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    },
-  );
-  return handleResponse<AddMemberResponse>(response);
-}
-
-/**
- * PATCH /api/projects/[id]/members/[userId] — update a member's role.
- */
-export async function updateMemberRole(
-  projectId: string,
-  userId: string,
-  data: UpdateMemberRoleRequest,
-): Promise<UpdateMemberRoleResponse> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    },
-  );
-  return handleResponse<UpdateMemberRoleResponse>(response);
-}
-
-/**
- * DELETE /api/projects/[id]/members/[userId] — remove a member.
- */
-export async function removeMember(
-  projectId: string,
-  userId: string,
-): Promise<{ removed: boolean }> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`,
-    {
-      method: "DELETE",
-    },
-  );
-  return handleResponse<{ removed: boolean }>(response);
-}
-
 // ===== Documents =====
 
 export interface ListDocumentsParams {
-  project_id?: string;
   file_type?: string;
   search?: string;
   limit?: number;
@@ -460,12 +251,10 @@ export interface ListDocumentsParams {
 export async function uploadDocument(
   file: File,
   name: string,
-  projectId?: string | null,
 ): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("name", name);
-  if (projectId) formData.append("project_id", projectId);
 
   const response = await fetch("/api/documents", {
     method: "POST",
@@ -482,7 +271,6 @@ export async function listDocuments(
   params?: ListDocumentsParams,
 ): Promise<ListDocumentsResponse> {
   const sp = new URLSearchParams();
-  if (params?.project_id) sp.set("project_id", params.project_id);
   if (params?.file_type) sp.set("file_type", params.file_type);
   if (params?.search) sp.set("search", params.search);
   if (params?.limit !== undefined) sp.set("limit", String(params.limit));
@@ -514,14 +302,12 @@ export async function getDocument(
 export async function bulkUploadDocuments(
   files: File[],
   names: string[],
-  projectId?: string | null,
 ): Promise<BulkUploadResponse> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("files", file);
   }
   formData.append("names", JSON.stringify(names));
-  if (projectId) formData.append("project_id", projectId);
 
   const response = await fetch("/api/documents/bulk", {
     method: "POST",
@@ -597,20 +383,10 @@ export async function restoreDocument(id: string): Promise<{ document: Document 
   return handleResponse<{ document: Document }>(response);
 }
 
-/** PATCH /api/documents/:id — move a document to a different project. */
-export async function moveDocument(id: string, projectId: string): Promise<{ document: Document }> {
-  const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "move", project_id: projectId }),
-  });
-  return handleResponse<{ document: Document }>(response);
-}
-
-/** PATCH /api/documents/:id — edit document metadata (description, notes, project). */
+/** PATCH /api/documents/:id — edit document metadata (description, notes). */
 export async function editDocument(
   id: string,
-  data: { description?: string; notes?: string; project_id?: string },
+  data: { description?: string; notes?: string },
 ): Promise<{ document: Document }> {
   const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -683,7 +459,7 @@ export async function verifyDocument(
 // Backend DB shape (shared with lib/types.ts)
 export interface SharedLink {
   id: string;
-  project_id: string | null;
+  project_id?: string | null;
   document_ids: string[];
   token: string;
   created_by: string;
@@ -701,7 +477,7 @@ export type ShareLink = SharedLink;
 
 /** @deprecated Use CreateShareRequest instead — kept for backward compat with share-modal */
 export interface CreateShareRequestCompat {
-  project_id: string | null;
+  project_id?: string | null;
   title: string;
   document_ids: string[];
   allow_download: boolean;
@@ -731,7 +507,7 @@ export interface SharePublicData {
   share: {
     id: string;
     token: string;
-    project_id: string | null;
+    project_id?: string | null;
     document_ids: string[];
     title: string;
     allow_download: boolean;
@@ -769,13 +545,10 @@ export async function createShare(
 }
 
 /**
- * GET /api/share?projectId=... — list share links for a project.
+ * GET /api/share — list all share links.
  */
-export async function listShares(
-  projectId?: string,
-): Promise<ListSharesResponse> {
-  const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-  const response = await fetch(`/api/share${qs}`);
+export async function listShares(): Promise<ListSharesResponse> {
+  const response = await fetch("/api/share");
   return handleResponse<ListSharesResponse>(response);
 }
 
@@ -806,7 +579,6 @@ export async function getShareByToken(
     share: {
       id: raw.share.id,
       token: raw.share.token,
-      project_id: raw.share.project_id,
       document_ids: raw.share.document_ids,
       title: raw.share.title,
       allow_download: raw.share.allow_download,

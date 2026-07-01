@@ -58,7 +58,6 @@ export function useDocuments({
     setError(null);
     try {
       const result: ListDocumentsResponse = await listDocuments({
-        project_id: projectId || undefined,
         file_type: fileType || undefined,
         search: debouncedSearch || undefined,
         limit,

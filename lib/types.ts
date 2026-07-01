@@ -57,31 +57,7 @@ export interface ChangePasswordRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Project
-// ---------------------------------------------------------------------------
-
-export interface Project {
-  id: string;
-  tenant_id: string;
-  name: string;
-  description: string;
-  created_at: string;
-}
-
-// ---------------------------------------------------------------------------
-// Project Member
-// ---------------------------------------------------------------------------
-
-export interface ProjectMember {
-  id: string;
-  project_id: string;
-  user_id: string;
-  role: Role;
-  created_at: string;
-}
-
-// ---------------------------------------------------------------------------
-// Document (updated for P3 — file_type added)
+// Document
 // ---------------------------------------------------------------------------
 
 export interface Document {
@@ -92,9 +68,9 @@ export interface Document {
   text_hash: string;
   extracted_text: string;
   file_size_bytes: number;
-  file_type: string; // P3: tracked so downstream code knows the file format
+  file_type: string;
   tenant_id: string;
-  project_id: string | null;
+  project_id?: string | null;
   uploaded_by: string;
   created_at: string;
   deleted_at?: string | null;
@@ -107,6 +83,26 @@ export interface Document {
   chain?: string | null;        // chain identifier (e.g. "anvil", "sepolia")
   tx_hash?: string | null;      // 0x-prefixed transaction hash (66 chars)
   anchored_at?: string | null;  // ISO 8601 timestamptz
+}
+
+// ---------------------------------------------------------------------------
+// Project (P2 — kept for backward compat with eval tests)
+// ---------------------------------------------------------------------------
+
+export interface Project {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string;
+  created_at: string;
+}
+
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  user_id: string;
+  role: Role;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +147,7 @@ export interface BulkUploadItem {
 }
 
 export interface BulkUploadResult {
-  project_id: string | null;
+  project_id?: string | null;
   results: BulkUploadItem[];
   succeeded: number;
   failed: number;
@@ -164,7 +160,6 @@ export type BulkUploadResponse = BulkUploadResult;
 // ---------------------------------------------------------------------------
 
 export interface DashboardStats {
-  project_count: number;
   document_count: number;
   total_storage_bytes: number;
   recent_documents: Document[];
@@ -211,35 +206,6 @@ export interface GetProfileResponse {
 
 export interface UpdateProfileResponse {
   profile: Profile;
-}
-
-export interface CreateProjectResponse {
-  project: Project;
-}
-
-export interface ListProjectsResponse {
-  projects: Project[];
-  total: number;
-}
-
-export interface GetProjectResponse {
-  project: Project;
-}
-
-export interface UpdateProjectResponse {
-  project: Project;
-}
-
-export interface ListMembersResponse {
-  members: ProjectMember[];
-}
-
-export interface AddMemberResponse {
-  member: ProjectMember;
-}
-
-export interface UpdateMemberRoleResponse {
-  member: ProjectMember;
 }
 
 // -- P3 response types --
@@ -305,7 +271,7 @@ export interface Citation {
 
 export interface ChatSession {
   id: string;
-  project_id: string;
+  project_id?: string | null;
   user_id: string;
   title: string;
   created_at: string;
@@ -334,7 +300,7 @@ export interface IngestResponse {
 
 export interface ChatRequest {
   sessionId?: string;
-  projectId: string;
+  projectId?: string;
   message: string;
 }
 
@@ -353,7 +319,7 @@ export interface GetSessionResponse {
 
 export interface SharedLink {
   id: string;
-  project_id: string | null;
+  project_id?: string | null;
   document_ids: string[];
   token: string;
   created_by: string;

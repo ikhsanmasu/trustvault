@@ -10,7 +10,6 @@ import {
 import { ingestDocument } from "@/lib/ai-assistant";
 import {
   requireAuth,
-  requireProjectRole,
   getUserTenantId,
 } from "@/lib/supabase/auth";
 import type {
@@ -27,10 +26,6 @@ import type {
 const MAX_FILE_SIZE = 20_971_520; // 20 MB in bytes
 const MAX_FILES = 10;
 const MAX_NAME_LENGTH = 255;
-
-/** Loosely validates that a string looks like a UUID. */
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // POST /api/documents/bulk -- Upload multiple documents (P3: all 14 types)
@@ -55,33 +50,7 @@ export async function POST(
     );
   }
 
-  // -- 3. Validate project_id (P11: optional) ----------------------------------
-  const projectIdRaw = formData.get("project_id");
-  const projectId: string | null =
-    projectIdRaw && typeof projectIdRaw === "string" && projectIdRaw.trim().length > 0
-      ? projectIdRaw.trim()
-      : null;
-
-  if (projectId && !UUID_RE.test(projectId)) {
-    return NextResponse.json(
-      {
-        error: "project_id must be a valid UUID",
-        code: "INVALID_PROJECT_ID",
-      },
-      { status: 400 },
-    );
-  }
-
-  // -- 4. Role check (only when project_id is provided) -----------------------
-  if (projectId) {
-    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-      "admin",
-      "editor",
-    ]);
-    if (!roleCheck.ok) return roleCheck.response;
-  }
-
-  // -- 5. Get user's tenant_id ----------------------------------------------
+  // -- 3. Get user's tenant_id ----------------------------------------------
   const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) {
     return NextResponse.json(
@@ -261,7 +230,6 @@ export async function POST(
           file_size_bytes: buffer.length,
           file_type: mimeType,
           tenant_id: tenantId,
-          project_id: projectId,
           uploaded_by: user.id,
         })
         .select("*")
@@ -286,7 +254,7 @@ export async function POST(
         if (!extractedText || extractedText.trim().length === 0) {
           ingestion = { status: "empty_text", chunks: 0 };
         } else {
-          const records = await ingestDocument(docId, projectId, extractedText);
+          const records = await ingestDocument(docId, null, extractedText);
           ingestion = { status: records.length > 0 ? "ok" : "no_chunks", chunks: records.length };
           if (records.length > 0) {
             const { error: insErr } = await supabase.from("document_chunks").insert(
@@ -330,7 +298,6 @@ export async function POST(
   }
 
   return NextResponse.json({
-    project_id: projectId,
     results,
     succeeded,
     failed,

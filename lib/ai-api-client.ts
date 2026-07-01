@@ -20,7 +20,7 @@ export interface Citation {
 
 export interface ChatSession {
   id: string;
-  project_id: string;
+  project_id?: string | null;
   user_id: string;
   title: string;
   created_at: string;
@@ -49,7 +49,7 @@ export interface IngestResponse {
 
 export interface ChatRequest {
   sessionId?: string;
-  projectId: string;
+  projectId?: string;
   message: string;
 }
 
@@ -121,7 +121,7 @@ export async function ingestDocuments(
  * GET /api/assistant/sessions — list chat sessions for a project.
  */
 export async function listSessions(
-  projectId: string = "",
+  projectId?: string,
 ): Promise<ListSessionsResponse> {
   const params = projectId
     ? `?project_id=${encodeURIComponent(projectId)}`

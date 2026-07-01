@@ -17,62 +17,39 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import {
   getProfile,
   updateProfile,
   changePassword,
-  listMembers,
   type Profile,
-  type ProjectMember,
-  type MemberRole,
   ApiClientError,
 } from "@/lib/api-client";
 import { useTenant } from "@/hooks/use-tenant";
-import { useProjects } from "@/hooks/use-projects";
 import { useToastState, type ToastData } from "@/hooks/use-toast-state";
 import { cn } from "@/lib/utils";
 import {
   IconUser,
   IconLock,
   IconHome,
-  IconUsers,
   IconX,
   IconSpinner,
-  IconChevronDown,
 } from "@/components/icons";
 
 // ---- Settings tab type -------------------------------------------------------
 
-type SettingsTab = "profile" | "password" | "tenant" | "members";
+type SettingsTab = "profile" | "password" | "tenant";
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   profile: "Profile",
   password: "Password",
   tenant: "Tenant",
-  members: "Members",
 };
 
 const TAB_ICONS: Record<SettingsTab, React.ReactNode> = {
   profile: <IconUser className="h-5 w-5" />,
   password: <IconLock className="h-5 w-5" />,
   tenant: <IconHome className="h-5 w-5" />,
-  members: <IconUsers className="h-5 w-5" />,
-};
-
-// ---- Role helpers -----------------------------------------------------------
-
-const ROLE_BADGE_VARIANTS: Record<MemberRole, "default" | "secondary" | "outline"> = {
-  admin: "default",
-  editor: "secondary",
-  viewer: "outline",
-};
-
-const ROLE_LABELS: Record<MemberRole, string> = {
-  admin: "Admin",
-  editor: "Editor",
-  viewer: "Viewer",
 };
 
 function getInitials(email: string | undefined): string {
@@ -628,191 +605,6 @@ function TenantTab() {
   );
 }
 
-// ---- Members Tab ------------------------------------------------------------
-
-function MembersTab() {
-  const { projects, isLoading } = useProjects();
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="py-10 space-y-3">
-          <Skeleton className="h-8 w-40" />
-          <Skeleton className="h-14 w-full rounded-2xl" />
-          <Skeleton className="h-14 w-full rounded-2xl" />
-          <Skeleton className="h-14 w-full rounded-2xl" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="shadow-sm">
-      <CardHeader>
-        <CardTitle className="text-xl">Group Members</CardTitle>
-        <CardDescription>
-          View member roles across your groups. Role management is available
-          on each group&apos;s detail page.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted/30 mb-4">
-              <IconUser className="h-8 w-8 text-muted-foreground/40" />
-            </div>
-            <h3 className="text-base font-semibold text-muted-foreground">No groups yet</h3>
-            <p className="mt-1.5 text-sm text-muted-foreground/60 max-w-xs">
-              Create a group first, then add members to collaborate.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {projects.map((project, idx) => (
-              <div
-                key={project.id}
-                className={cn(
-                  "rounded-2xl border transition-all duration-200",
-                  expandedProjectId === project.id
-                    ? "shadow-sm border-primary/20 dark:border-primary/30"
-                    : "hover:border-muted-foreground/30",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedProjectId(
-                      expandedProjectId === project.id ? null : project.id,
-                    )
-                  }
-                  className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-muted/20 transition-colors duration-150 rounded-2xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white",
-                        idx % 6 === 0 && "bg-indigo-500",
-                        idx % 6 === 1 && "bg-emerald-500",
-                        idx % 6 === 2 && "bg-amber-500",
-                        idx % 6 === 3 && "bg-rose-500",
-                        idx % 6 === 4 && "bg-violet-500",
-                        idx % 6 === 5 && "bg-cyan-500",
-                      )}
-                    >
-                      {project.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-sm font-semibold block truncate">
-                        {project.name}
-                      </span>
-                      {project.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                          {project.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <IconChevronDown
-                    className={cn(
-                      "h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0",
-                      expandedProjectId === project.id && "rotate-180",
-                    )}
-                  />
-                </button>
-                {expandedProjectId === project.id && (
-                  <div className="border-t bg-muted/5 dark:bg-muted/10 rounded-b-xl px-5 py-4">
-                    <ProjectMemberList projectId={project.id} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ProjectMemberList({ projectId }: { projectId: string }) {
-  const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchMembers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await listMembers(projectId);
-      setMembers(result.members);
-    } catch (err) {
-      if (err instanceof ApiClientError) {
-        setError(err.message);
-      } else {
-        setError("Failed to load members.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    fetchMembers();
-  }, [fetchMembers]);
-
-  if (loading) {
-    return (
-      <div className="space-y-2">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full rounded-lg" />
-        ))}
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    );
-  }
-
-  if (members.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-2 text-center">
-        No members in this group yet.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {members.map((member) => (
-        <div
-          key={member.id}
-          className="flex items-center gap-3 rounded-lg border bg-background px-3.5 py-3 text-sm transition-colors duration-150 hover:bg-muted/20"
-        >
-          <Avatar size="sm" className="ring-1 ring-border/60">
-            <AvatarFallback
-              initials={member.user_id.slice(0, 2).toUpperCase()}
-            />
-          </Avatar>
-          <span className="flex-1 font-mono text-xs truncate text-muted-foreground">
-            {member.user_id.slice(0, 12)}...
-          </span>
-          <Badge
-            variant={ROLE_BADGE_VARIANTS[member.role]}
-            className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-          >
-            {ROLE_LABELS[member.role]}
-          </Badge>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ---- Settings Page (main) ---------------------------------------------------
 
 export default function SettingsPage() {
@@ -846,7 +638,7 @@ export default function SettingsPage() {
     );
   }
 
-  const tabs: SettingsTab[] = ["profile", "password", "tenant", "members"];
+  const tabs: SettingsTab[] = ["profile", "password", "tenant"];
 
   return (
     <div className="space-y-6">
@@ -929,7 +721,6 @@ export default function SettingsPage() {
           {activeTab === "profile" && <ProfileTab />}
           {activeTab === "password" && <PasswordTab />}
           {activeTab === "tenant" && <TenantTab />}
-          {activeTab === "members" && <MembersTab />}
         </div>
       </div>
     </div>

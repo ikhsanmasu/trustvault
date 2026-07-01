@@ -213,18 +213,6 @@ export async function POST(
     }
     const docB = rowB as unknown as Document;
 
-    // -- Cross-project check ------------------------------------------------
-    if (docA.project_id !== docB.project_id) {
-      return NextResponse.json(
-        {
-          error:
-            "Documents belong to different projects -- cross-project comparison is not supported",
-          code: "CROSS_PROJECT_COMPARE",
-        },
-        { status: 400 },
-      );
-    }
-
     // -- Step 1: Binary hash ------------------------------------------------
     if (docA.binary_hash === docB.binary_hash) {
       return NextResponse.json({

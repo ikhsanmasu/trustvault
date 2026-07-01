@@ -54,7 +54,7 @@ export default function UploadForm({ projectId = "", onSuccess }: UploadFormProp
 
     setIsUploading(true);
     try {
-      const result = await uploadDocument(file, name.trim(), projectId);
+      const result = await uploadDocument(file, name.trim());
       setUploadedDocument(result.document);
       onSuccess?.(result.document);
       // Reset form

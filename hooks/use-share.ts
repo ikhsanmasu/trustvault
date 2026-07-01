@@ -30,7 +30,7 @@ export function useShares(projectId?: string): UseSharesReturn {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await listShares(projectId);
+      const result = await listShares();
       setShares(result.shares);
     } catch (err) {
       if (err instanceof ApiClientError) {
