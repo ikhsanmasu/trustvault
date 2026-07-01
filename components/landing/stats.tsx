@@ -60,7 +60,7 @@ export function Stats() {
   if (!stats) return null;
 
   return (
-    <section className="relative bg-background py-20 sm:py-28">
+    <section id="current-usage" className="relative bg-background py-20 sm:py-28">
       {/* Subtle top border decoration */}
       <div
         className="absolute inset-x-0 top-0 mx-auto h-px max-w-6xl bg-gradient-to-r from-transparent via-border/50 to-transparent"

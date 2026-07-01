@@ -65,6 +65,13 @@ export function LandingNav() {
           >
             Use Cases
           </button>
+          <button
+            type="button"
+            onClick={() => scrollTo("current-usage")}
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            Current Usage
+          </button>
         </div>
 
         {/* CTA buttons */}

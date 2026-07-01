@@ -14,6 +14,7 @@ import { CompareModal } from "@/components/compare-modal";
 import { DocumentPreviewModal } from "@/components/document-preview-modal";
 import { AnchorModal } from "@/components/anchor-modal";
 import { ShareModal } from "@/components/share/share-modal";
+import { UploadModal } from "@/components/upload-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
@@ -94,6 +95,7 @@ export default function VaultPage() {
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
 
   // ---- Per-type counts (from currently loaded documents) --------------------
   const typeCounts = useMemo(() => {
@@ -387,13 +389,15 @@ export default function VaultPage() {
           <IconPlus className="mr-1.5 h-4 w-4" />
           Create Project
         </Button>
-        <Link
-          href="/upload"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+        <Button
+          size="sm"
+          disabled={!selectedProjectId}
+          title={!selectedProjectId ? "Select a project to upload documents" : undefined}
+          onClick={() => setShowUpload(true)}
         >
-          <IconPlus className="h-4 w-4" />
+          <IconPlus className="mr-1.5 h-4 w-4" />
           Upload
-        </Link>
+        </Button>
       </div>
 
       {/* ---- Inline create project form -------------------------------------- */}
@@ -470,7 +474,9 @@ export default function VaultPage() {
           <p className="mt-2 text-sm text-muted-foreground max-w-sm">
             {hasActiveFilters
               ? "Try adjusting your filters or search query to find what you are looking for."
-              : "Upload documents to your projects to start tracking their integrity over time."}
+              : !isLoadingProjects && projects.length === 0
+                ? "Create a project first, then upload documents to start tracking."
+                : "Upload documents to your projects to start tracking their integrity over time."}
           </p>
           {hasActiveFilters && (
             <Button
@@ -486,14 +492,26 @@ export default function VaultPage() {
               Clear all filters
             </Button>
           )}
-          {!hasActiveFilters && (
-            <Link
-              href="/upload"
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-elevation-1 hover:bg-primary/90 transition-colors"
+          {!hasActiveFilters && projects.length === 0 && (
+            <Button
+              size="sm"
+              className="mt-5"
+              onClick={() => { setShowNewProject(true); }}
             >
+              <IconPlus className="mr-1.5 h-4 w-4" />
+              Create Project
+            </Button>
+          )}
+          {!hasActiveFilters && projects.length > 0 && (
+            <Button
+              size="sm"
+              className="mt-5"
+              disabled={!selectedProjectId}
+              onClick={() => setShowUpload(true)}
+            >
+              <IconPlus className="mr-1.5 h-4 w-4" />
               Upload Documents
-              <IconPlus className="h-4 w-4" />
-            </Link>
+            </Button>
           )}
         </div>
       ) : viewMode === "grid" ? (
@@ -631,6 +649,12 @@ export default function VaultPage() {
           onCreated={() => { setShareDoc(null); refresh(); }}
         />
       )}
+      <UploadModal
+        open={showUpload}
+        onOpenChange={setShowUpload}
+        projectId={selectedProjectId}
+        onSuccess={() => { setShowUpload(false); refresh(); }}
+      />
       {confirmDelete && (
         <ConfirmDialog
           open={confirmDelete !== null}
