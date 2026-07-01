@@ -302,7 +302,7 @@ export default function VaultPage() {
             onClick={() => { setProjectDropdownOpen(!projectDropdownOpen); setTypeDropdownOpen(false); }}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
           >
-            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Group" : "Group"}
+            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Workspace" : "Workspace"}
             <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {projectDropdownOpen && (
