@@ -15,6 +15,7 @@ import {
   IconSettings,
   IconSignOut,
   IconCollapseSidebar,
+  IconMessageBot,
 } from "@/components/icons";
 
 // ---- Nav item definition -------------------------------------------------------
@@ -29,7 +30,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: IconDashboard },
   { label: "My Vault", href: "/vault", icon: IconFolder },
   { label: "Projects", href: "/projects", icon: IconBriefcase },
-  { label: "Assistant", href: "/upload", icon: IconSparkle },
+  { label: "AI Assistant", href: "/assistant", icon: IconMessageBot },
+  { label: "Upload", href: "/upload", icon: IconSparkle },
   { label: "Settings", href: "/settings", icon: IconSettings },
 ];
 
