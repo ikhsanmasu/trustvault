@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // TrustVault P6 — AI Vault Assistant (RAG pipeline)
 // ---------------------------------------------------------------------------
-// Chunking, local embedding (transformers.js), RAG prompt construction, and
-// DeepSeek chat completion. Embeddings use all-MiniLM-L6-v2 (384 dims).
+// Chunking, OpenAI embedding (text-embedding-3-small, 1536 dims), RAG prompt
+// construction, and DeepSeek chat completion.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -22,11 +22,17 @@ const MAX_CHUNK_CHARS = 2000;
 /** Number of recent messages to include as conversation history in the prompt. */
 const MAX_HISTORY_MESSAGES = 10;
 
-/** HuggingFace model for local embeddings — lightweight, 384 dims. */
-const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
+/** OpenAI embedding model — fast, cheap, 1536 dims. */
+const EMBEDDING_MODEL = "text-embedding-3-small";
+
+/** OpenAI API base URL. */
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
 /** DeepSeek chat model (consistent with P1-P5). */
 const CHAT_MODEL = "deepseek-chat";
+
+/** Expected embedding dimension. */
+const EMBEDDING_DIM = 1536;
 
 /** System prompt for the AI assistant. */
 const ASSISTANT_SYSTEM_PROMPT = `You are TrustVault AI Assistant, a document-integrity and knowledge assistant.
@@ -62,34 +68,11 @@ export interface ChatMessage {
 }
 
 // ---------------------------------------------------------------------------
-// Local Embedding Pipeline (transformers.js)
+// Helper
 // ---------------------------------------------------------------------------
 
-/** Pipeline singleton — lazy-loaded, cached between warm invocations. */
-let _pipeline: Promise<(text: string) => Promise<number[]>> | null = null;
-
-async function getPipeline(): Promise<(text: string) => Promise<number[]>> {
-  if (!_pipeline) {
-    _pipeline = (async () => {
-      // Cache models in /tmp for Vercel serverless (persists on warm Lambda)
-      if (!process.env.TRANSFORMERS_CACHE) {
-        process.env.TRANSFORMERS_CACHE = "/tmp/.cache";
-      }
-      const { pipeline } = await import("@xenova/transformers");
-      const extractor = await pipeline(
-        "feature-extraction",
-        EMBEDDING_MODEL,
-      );
-      return async (text: string): Promise<number[]> => {
-        const result = await extractor(text.slice(0, 2000), {
-          pooling: "mean",
-          normalize: true,
-        });
-        return Array.from(result.data as Float32Array);
-      };
-    })();
-  }
-  return _pipeline;
+function getOpenAIKey(): string {
+  return process.env.OPENAI_API_KEY ?? "";
 }
 
 // ---------------------------------------------------------------------------
@@ -256,45 +239,60 @@ export function estimateTokenCount(text: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Embedding Generation (local all-MiniLM-L6-v2, 384 dims)
+// Embedding Generation (OpenAI text-embedding-3-small, 1536 dims)
 // ---------------------------------------------------------------------------
 
-/** Expected embedding dimension for the MiniLM model. */
-const EMBEDDING_DIM = 384;
-
-/**
- * Generates an embedding vector for the given text using the local
- * all-MiniLM-L6-v2 ONNX model (384 dimensions).
- *
- * Returns the embedding as a number array, or null on failure.
- */
 export async function generateEmbedding(
   text: string,
 ): Promise<number[] | null> {
   try {
     if (!text || text.trim().length === 0) return null;
-    const pipe = await getPipeline();
-    const embedding = await pipe(text);
-    return embedding.length === EMBEDDING_DIM ? embedding : embedding.slice(0, EMBEDDING_DIM);
+    const response = await fetch(`${OPENAI_BASE_URL}/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getOpenAIKey()}`,
+      },
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL,
+        input: text.slice(0, 8000),
+      }),
+    });
+    if (!response.ok) {
+      console.error(`[ai-assistant] OpenAI embeddings error: ${response.status}`);
+      return null;
+    }
+    const data = (await response.json()) as { data?: { embedding?: number[] }[] };
+    return data.data?.[0]?.embedding ?? null;
   } catch (err) {
-    console.error("[ai-assistant] Local embedding error:", err);
+    console.error("[ai-assistant] OpenAI embedding error:", err);
     return null;
   }
 }
 
-/**
- * Generates embeddings for multiple texts (sequential, no batching API call).
- * Each text is processed through the local pipeline one at a time.
- * Returns an array of embeddings in the same order as the input texts.
- */
 export async function generateEmbeddings(
   texts: string[],
 ): Promise<(number[] | null)[]> {
-  const results: (number[] | null)[] = [];
-  for (const text of texts) {
-    results.push(await generateEmbedding(text));
+  if (texts.length === 0) return [];
+  try {
+    const truncated = texts.map((t) => t.slice(0, 8000));
+    const response = await fetch(`${OPENAI_BASE_URL}/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getOpenAIKey()}`,
+      },
+      body: JSON.stringify({ model: EMBEDDING_MODEL, input: truncated }),
+    });
+    if (!response.ok) {
+      console.error(`[ai-assistant] OpenAI batch error: ${response.status}`);
+      return texts.map(() => null);
+    }
+    const data = (await response.json()) as { data?: { embedding?: number[] }[] };
+    return data.data?.map((d) => d.embedding ?? null) ?? texts.map(() => null);
+  } catch {
+    return texts.map(() => null);
   }
-  return results;
 }
 
 // ---------------------------------------------------------------------------

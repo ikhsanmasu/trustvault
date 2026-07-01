@@ -1559,6 +1559,9 @@ Delete a chat session and all its messages (CASCADE).
 
 ## P6 Environment Variables
 
-P6 uses the existing `DEEPSEEK_API_KEY` for both chat completions and embeddings (OpenAI-compatible `/embeddings` endpoint at `https://api.deepseek.com/embeddings`). **No new environment variables are required for P6.**
+| Variable | Used by |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI `text-embedding-3-small` (1536 dims) for chunk + query embeddings |
+| `DEEPSEEK_API_KEY` | (existing) DeepSeek `deepseek-chat` for AI chat + compare |
 
-The DeepSeek API key (`DEEPSEEK_API_KEY`) is already configured from P1-P5 for the compare pipeline.
+Both are required for P6.

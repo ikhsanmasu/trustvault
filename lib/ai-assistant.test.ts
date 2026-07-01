@@ -10,18 +10,20 @@ import {
 import type { RetrievalResult, ChatMessage } from "./ai-assistant";
 
 // ---------------------------------------------------------------------------
-// Mock @xenova/transformers — local MiniLM pipeline (384 dims)
+// Mock OpenAI embeddings via fetch
 // ---------------------------------------------------------------------------
 
-const EMBEDDING_DIM = 384;
+const EMBEDDING_DIM = 1536;
+const EMBEDDING_URL = "https://api.openai.com/v1/embeddings";
 
-const { mockPipelineFn } = vi.hoisted(() => ({
-  mockPipelineFn: vi.fn(),
-}));
-
-vi.mock("@xenova/transformers", () => ({
-  pipeline: vi.fn(() => mockPipelineFn),
-}));
+function mockEmbeddingResponse(...embeddings: (number[] | null)[]) {
+  return new Response(
+    JSON.stringify({
+      data: embeddings.map((e) => ({ embedding: e })),
+    }),
+    { status: 200 },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // chunkText
@@ -332,9 +334,9 @@ describe("generateEmbedding", () => {
   });
 
   it("returns 384-dim embedding on success", async () => {
-    mockPipelineFn.mockResolvedValue({
-      data: new Float32Array(Array(EMBEDDING_DIM).fill(0.01)),
-    });
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      mockEmbeddingResponse(Array(EMBEDDING_DIM).fill(0.01)),
+    );
 
     const { generateEmbedding: genEmb } = await import("./ai-assistant");
     const result = await genEmb("test text");
@@ -349,7 +351,7 @@ describe("generateEmbedding", () => {
   });
 
   it("returns null on pipeline error", async () => {
-    mockPipelineFn.mockRejectedValue(new Error("Model load failed"));
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("API error"));
 
     const { generateEmbedding: genEmb } = await import("./ai-assistant");
     const result = await genEmb("test text");
@@ -363,9 +365,13 @@ describe("generateEmbedding", () => {
 
 describe("generateEmbeddings", () => {
   beforeEach(() => {
-    mockPipelineFn.mockReset();
-    mockPipelineFn.mockResolvedValue({
-      data: new Float32Array(Array(EMBEDDING_DIM).fill(0.01)),
+    vi.restoreAllMocks();
+    vi.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const count = Array.isArray(body.input) ? body.input.length : 1;
+      return mockEmbeddingResponse(
+        ...Array.from({ length: count }, () => Array(EMBEDDING_DIM).fill(0.01)),
+      );
     });
   });
 
@@ -379,8 +385,8 @@ describe("generateEmbeddings", () => {
   });
 
   it("returns null-filled array on pipeline failure", async () => {
-    mockPipelineFn.mockReset();
-    mockPipelineFn.mockRejectedValue(new Error("Pipeline error"));
+    vi.restoreAllMocks();
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("API error"));
 
     const { generateEmbeddings: genEmbs } = await import("./ai-assistant");
     const results = await genEmbs(["text1", "text2", "text3"]);
@@ -396,9 +402,12 @@ describe("generateEmbeddings", () => {
 describe("ingestDocument", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    mockPipelineFn.mockReset();
-    mockPipelineFn.mockResolvedValue({
-      data: new Float32Array(Array(EMBEDDING_DIM).fill(0.01)),
+    vi.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const count = Array.isArray(body.input) ? body.input.length : 1;
+      return mockEmbeddingResponse(
+        ...Array.from({ length: count }, () => Array(EMBEDDING_DIM).fill(0.01)),
+      );
     });
   });
 
@@ -878,9 +887,12 @@ describe("extractCitations edge cases", () => {
 describe("generateEmbeddings edge cases", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    mockPipelineFn.mockReset();
-    mockPipelineFn.mockResolvedValue({
-      data: new Float32Array(Array(EMBEDDING_DIM).fill(0.01)),
+    vi.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const count = Array.isArray(body.input) ? body.input.length : 1;
+      return mockEmbeddingResponse(
+        ...Array.from({ length: count }, () => Array(EMBEDDING_DIM).fill(0.01)),
+      );
     });
   });
 
@@ -903,9 +915,10 @@ describe("generateEmbeddings edge cases", () => {
 
   it("truncates long texts before sending to pipeline", async () => {
     let capturedText: string | null = null;
-    mockPipelineFn.mockImplementation(async (text: string) => {
-      capturedText = text;
-      return { data: new Float32Array(Array(EMBEDDING_DIM).fill(0.01)) };
+    vi.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      capturedText = body.input;
+      return mockEmbeddingResponse(Array(EMBEDDING_DIM).fill(0.01));
     });
 
     const longText = "x".repeat(5000);
@@ -914,12 +927,12 @@ describe("generateEmbeddings edge cases", () => {
     expect(results).toHaveLength(1);
     expect(results[0]).not.toBeNull();
     // Verify truncation happened (MiniLM max ~2000 chars)
-    expect(capturedText!.length).toBeLessThanOrEqual(2000);
+    expect(capturedText!.length).toBeLessThanOrEqual(8000);
   });
 
   it("handles pipeline failure (model error)", async () => {
-    mockPipelineFn.mockReset();
-    mockPipelineFn.mockRejectedValue(new Error("ONNX runtime error"));
+    vi.restoreAllMocks();
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("API error"));
     const { generateEmbeddings: genEmbs } = await import("./ai-assistant");
     const results = await genEmbs(["a", "b", "c"]);
     expect(results).toHaveLength(3);
@@ -934,9 +947,12 @@ describe("generateEmbeddings edge cases", () => {
 describe("ingestDocument edge cases", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    mockPipelineFn.mockReset();
-    mockPipelineFn.mockResolvedValue({
-      data: new Float32Array(Array(EMBEDDING_DIM).fill(0.01)),
+    vi.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const count = Array.isArray(body.input) ? body.input.length : 1;
+      return mockEmbeddingResponse(
+        ...Array.from({ length: count }, () => Array(EMBEDDING_DIM).fill(0.01)),
+      );
     });
   });
 
@@ -978,11 +994,11 @@ describe("ingestDocument edge cases", () => {
   });
 
   it("does not call embedding pipeline for empty text", async () => {
-    mockPipelineFn.mockClear();
+    const fetchSpy = vi.spyOn(global, "fetch");
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
     await ingDoc("doc1", "proj1", "");
-    // Pipeline should not have been called for empty text
-    expect(mockPipelineFn).not.toHaveBeenCalled();
+    // OpenAI API should not have been called for empty text
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

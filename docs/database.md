@@ -1006,7 +1006,7 @@ CREATE POLICY "documents_update_anchor" ON public.documents
 P6 adds an AI-powered conversational assistant that answers questions about vault documents using Retrieval-Augmented Generation (RAG). The system uses:
 
 - **pgvector** for storing and querying document embeddings (semantic search).
-- **DeepSeek API** for generating embeddings via OpenAI-compatible `/embeddings` endpoint (model: `deepseek-chat`).
+- **OpenAI `text-embedding-3-small`** for generating embeddings (1536 dimensions).
 - **DeepSeek `deepseek-chat`** for the chat LLM (consistent with P1-P5 AI provider).
 - **Supabase** for storing chat sessions, messages, and document chunks.
 
@@ -1035,7 +1035,7 @@ Stores text chunks extracted from uploaded documents, each with a vector embeddi
 | `project_id` | `uuid` | NOT NULL | -- | FK to `projects.id`. Denormalised for RLS efficiency. |
 | `chunk_index` | `integer` | NOT NULL | -- | 0-based position within the document's chunk sequence. |
 | `content` | `text` | NOT NULL | -- | The chunk's text content (500-1000 characters). |
-| `embedding` | `vector(1536)` | NULL | NULL | DeepSeek embedding (OpenAI-compatible endpoint). Nullable for degraded-mode (embedding generation can fail gracefully). |
+| `embedding` | `vector(1536)` | NULL | NULL | OpenAI `text-embedding-3-small` embedding. Nullable for degraded-mode (embedding generation can fail gracefully). |
 | `token_count` | `integer` | NOT NULL | `0` | Approximate token count of the chunk content. |
 | `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC). |
 
