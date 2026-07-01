@@ -98,6 +98,7 @@ export default function VaultPage() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
@@ -584,9 +585,10 @@ export default function VaultPage() {
               size="sm"
               variant="outline"
               onClick={() => {
-                const firstId = Array.from(selectedIds)[0];
-                const doc = visibleDocs.find(d => d.id === firstId);
-                if (doc) setShareDoc(doc);
+                const ids = Array.from(selectedIds);
+                setBulkShareIds(ids);
+                const firstDoc = visibleDocs.find(d => ids.includes(d.id));
+                if (firstDoc) setShareDoc(firstDoc);
               }}
             >
               <IconShare className="h-4 w-4 mr-1.5" /> Share
@@ -766,10 +768,11 @@ export default function VaultPage() {
       {shareDoc && (
         <ShareModal
           open={shareDoc !== null}
-          onOpenChange={(open) => { if (!open) setShareDoc(null); }}
+          onOpenChange={(open) => { if (!open) { setShareDoc(null); setBulkShareIds([]); } }}
           projectId={shareDoc.project_id}
           documents={visibleDocs}
-          onCreated={() => { setShareDoc(null); refresh(); }}
+          preselectedIds={bulkShareIds.length > 0 ? bulkShareIds : [shareDoc.id]}
+          onCreated={() => { setShareDoc(null); setBulkShareIds([]); setSelectedIds(new Set()); refresh(); }}
         />
       )}
       <UploadModal

@@ -16,6 +16,7 @@ interface ShareModalProps {
   projectId: string;
   documents: Document[];
   onCreated: () => void;
+  preselectedIds?: string[];
 }
 
 // ---- Component ----------------------------------------------------------------
@@ -26,11 +27,12 @@ export function ShareModal({
   projectId,
   documents,
   onCreated,
+  preselectedIds,
 }: ShareModalProps) {
   const [title, setTitle] = useState("");
   const [allowDownload, setAllowDownload] = useState(true);
   const [allowChat, setAllowChat] = useState(true);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(preselectedIds ?? []);
   const [copied, setCopied] = useState(false);
   const [createdLink, setCreatedLink] = useState<string | null>(null);
 
@@ -83,7 +85,11 @@ export function ShareModal({
   const handleOpen = (open: boolean) => {
     if (open) {
       setTitle("");
-      setSelectedIds(documents.filter((d) => !d.deleted_at).map((d) => d.id));
+      setSelectedIds(
+        preselectedIds && preselectedIds.length > 0
+          ? preselectedIds
+          : documents.filter((d) => !d.deleted_at).map((d) => d.id),
+      );
       setAllowDownload(true);
       setAllowChat(true);
       setCreatedLink(null);
