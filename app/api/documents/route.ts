@@ -12,6 +12,8 @@ import {
   requireProjectRole,
   getUserTenantId,
 } from "@/lib/supabase/auth";
+import { ingestDocument } from "@/lib/ai-assistant";
+import { createServiceClient } from "@/lib/supabase/client";
 import type {
   UploadResponse,
   ListDocumentsResponse,
@@ -223,6 +225,31 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  // -- 15. Auto-ingest: fire-and-forget chunk + embed (don't block response)
+  const doc = document as Record<string, unknown>;
+  const docId = doc.id as string;
+  const docText = extractedText as string;
+  void (async () => {
+    try {
+      const records = await ingestDocument(docId, projectId, docText);
+      if (records.length > 0) {
+        const serviceClient = createServiceClient();
+        await serviceClient.from("document_chunks").insert(
+          records.map((r) => ({
+            document_id: r.document_id,
+            project_id: r.project_id,
+            chunk_index: r.chunk_index,
+            content: r.content,
+            embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
+            token_count: r.token_count,
+          })),
+        );
+      }
+    } catch {
+      // ingestion failure shouldn't block the upload response
+    }
+  })();
 
   return NextResponse.json(
     { document: document as unknown as Document },
