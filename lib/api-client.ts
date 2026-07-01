@@ -772,11 +772,10 @@ export async function createShare(
  * GET /api/share?projectId=... — list share links for a project.
  */
 export async function listShares(
-  projectId: string,
+  projectId?: string,
 ): Promise<ListSharesResponse> {
-  const response = await fetch(
-    `/api/share?projectId=${encodeURIComponent(projectId)}`,
-  );
+  const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  const response = await fetch(`/api/share${qs}`);
   return handleResponse<ListSharesResponse>(response);
 }
 

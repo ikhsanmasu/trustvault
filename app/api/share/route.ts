@@ -181,33 +181,25 @@ export async function GET(
   const searchParams = request.nextUrl.searchParams;
   const projectId = searchParams.get("projectId")?.trim();
 
-  if (!projectId || !UUID_RE.test(projectId)) {
-    return NextResponse.json(
-      { error: "Valid projectId query parameter (UUID) is required", code: "INVALID_PROJECT_ID" },
-      { status: 400 },
-    );
+  // -- 3. Query shares — all projects if no projectId given ------------------
+  let query = supabase.from("shared_links").select("*");
+
+  if (projectId && UUID_RE.test(projectId)) {
+    const roleCheck = await requireProjectRole(supabase, user.id, projectId, ["admin", "editor", "viewer"]);
+    if (!roleCheck.ok) return roleCheck.response;
+    query = query.eq("project_id", projectId);
+  } else {
+    const { data: memberships } = await supabase
+      .from("project_members").select("project_id").eq("user_id", user.id);
+    const projectIds = (memberships ?? []).map((m: { project_id: string }) => m.project_id);
+    if (projectIds.length === 0) return NextResponse.json({ shares: [] });
+    query = query.in("project_id", projectIds);
   }
 
-  // -- 3. Verify project membership -----------------------------------------
-  const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-    "admin",
-    "editor",
-    "viewer",
-  ]);
-  if (!roleCheck.ok) return roleCheck.response;
-
-  // -- 4. List shares -------------------------------------------------------
-  const { data: shares, error } = await supabase
-    .from("shared_links")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false });
+  const { data: shares, error } = await query.order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch shares", code: "DB_ERROR" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch shares", code: "DB_ERROR" }, { status: 500 });
   }
 
   return NextResponse.json({

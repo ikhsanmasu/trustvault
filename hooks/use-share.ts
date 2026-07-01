@@ -27,7 +27,6 @@ export function useShares(projectId: string | undefined): UseSharesReturn {
   const [error, setError] = useState<string | null>(null);
 
   const fetchShares = useCallback(async () => {
-    if (!projectId) return;
     setIsLoading(true);
     setError(null);
     try {

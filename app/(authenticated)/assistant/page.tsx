@@ -173,6 +173,13 @@ export default function AssistantPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Auto-select first project
+  useEffect(() => {
+    if (!selectedProjectId && projects.length > 0) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
+
   // ---- Auth guard -----------------------------------------------------------
 
   useEffect(() => {
@@ -243,32 +250,13 @@ export default function AssistantPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-10rem)] max-h-[860px]">
-      {/* ---- Header with project selector ---- */}
+      {/* ---- Header ---- */}
       <div className="shrink-0 flex items-center gap-4 pb-4">
-        <div className="flex-1 max-w-xs">
-          {isProjectsLoading ? (
-            <Skeleton className="h-10 w-full rounded-md" />
-          ) : (
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              className={cn(
-                "flex h-10 w-full rounded-md border border-input bg-background",
-                "px-3 py-2 text-sm",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-              )}
-              aria-label="Select a project"
-            >
-              <option value="" disabled>
-                Select a project…
-              </option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
+        <div className="flex-1">
+          {selectedProject && (
+            <span className="text-sm text-muted-foreground">
+              Context: <span className="font-medium text-foreground">{selectedProject.name}</span>
+            </span>
           )}
         </div>
 
@@ -374,7 +362,7 @@ export default function AssistantPage() {
             placeholder={
               hasProject
                 ? "Ask a question about your documents…"
-                : "Select a project to start chatting…"
+                : "Ask a question about your documents…"
             }
           />
         </div>
