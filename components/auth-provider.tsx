@@ -13,6 +13,7 @@ interface AuthContextValue {
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ error?: string }>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 

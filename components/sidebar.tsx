@@ -10,12 +10,11 @@ import {
   IconBrand,
   IconDashboard,
   IconFolder,
-  IconBriefcase,
-  IconSparkle,
   IconSettings,
   IconSignOut,
   IconCollapseSidebar,
   IconMessageBot,
+  IconShare,
 } from "@/components/icons";
 
 // ---- Nav item definition -------------------------------------------------------
@@ -29,9 +28,8 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: IconDashboard },
   { label: "My Vault", href: "/vault", icon: IconFolder },
-  { label: "Projects", href: "/projects", icon: IconBriefcase },
-  { label: "AI Assistant", href: "/assistant", icon: IconMessageBot },
-  { label: "Upload", href: "/upload", icon: IconSparkle },
+  { label: "Assistant", href: "/assistant", icon: IconMessageBot },
+  { label: "Shared Links", href: "/shares", icon: IconShare },
   { label: "Settings", href: "/settings", icon: IconSettings },
 ];
 

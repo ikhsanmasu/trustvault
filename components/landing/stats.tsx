@@ -60,23 +60,30 @@ export function Stats() {
   if (!stats) return null;
 
   return (
-    <section className="bg-muted/30">
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        {/* Section heading */}
-        <div className="mb-10 text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-            Platform
-          </p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+    <section className="relative bg-background py-20 sm:py-28">
+      {/* Subtle top border decoration */}
+      <div
+        className="absolute inset-x-0 top-0 mx-auto h-px max-w-6xl bg-gradient-to-r from-transparent via-border/50 to-transparent"
+        aria-hidden="true"
+      />
+
+      <div className="mx-auto max-w-6xl px-6">
+        {/* Section header — matches Features/HowItWorks/UseCases style */}
+        <div className="text-center max-w-2xl mx-auto">
+          <span className="text-base font-bold text-secondary uppercase tracking-widest">
+            TrustVault in Numbers
+          </span>
+          <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
             Trusted document integrity at scale
           </h2>
-          <p className="mt-3 text-muted-foreground">
-            Real-time stats from the TrustVault network.
+          <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+            Real-time stats from the TrustVault platform — every document, every
+            blockchain anchor, every shared link.
           </p>
         </div>
 
         {/* Stats cards */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-14 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {STATS_CONFIG.map(({ key, label, desc }) => (
             <div
               key={key}

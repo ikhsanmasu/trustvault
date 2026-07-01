@@ -75,10 +75,10 @@ export default function HomePage() {
     <div className="min-h-screen bg-background text-foreground">
       <LandingNav />
       <Hero />
-      <Stats />
       <Features />
       <HowItWorks />
       <UseCases />
+      <Stats />
       <CTA />
       <Footer />
     </div>

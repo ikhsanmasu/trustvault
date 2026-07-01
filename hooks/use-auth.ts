@@ -23,6 +23,7 @@ export interface AuthState {
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ error?: string }>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -88,6 +89,18 @@ export function useAuth(): AuthState {
     [],
   );
 
+  const signInWithGoogle = useCallback(async () => {
+    const supabase = getBrowserClient();
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${origin}/auth/callback`,
+        queryParams: { access_type: "offline", prompt: "consent" },
+      },
+    });
+  }, []);
+
   const signOut = useCallback(async () => {
     const supabase = getBrowserClient();
     await supabase.auth.signOut();
@@ -95,5 +108,5 @@ export function useAuth(): AuthState {
     setSession(null);
   }, []);
 
-  return { user, session, isLoading, signIn, signUp, signOut };
+  return { user, session, isLoading, signIn, signUp, signInWithGoogle, signOut };
 }
