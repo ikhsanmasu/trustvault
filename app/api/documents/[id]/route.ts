@@ -73,12 +73,12 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid document ID", code: "INVALID_ID" }, { status: 400 });
   }
 
-  let body: { action?: string; project_id?: string };
-  try { body = (await request.json()) as { action?: string; project_id?: string }; } catch {
+  let body: { action?: string; project_id?: string; description?: string; notes?: string };
+  try { body = (await request.json()) as { action?: string; project_id?: string; description?: string; notes?: string }; } catch {
     return NextResponse.json({ error: "Invalid body", code: "INVALID_REQUEST" }, { status: 400 });
   }
 
-  const action = body.action === "restore" ? "restore" : body.action === "move" ? "move" : "delete";
+  const action = body.action === "restore" ? "restore" : body.action === "move" ? "move" : body.action === "edit" ? "edit" : "delete";
 
   // Verify membership via project
   const { data: doc } = await supabase.from("documents").select("project_id, tenant_id").eq("id", id).single();
@@ -87,6 +87,30 @@ export async function PATCH(
   const { data: member } = await supabase.from("project_members").select("role").eq("project_id", doc.project_id).eq("user_id", user.id).single();
   if (!member || !["admin", "editor"].includes(member.role)) {
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  // ---- Edit: update description, notes, and/or project ----
+  if (action === "edit") {
+    const updates: Record<string, unknown> = {};
+    if (body.description !== undefined) updates.description = body.description.slice(0, 1000);
+    if (body.notes !== undefined) updates.notes = body.notes.slice(0, 5000);
+    if (body.project_id) {
+      if (!UUID_RE.test(body.project_id)) {
+        return NextResponse.json({ error: "Invalid project_id", code: "INVALID_PROJECT_ID" }, { status: 400 });
+      }
+      const { data: tp } = await supabase.from("projects").select("id, tenant_id").eq("id", body.project_id).single();
+      if (!tp || tp.tenant_id !== doc.tenant_id) {
+        return NextResponse.json({ error: "Target project not found", code: "INVALID_TARGET" }, { status: 400 });
+      }
+      updates.project_id = body.project_id;
+      await supabase.from("document_chunks").update({ project_id: body.project_id }).eq("document_id", id);
+    }
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No fields to update", code: "NO_FIELDS" }, { status: 400 });
+    }
+    const { data: updated, error: updErr } = await supabase.from("documents").update(updates).eq("id", id).select("*").single();
+    if (updErr || !updated) return NextResponse.json({ error: "Update failed", code: "DB_ERROR" }, { status: 500 });
+    return NextResponse.json({ document: updated as unknown as Document });
   }
 
   // ---- Move: change document's project ----

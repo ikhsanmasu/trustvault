@@ -20,7 +20,7 @@ import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/compon
 import { useDocuments } from "@/hooks/use-documents";
 import { useProjects } from "@/hooks/use-projects";
 import type { Document } from "@/lib/api-client";
-import { deleteDocument, restoreDocument, createProject, moveDocument } from "@/lib/api-client";
+import { deleteDocument, restoreDocument, createProject, moveDocument, editDocument } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -101,6 +101,9 @@ export default function VaultPage() {
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
   const [moveDocId, setMoveDocId] = useState<string | null>(null);
+  const [editDocId, setEditDocId] = useState<string | null>(null);
+  const [editDesc, setEditDesc] = useState("");
+  const [editProjectId, setEditProjectId] = useState("");
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
 
@@ -730,6 +733,13 @@ export default function VaultPage() {
                           <button type="button" onClick={() => setShareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors" title="Share" aria-label={`Share ${doc.name}`}>
                             <IconShare className="h-[15px] w-[15px]" />
                           </button>
+                          <button type="button" onClick={() => {
+                            setEditDocId(doc.id);
+                            setEditDesc(doc.description ?? "");
+                            setEditProjectId(doc.project_id);
+                          }} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950 transition-colors" title="Edit" aria-label={`Edit ${doc.name}`}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
                           <div className="relative">
                             <button type="button" onClick={() => setMoveDocId(moveDocId === doc.id ? null : doc.id)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950 transition-colors" title="Move to project" aria-label={`Move ${doc.name}`}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M21 9l-3 3 3 3"/><path d="M3 12h18"/></svg>
@@ -806,6 +816,47 @@ export default function VaultPage() {
         projectId={selectedProjectId}
         onSuccess={() => { setShowUpload(false); refresh(); }}
       />
+      {/* ---- Edit Modal -------------------------------------------------------- */}
+      {editDocId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setEditDocId(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-elevation-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold mb-4">Edit Document</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">Description</label>
+                <textarea
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value.slice(0, 1000))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none h-20"
+                  placeholder="Add a description…"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">Project</label>
+                <select
+                  value={editProjectId}
+                  onChange={(e) => setEditProjectId(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setEditDocId(null)}>Cancel</Button>
+                <Button size="sm" onClick={async () => {
+                  await editDocument(editDocId, { description: editDesc, project_id: editProjectId });
+                  setEditDocId(null);
+                  setToast("Document updated");
+                  setTimeout(() => setToast(null), 3000);
+                  refresh();
+                }}>Save</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDelete && (
         <ConfirmDialog
           open={confirmDelete !== null}

@@ -99,6 +99,9 @@ export interface Document {
   created_at: string;
   deleted_at?: string | null;
   deleted_by?: string | null;
+  // P9: user-editable metadata
+  description?: string;
+  notes?: string;
   // P5: blockchain anchoring (all nullable — only set after successful anchor)
   fingerprint?: string | null;  // 0x-prefixed keccak256 hash (66 chars)
   chain?: string | null;        // chain identifier (e.g. "anvil", "sepolia")

@@ -52,6 +52,8 @@ export interface Document {
   created_at: string;
   deleted_at?: string | null;
   deleted_by?: string | null;
+  description?: string | null;
+  notes?: string | null;
   // P5: Blockchain anchoring fields
   fingerprint?: string | null;
   chain?: string | null;
@@ -601,6 +603,19 @@ export async function moveDocument(id: string, projectId: string): Promise<{ doc
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "move", project_id: projectId }),
+  });
+  return handleResponse<{ document: Document }>(response);
+}
+
+/** PATCH /api/documents/:id — edit document metadata (description, notes, project). */
+export async function editDocument(
+  id: string,
+  data: { description?: string; notes?: string; project_id?: string },
+): Promise<{ document: Document }> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "edit", ...data }),
   });
   return handleResponse<{ document: Document }>(response);
 }
