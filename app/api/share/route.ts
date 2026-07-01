@@ -151,7 +151,9 @@ export async function POST(
   }
 
   // -- 6. Build response ----------------------------------------------------
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    `https://${request.headers.get("host") ?? "localhost:3000"}`;
   const url = `${appUrl}/share/${token}`;
 
   return NextResponse.json(

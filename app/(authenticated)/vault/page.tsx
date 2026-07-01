@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CompareModal } from "@/components/compare-modal";
 import { DocumentPreviewModal } from "@/components/document-preview-modal";
 import { AnchorModal } from "@/components/anchor-modal";
+import { ShareModal } from "@/components/share/share-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
@@ -86,6 +87,7 @@ export default function VaultPage() {
   const [compareDoc, setCompareDoc] = useState<Document | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
   const [anchorDoc, setAnchorDoc] = useState<Document | null>(null);
+  const [shareDoc, setShareDoc] = useState<Document | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -425,6 +427,7 @@ export default function VaultPage() {
               projectName={projectMap.get(doc.project_id)}
               onCompare={(d) => setCompareDoc(d)}
               onView={(d) => setViewDoc(d)}
+              onShare={(d) => setShareDoc(d)}
               onAnchor={(d) => setAnchorDoc(d)}
               onDelete={(d) => setConfirmDelete(d)}
             />
@@ -537,6 +540,15 @@ export default function VaultPage() {
           open={anchorDoc !== null}
           onOpenChange={(open) => { if (!open) setAnchorDoc(null); }}
           onAnchored={() => { refresh(); }}
+        />
+      )}
+      {shareDoc && (
+        <ShareModal
+          open={shareDoc !== null}
+          onOpenChange={(open) => { if (!open) setShareDoc(null); }}
+          projectId={shareDoc.project_id}
+          documents={visibleDocs}
+          onCreated={() => { setShareDoc(null); refresh(); }}
         />
       )}
       {confirmDelete && (
