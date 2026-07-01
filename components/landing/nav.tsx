@@ -67,6 +67,13 @@ export function LandingNav() {
           </button>
           <button
             type="button"
+            onClick={() => scrollTo("pricing")}
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            Pricing
+          </button>
+          <button
+            type="button"
             onClick={() => scrollTo("current-usage")}
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
