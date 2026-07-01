@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useSort } from "@/hooks/use-sort";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -15,12 +14,13 @@ import { DocumentPreviewModal } from "@/components/document-preview-modal";
 import { AnchorModal } from "@/components/anchor-modal";
 import { ShareModal } from "@/components/share/share-modal";
 import { UploadModal } from "@/components/upload-modal";
+import { EditDocumentModal } from "@/components/edit-document-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
 import { useProjects } from "@/hooks/use-projects";
 import type { Document } from "@/lib/api-client";
-import { deleteDocument, restoreDocument, createProject, moveDocument, editDocument } from "@/lib/api-client";
+import { deleteDocument, restoreDocument, editDocument } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -93,16 +93,12 @@ export default function VaultPage() {
   const [confirmDelete, setConfirmDelete] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [showNewProject, setShowNewProject] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
-  const [creatingProject, setCreatingProject] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
   const [editDocId, setEditDocId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
-  const [editProjectId, setEditProjectId] = useState("");
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
 
@@ -113,21 +109,6 @@ export default function VaultPage() {
     document.addEventListener("click", handleClick, { once: true });
     return () => document.removeEventListener("click", handleClick);
   }, [typeDropdownOpen, projectDropdownOpen]);
-
-  // ---- Per-type counts (from currently loaded documents) --------------------
-  const typeCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    counts.set("", total); // "All" gets the API total
-    for (const chip of TYPE_FILTERS) {
-      if (chip.value === "") continue;
-      const matching =
-        chip.value === "image/"
-          ? visibleDocs.filter((d) => d.file_type.startsWith("image/")).length
-          : visibleDocs.filter((d) => d.file_type === chip.value).length;
-      if (matching > 0) counts.set(chip.value, matching);
-    }
-    return counts;
-  }, [documents, total]);
 
   // ---- Project lookup map ---------------------------------------------------
 
@@ -253,41 +234,44 @@ export default function VaultPage() {
         </div>
       </section>
 
-      {/* ---- Search bar ------------------------------------------------------- */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-          <IconSearch className="h-4 w-4 text-muted-foreground/60" />
-        </div>
-        <label htmlFor="vault-search" className="sr-only">Search documents</label>
-        <Input
-          id="vault-search"
-          placeholder="Search documents..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-11 pr-20 h-12 text-sm rounded-2xl border-border/80 bg-card shadow-elevation-1 focus-visible:ring-primary/30 focus-visible:border-primary/40 transition-all duration-200 placeholder:text-muted-foreground/50"
-        />
-        {/* Keyboard shortcut hint */}
-        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground/70 font-mono">
-            <span className="text-[11px]">&#8984;</span>K
-          </kbd>
-        </div>
-      </div>
+      {/* ---- Action bar ------------------------------------------------------- */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        {/* Upload button - left */}
+        <Button size="sm" onClick={() => setShowUpload(true)}>
+          <IconPlus className="mr-1.5 h-4 w-4" />
+          Upload
+        </Button>
 
-      {/* ---- Filter: Type + Project (dropdown) -------------------------------- */}
-      <div className="flex flex-wrap items-center gap-4">
-        {/* Type dropdown */}
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Search input - right side */}
+        <div className="relative w-48 sm:w-56">
+          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            <IconSearch className="h-3.5 w-3.5 text-muted-foreground/60" />
+          </div>
+          <label htmlFor="vault-search" className="sr-only">Search documents</label>
+          <Input
+            id="vault-search"
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-9 text-sm rounded-xl border-border/80 bg-card shadow-elevation-1 focus-visible:ring-primary/30 focus-visible:border-primary/40 transition-all duration-200 placeholder:text-muted-foreground/50"
+          />
+        </div>
+
+        {/* Type dropdown - right side */}
         <div className="relative">
           <button
             type="button"
             onClick={() => { setTypeDropdownOpen(!typeDropdownOpen); setProjectDropdownOpen(false); }}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
           >
-            {fileType ? TYPE_FILTERS.find(f => f.value === fileType)?.label ?? "Type" : "All Types"}
+            {fileType ? TYPE_FILTERS.find(f => f.value === fileType)?.label ?? "Type" : "Type"}
             <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {typeDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1">
+            <div className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1">
               {TYPE_FILTERS.map((chip) => (
                 <button
                   key={chip.value}
@@ -306,27 +290,24 @@ export default function VaultPage() {
                     )}
                   </span>
                   {chip.label}
-                  {typeCounts.get(chip.value) !== undefined && (
-                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">{typeCounts.get(chip.value)}</span>
-                  )}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* Project dropdown */}
+        {/* Project dropdown - right side */}
         <div className="relative">
           <button
             type="button"
             onClick={() => { setProjectDropdownOpen(!projectDropdownOpen); setTypeDropdownOpen(false); }}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
           >
-            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Project" : "All Projects"}
+            {selectedProjectId ? projectChips.find(p => p.value === selectedProjectId)?.label ?? "Project" : "Project"}
             <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {projectDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 z-30 w-56 rounded-xl border border-border bg-card shadow-lg py-1 max-h-64 overflow-y-auto">
+            <div className="absolute top-full right-0 mt-1 z-30 w-56 rounded-xl border border-border bg-card shadow-lg py-1 max-h-64 overflow-y-auto">
               <button
                 type="button"
                 onClick={() => { setSelectedProjectId(""); setProjectDropdownOpen(false); }}
@@ -375,7 +356,7 @@ export default function VaultPage() {
 
       {/* ---- Filter: Deleted ------------------------------------------------- */}
       {deletedCount > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 mb-5">
           <span className="text-xs font-semibold text-muted-foreground mr-1 shrink-0 uppercase tracking-wider">Status</span>
           <button
             type="button"
@@ -408,83 +389,6 @@ export default function VaultPage() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-primary text-primary-foreground px-5 py-3 text-sm font-medium shadow-lg animate-fade-in">{bulkToast}</div>
       )}
 
-      {/* ---- Action bar: Create Project + Upload ---------------------------- */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { setShowNewProject(!showNewProject); setNewProjectName(""); }}
-        >
-          <IconPlus className="mr-1.5 h-4 w-4" />
-          Create Project
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => setShowUpload(true)}
-        >
-          <IconPlus className="mr-1.5 h-4 w-4" />
-          Upload
-        </Button>
-      </div>
-
-      {/* ---- Inline create project form -------------------------------------- */}
-      {showNewProject && (
-        <div className="mb-5 flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <input
-            type="text"
-            placeholder="Project name"
-            value={newProjectName}
-            onChange={(e) => setNewProjectName(e.target.value)}
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            onKeyDown={async (e) => {
-              if (e.key === "Enter" && newProjectName.trim()) {
-                setCreatingProject(true);
-                try {
-                  await createProject({ name: newProjectName.trim() });
-                  setNewProjectName("");
-                  setShowNewProject(false);
-                  setToast("Project created!");
-                  // reload projects
-                  window.location.reload();
-                } catch {
-                  setError("Failed to create project");
-                } finally {
-                  setCreatingProject(false);
-                }
-              }
-            }}
-          />
-          <Button
-            size="sm"
-            disabled={!newProjectName.trim() || creatingProject}
-            onClick={async () => {
-              if (!newProjectName.trim()) return;
-              setCreatingProject(true);
-              try {
-                await createProject({ name: newProjectName.trim() });
-                setNewProjectName("");
-                setShowNewProject(false);
-                setToast("Project created!");
-                window.location.reload();
-              } catch {
-                setError("Failed to create project");
-              } finally {
-                setCreatingProject(false);
-              }
-            }}
-          >
-            {creatingProject ? "Creating…" : "Create"}
-          </Button>
-          <button
-            type="button"
-            onClick={() => setShowNewProject(false)}
-            className="text-muted-foreground hover:text-foreground text-sm"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-
       {/* ---- Content: Loading | Empty | Grid | Table ------------------------- */}
       {isLoadingDocs ? (
         <DocumentListSkeleton viewMode={viewMode} />
@@ -502,7 +406,7 @@ export default function VaultPage() {
             {hasActiveFilters
               ? "Try adjusting your filters or search query to find what you are looking for."
               : !isLoadingProjects && projects.length === 0
-                ? "Create a project first, then upload documents to start tracking."
+                ? "Create a project from the dashboard to start uploading documents."
                 : "Upload documents to your projects to start tracking their integrity over time."}
           </p>
           {hasActiveFilters && (
@@ -517,16 +421,6 @@ export default function VaultPage() {
               }}
             >
               Clear all filters
-            </Button>
-          )}
-          {!hasActiveFilters && projects.length === 0 && (
-            <Button
-              size="sm"
-              className="mt-5"
-              onClick={() => { setShowNewProject(true); }}
-            >
-              <IconPlus className="mr-1.5 h-4 w-4" />
-              Create Project
             </Button>
           )}
           {!hasActiveFilters && projects.length > 0 && (
@@ -735,7 +629,6 @@ export default function VaultPage() {
                           <button type="button" onClick={() => {
                             setEditDocId(doc.id);
                             setEditDesc(doc.description ?? "");
-                            setEditProjectId(doc.project_id);
                           }} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950 transition-colors" title="Edit" aria-label={`Edit ${doc.name}`}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                           </button>
@@ -791,44 +684,12 @@ export default function VaultPage() {
       />
       {/* ---- Edit Modal -------------------------------------------------------- */}
       {editDocId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setEditDocId(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-elevation-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">Edit Document</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Description</label>
-                <textarea
-                  value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value.slice(0, 1000))}
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none h-20"
-                  placeholder="Add a description…"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Project</label>
-                <select
-                  value={editProjectId}
-                  onChange={(e) => setEditProjectId(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setEditDocId(null)}>Cancel</Button>
-                <Button size="sm" onClick={async () => {
-                  await editDocument(editDocId, { description: editDesc, project_id: editProjectId });
-                  setEditDocId(null);
-                  setToast("Document updated");
-                  setTimeout(() => setToast(null), 3000);
-                  refresh();
-                }}>Save</Button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <EditDocumentModal
+          docId={editDocId}
+          initialDesc={editDesc}
+          onClose={() => setEditDocId(null)}
+          onSaved={() => { setEditDocId(null); setToast("Document updated"); setTimeout(() => setToast(null), 3000); refresh(); }}
+        />
       )}
       {confirmDelete && (
         <ConfirmDialog
