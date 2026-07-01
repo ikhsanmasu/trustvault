@@ -26,7 +26,7 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
   const { files, addFiles, removeFile, clearFiles, uploadAll, status, result, error } = useBulkUpload(selectedProjectId);
 
   const isUploading = status === "uploading";
-  const canUpload = files.length > 0 && !!selectedProjectId && !isUploading;
+  const canUpload = files.length > 0 && !isUploading;
   const done = result !== null;
   const okCount = result ? result.succeeded : 0;
   const failCount = result ? result.failed : 0;
@@ -82,16 +82,12 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
                 value={selectedProjectId}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
                 className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                disabled={files.length > 0}
               >
-                <option value="">Select a project…</option>
+                <option value="">No project (general)</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
-            )}
-            {files.length > 0 && (
-              <p className="text-[11px] text-muted-foreground mt-1">Project locked after adding files</p>
             )}
           </div>
         )}
