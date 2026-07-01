@@ -15,7 +15,6 @@ const STATS_CONFIG = [
   { key: "documents" as const, label: "Documents", desc: "Verified files" },
   { key: "anchored" as const, label: "On-Chain", desc: "Blockchain anchored" },
   { key: "active_shares" as const, label: "Shared", desc: "Active links" },
-  { key: "projects" as const, label: "Projects", desc: "Workspaces" },
 ];
 
 function AnimatedCounter({
@@ -83,7 +82,7 @@ export function Stats() {
         </div>
 
         {/* Stats cards */}
-        <div className="mt-14 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-14 grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STATS_CONFIG.map(({ key, label, desc }) => (
             <div
               key={key}
