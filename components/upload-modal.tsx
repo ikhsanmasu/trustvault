@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,6 +20,9 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const { files, addFiles, removeFile, clearFiles, uploadAll, status, result, error } = useBulkUpload(projectId ?? "");
+  const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [selectedLabelIds, setSelectedLabelIds] = useState<Set<string>>(new Set());
+  const [newLabelName, setNewLabelName] = useState("");
 
   const isUploading = status === "uploading";
   const canUpload = files.length > 0 && !isUploading;
@@ -37,6 +40,51 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
     e.preventDefault(); setDragOver(false);
     addFiles(Array.from(e.dataTransfer.files));
   }, [addFiles]);
+
+  // Load labels when modal opens
+  useEffect(() => {
+    if (open) {
+      fetch("/api/labels").then(r => r.json()).then(d => setLabels(d.labels ?? [])).catch(() => {});
+      setSelectedLabelIds(new Set());
+      setNewLabelName("");
+    }
+  }, [open]);
+
+  // Attach labels after successful upload
+  useEffect(() => {
+    if (done && result && selectedLabelIds.size > 0) {
+      const docIds = result.results.filter(r => r.status === "ok").map(r => r.document?.id).filter(Boolean);
+      docIds.forEach(docId => {
+        fetch(`/api/documents/${docId}/labels`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ labelIds: Array.from(selectedLabelIds) }),
+        }).catch(() => {});
+      });
+    }
+  }, [done]);
+
+  function toggleLabel(id: string) {
+    setSelectedLabelIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function createLabel() {
+    const name = newLabelName.trim();
+    if (!name) return;
+    const r = await fetch("/api/labels", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      setLabels(prev => [...prev, d.label]);
+      setSelectedLabelIds(prev => new Set([...prev, d.label.id]));
+      setNewLabelName("");
+    }
+  }
 
   function handleClose() {
     clearFiles();
@@ -67,6 +115,32 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
       </div>
 
       <div className="p-5 space-y-4">
+        {/* Label selector */}
+        {!done && (
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Labels</label>
+            <div className="flex flex-wrap gap-1.5 mb-2 max-h-24 overflow-y-auto">
+              {labels.map((l) => (
+                <button key={l.id} type="button" onClick={() => toggleLabel(l.id)}
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ${
+                    selectedLabelIds.has(l.id) ? "border-transparent text-white" : "border-border text-muted-foreground hover:border-primary/30"
+                  }`}
+                  style={selectedLabelIds.has(l.id) ? { backgroundColor: l.color } : undefined}
+                >
+                  {l.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1.5">
+              <input type="text" placeholder="+ new label" value={newLabelName}
+                onChange={e => setNewLabelName(e.target.value.slice(0, 50))}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); createLabel(); } }}
+                className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              <Button size="sm" variant="outline" onClick={createLabel} disabled={!newLabelName.trim()}>Add</Button>
+            </div>
+          </div>
+        )}
+
         {/* Drop zone */}
         {!done && (
           <>

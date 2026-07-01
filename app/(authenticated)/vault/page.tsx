@@ -95,14 +95,41 @@ export default function VaultPage() {
   const [editDocId, setEditDocId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
+  const [labelDropdownOpen, setLabelDropdownOpen] = useState(false);
+  const [selectedLabelId, setSelectedLabelId] = useState("");
+  const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [docLabels, setDocLabels] = useState<Map<string, string[]>>(new Map()); // docId → labelIds
+
+  // Fetch labels
+  useEffect(() => {
+    fetch("/api/labels").then(r => r.json()).then(d => setLabels(d.labels ?? [])).catch(() => {});
+  }, []);
+
+  // Fetch document labels for visible docs
+  useEffect(() => {
+    if (visibleDocs.length === 0) return;
+    // Fetch labels for all visible docs in parallel
+    Promise.all(visibleDocs.map(d =>
+      fetch(`/api/documents/${d.id}/labels`).then(r => r.json()).then(data => ({ docId: d.id, labels: data.labels as { id: string }[] })).catch(() => ({ docId: d.id, labels: [] }))
+    )).then(results => {
+      const map = new Map<string, string[]>();
+      results.forEach(r => map.set(r.docId, r.labels.map(l => l.id)));
+      setDocLabels(map);
+    });
+  }, [documents]);
+
+  // Filter by label
+  const labelFilteredDocs = selectedLabelId
+    ? visibleDocs.filter(d => (docLabels.get(d.id) ?? []).includes(selectedLabelId))
+    : visibleDocs;
 
   // Click outside to close dropdowns
   useEffect(() => {
-    if (!typeDropdownOpen) return;
-    function handleClick() { setTypeDropdownOpen(false); }
+    if (!typeDropdownOpen && !labelDropdownOpen) return;
+    function handleClick() { setTypeDropdownOpen(false); setLabelDropdownOpen(false); }
     document.addEventListener("click", handleClick, { once: true });
     return () => document.removeEventListener("click", handleClick);
-  }, [typeDropdownOpen]);
+  }, [typeDropdownOpen, labelDropdownOpen]);
 
   // ---- Auth gate -------------------------------------------------------------
 
