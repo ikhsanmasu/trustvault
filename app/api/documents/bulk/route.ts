@@ -292,29 +292,26 @@ export async function POST(
       });
       succeeded++;
 
-      // ---- Auto-ingest: fire-and-forget chunk + embed ----
+      // ---- Auto-ingest: await chunk + embed ----
       const docId = (document as Record<string, unknown>).id as string;
-      const docText = extractedText;
-      void (async () => {
-        try {
-          const records = await ingestDocument(docId, projectId, docText);
-          if (records.length > 0) {
-            const serviceClient = createServiceClient();
-            await serviceClient.from("document_chunks").insert(
-              records.map((r) => ({
-                document_id: r.document_id,
-                project_id: r.project_id,
-                chunk_index: r.chunk_index,
-                content: r.content,
-                embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
-                token_count: r.token_count,
-              })),
-            );
-          }
-        } catch {
-          // ingestion failure shouldn't block upload
+      try {
+        const records = await ingestDocument(docId, projectId, extractedText);
+        if (records.length > 0) {
+          const serviceClient = createServiceClient();
+          await serviceClient.from("document_chunks").insert(
+            records.map((r) => ({
+              document_id: r.document_id,
+              project_id: r.project_id,
+              chunk_index: r.chunk_index,
+              content: r.content,
+              embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
+              token_count: r.token_count,
+            })),
+          );
         }
-      })();
+      } catch {
+        // ingestion failure doesn't block upload
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Unexpected error";

@@ -226,30 +226,29 @@ export async function POST(
     );
   }
 
-  // -- 15. Auto-ingest: fire-and-forget chunk + embed (don't block response)
+  // -- 15. Auto-ingest: await chunk + embed (Vercel kills async after response)
   const doc = document as Record<string, unknown>;
   const docId = doc.id as string;
   const docText = extractedText as string;
-  void (async () => {
-    try {
-      const records = await ingestDocument(docId, projectId, docText);
-      if (records.length > 0) {
-        const serviceClient = createServiceClient();
-        await serviceClient.from("document_chunks").insert(
-          records.map((r) => ({
-            document_id: r.document_id,
-            project_id: r.project_id,
-            chunk_index: r.chunk_index,
-            content: r.content,
-            embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
-            token_count: r.token_count,
-          })),
-        );
-      }
-    } catch {
-      // ingestion failure shouldn't block the upload response
+  try {
+    const records = await ingestDocument(docId, projectId, docText);
+    if (records.length > 0) {
+      const serviceClient = createServiceClient();
+      await serviceClient.from("document_chunks").insert(
+        records.map((r) => ({
+          document_id: r.document_id,
+          project_id: r.project_id,
+          chunk_index: r.chunk_index,
+          content: r.content,
+          embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
+          token_count: r.token_count,
+        })),
+      );
     }
-  })();
+  } catch (err) {
+    console.error("[upload] auto-ingest failed:", err);
+    // ingestion failure doesn't block the upload response
+  }
 
   return NextResponse.json(
     { document: document as unknown as Document },
