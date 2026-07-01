@@ -4,7 +4,9 @@ import { useState, useRef, useCallback } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useBulkUpload } from "@/hooks/use-bulk-upload";
+import { useProjects } from "@/hooks/use-projects";
 import { formatBytes } from "@/lib/utils";
 import { IconUpload, IconCheck, IconX, IconSpinner, IconTrash, IconDocument } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -12,17 +14,19 @@ import { cn } from "@/lib/utils";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  projectId: string;
+  projectId?: string;
   onSuccess: () => void;
 }
 
 export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const { files, addFiles, removeFile, clearFiles, uploadAll, status, result, error } = useBulkUpload(projectId);
+  const { projects, isLoading: projLoading } = useProjects();
+  const [selectedProjectId, setSelectedProjectId] = useState(projectId ?? "");
+  const { files, addFiles, removeFile, clearFiles, uploadAll, status, result, error } = useBulkUpload(selectedProjectId);
 
   const isUploading = status === "uploading";
-  const canUpload = files.length > 0 && !isUploading;
+  const canUpload = files.length > 0 && !!selectedProjectId && !isUploading;
   const done = result !== null;
   const okCount = result ? result.succeeded : 0;
   const failCount = result ? result.failed : 0;
@@ -67,6 +71,31 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
       </div>
 
       <div className="p-5 space-y-4">
+        {/* Project selector */}
+        {!done && (
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Project</label>
+            {projLoading ? (
+              <Skeleton className="h-9 w-full" />
+            ) : (
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                disabled={files.length > 0}
+              >
+                <option value="">Select a project…</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+            {files.length > 0 && (
+              <p className="text-[11px] text-muted-foreground mt-1">Project locked after adding files</p>
+            )}
+          </div>
+        )}
+
         {/* Drop zone */}
         {!done && (
           <>

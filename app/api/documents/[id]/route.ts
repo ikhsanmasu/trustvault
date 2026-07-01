@@ -73,20 +73,38 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid document ID", code: "INVALID_ID" }, { status: 400 });
   }
 
-  let body: { action?: string };
-  try { body = (await request.json()) as { action?: string }; } catch {
+  let body: { action?: string; project_id?: string };
+  try { body = (await request.json()) as { action?: string; project_id?: string }; } catch {
     return NextResponse.json({ error: "Invalid body", code: "INVALID_REQUEST" }, { status: 400 });
   }
 
-  const action = body.action === "restore" ? "restore" : "delete";
+  const action = body.action === "restore" ? "restore" : body.action === "move" ? "move" : "delete";
 
   // Verify membership via project
-  const { data: doc } = await supabase.from("documents").select("project_id").eq("id", id).single();
+  const { data: doc } = await supabase.from("documents").select("project_id, tenant_id").eq("id", id).single();
   if (!doc) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
   const { data: member } = await supabase.from("project_members").select("role").eq("project_id", doc.project_id).eq("user_id", user.id).single();
   if (!member || !["admin", "editor"].includes(member.role)) {
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  // ---- Move: change document's project ----
+  if (action === "move") {
+    const targetProjectId = body.project_id;
+    if (!targetProjectId || !UUID_RE.test(targetProjectId)) {
+      return NextResponse.json({ error: "Invalid project_id", code: "INVALID_PROJECT_ID" }, { status: 400 });
+    }
+    // Verify target project exists in same tenant
+    const { data: targetProject } = await supabase.from("projects").select("id, tenant_id").eq("id", targetProjectId).single();
+    if (!targetProject || targetProject.tenant_id !== doc.tenant_id) {
+      return NextResponse.json({ error: "Target project not found or different tenant", code: "INVALID_TARGET" }, { status: 400 });
+    }
+    // Move chunks too
+    await supabase.from("document_chunks").update({ project_id: targetProjectId }).eq("document_id", id);
+    const { data: updated, error: updErr } = await supabase.from("documents").update({ project_id: targetProjectId }).eq("id", id).select("*").single();
+    if (updErr || !updated) return NextResponse.json({ error: "Update failed", code: "DB_ERROR" }, { status: 500 });
+    return NextResponse.json({ document: updated as unknown as Document });
   }
 
   if (action === "delete") {

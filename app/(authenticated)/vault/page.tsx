@@ -417,8 +417,6 @@ export default function VaultPage() {
         </Button>
         <Button
           size="sm"
-          disabled={!selectedProjectId}
-          title={!selectedProjectId ? "Select a project to upload documents" : undefined}
           onClick={() => setShowUpload(true)}
         >
           <IconPlus className="mr-1.5 h-4 w-4" />

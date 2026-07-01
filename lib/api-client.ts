@@ -595,6 +595,16 @@ export async function restoreDocument(id: string): Promise<{ document: Document 
   return handleResponse<{ document: Document }>(response);
 }
 
+/** PATCH /api/documents/:id — move a document to a different project. */
+export async function moveDocument(id: string, projectId: string): Promise<{ document: Document }> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "move", project_id: projectId }),
+  });
+  return handleResponse<{ document: Document }>(response);
+}
+
 // ===== P5: Blockchain Anchoring =====
 
 export interface AnchorRequest {
