@@ -230,49 +230,42 @@ export async function POST(
   const docId = doc.id as string;
   const docText = (extractedText ?? "") as string;
 
-  console.log("[upload] starting auto-ingest:", {
-    docId,
-    projectId,
-    textLen: docText.length,
-    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
-    hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-  });
+  let ingestion: { status: string; chunks?: number; error?: string } = { status: "skipped" };
 
   try {
-    const records = await ingestDocument(docId, projectId, docText);
-    console.log("[upload] ingestDocument returned:", {
-      chunkCount: records.length,
-      firstHasEmbedding: records[0]?.embedding?.length ?? 0,
-    });
-
-    if (records.length > 0) {
-      // Use user-scoped client — RLS allows editor insert (user role already verified)
-      const { error: insertError } = await supabase
-        .from("document_chunks")
-        .insert(
-          records.map((r) => ({
-            document_id: r.document_id,
-            project_id: r.project_id,
-            chunk_index: r.chunk_index,
-            content: r.content,
-            embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
-            token_count: r.token_count,
-          })),
-        );
-      if (insertError) {
-        console.error("[upload] chunk insert error:", JSON.stringify(insertError));
-      } else {
-        console.log("[upload] auto-ingest complete:", records.length, "chunks");
-      }
+    if (docText.trim().length === 0) {
+      ingestion = { status: "empty_text", chunks: 0 };
     } else {
-      console.log("[upload] no chunks generated (empty text?)");
+      const records = await ingestDocument(docId, projectId, docText);
+      ingestion = {
+        status: records.length > 0 ? "ok" : "no_chunks",
+        chunks: records.length,
+      };
+
+      if (records.length > 0) {
+        const { error: insertError } = await supabase
+          .from("document_chunks")
+          .insert(
+            records.map((r) => ({
+              document_id: r.document_id,
+              project_id: r.project_id,
+              chunk_index: r.chunk_index,
+              content: r.content,
+              embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
+              token_count: r.token_count,
+            })),
+          );
+        if (insertError) {
+          ingestion = { status: "insert_error", error: JSON.stringify(insertError) };
+        }
+      }
     }
   } catch (err) {
-    console.error("[upload] auto-ingest failed:", String(err));
+    ingestion = { status: "error", error: String(err) };
   }
 
   return NextResponse.json(
-    { document: document as unknown as Document },
+    { document: document as unknown as Document, ingestion },
     { status: 201 },
   );
 }
