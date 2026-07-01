@@ -176,7 +176,6 @@ export default function VaultPage() {
               </span>
               <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-balance">
                 {total.toLocaleString()} document{total !== 1 ? "s" : ""}
-                {selectedProjectId ? " in group" : " across groups"}
               </h1>
               <p className="mt-3 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-2xl text-pretty">
                 Manage, search, and compare your document versions with confidence.
@@ -546,9 +545,6 @@ export default function VaultPage() {
                   <th className="hidden sm:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_type")}>
                     Type <span className="ml-0.5">{sortIndicator("file_type")}</span>
                   </th>
-                  <th className="hidden lg:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
-                    Group
-                  </th>
                   <th className="hidden md:table-cell px-4 py-3.5 text-right text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_size_bytes")}>
                     Size <span className="ml-0.5">{sortIndicator("file_size_bytes")}</span>
                   </th>
@@ -600,11 +596,6 @@ export default function VaultPage() {
                         {doc.deleted_at && (
                           <Badge className="ml-1 text-[10px] px-1.5 py-0 font-medium bg-neutral-400/20 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 border-0">Deleted</Badge>
                         )}
-                      </td>
-                      <td className="hidden lg:table-cell px-4 py-3.5">
-                        <span className="text-sm text-muted-foreground truncate block max-w-[140px]">
-                          {projName || "—"}
-                        </span>
                       </td>
                       <td className="hidden md:table-cell px-4 py-3.5 text-right text-sm text-muted-foreground tabular-nums">
                         {formatBytes(doc.file_size_bytes)}

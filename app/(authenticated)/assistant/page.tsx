@@ -254,28 +254,6 @@ export default function AssistantPage() {
       <div className="shrink-0 flex items-center gap-4 pb-4">
         <div className="flex-1" />
 
-        {/* Active project name display */}
-        {selectedProject && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.75}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-              aria-hidden="true"
-            >
-              <rect x="2" y="7" width="20" height="14" rx="2" />
-              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-            </svg>
-            <span className="font-medium text-foreground">
-              {selectedProject.name}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* ---- Main split layout ---- */}
