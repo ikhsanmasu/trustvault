@@ -2,6 +2,7 @@
 -- TrustVault P6: AI Vault Assistant (pgvector + chat)
 -- Migration: 20260701000000_p6_ai_assistant.sql
 -- Prerequisite: 20260622000000_p5_blockchain_anchor.sql
+-- Embedding: all-MiniLM-L6-v2 (384 dims, local ONNX via @xenova/transformers)
 -- ============================================================================
 
 -- --------------------------------------------------------------------------
