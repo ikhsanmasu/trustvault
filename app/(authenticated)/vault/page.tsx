@@ -98,7 +98,8 @@ export default function VaultPage() {
   const [labelDropdownOpen, setLabelDropdownOpen] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState("");
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
-  const [docLabels, setDocLabels] = useState<Map<string, string[]>>(new Map()); // docId → labelIds
+  const [docLabels, setDocLabels] = useState<Map<string, string[]>>(new Map());
+  const [deleteLabelId, setDeleteLabelId] = useState<string | null>(null); // docId → labelIds
 
   // Fetch labels
   useEffect(() => {
@@ -285,18 +286,27 @@ export default function VaultPage() {
                 All Labels
               </button>
               {labels.map((label) => (
-                <button
-                  key={label.id}
-                  type="button"
-                  onClick={() => { setSelectedLabelId(label.id); setLabelDropdownOpen(false); }}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors",
-                    selectedLabelId === label.id && "bg-primary/10 text-primary font-medium",
-                  )}
-                >
-                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
-                  {label.name}
-                </button>
+                <div key={label.id} className="flex items-center hover:bg-muted transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedLabelId(label.id); setLabelDropdownOpen(false); }}
+                    className={cn(
+                      "flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left",
+                      selectedLabelId === label.id && "bg-primary/10 text-primary font-medium",
+                    )}
+                  >
+                    <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                    {label.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setDeleteLabelId(label.id); setLabelDropdownOpen(false); }}
+                    className="shrink-0 px-2 py-2 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                    title={`Delete label ${label.name}`}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -529,6 +539,9 @@ export default function VaultPage() {
                   <th className="hidden sm:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_type")}>
                     Type <span className="ml-0.5">{sortIndicator("file_type")}</span>
                   </th>
+                  <th className="hidden lg:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                    Labels
+                  </th>
                   <th className="hidden md:table-cell px-4 py-3.5 text-right text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_size_bytes")}>
                     Size <span className="ml-0.5">{sortIndicator("file_size_bytes")}</span>
                   </th>
@@ -569,23 +582,6 @@ export default function VaultPage() {
                           <span className={cn("text-sm font-medium truncate block max-w-[220px]", doc.deleted_at && "line-through text-muted-foreground/60")}>
                             {doc.name}
                           </span>
-                          {(docLabels.get(doc.id) ?? []).length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {(docLabels.get(doc.id) ?? []).map((labelId) => {
-                                const label = labels.find(l => l.id === labelId);
-                                if (!label) return null;
-                                return (
-                                  <span
-                                    key={labelId}
-                                    className="rounded-full px-1.5 py-0.5 text-[10px] text-white"
-                                    style={{ backgroundColor: label.color }}
-                                  >
-                                    {label.name}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
                         </div>
                       </td>
                       <td className="hidden sm:table-cell px-4 py-3.5">
@@ -598,6 +594,19 @@ export default function VaultPage() {
                         {doc.deleted_at && (
                           <Badge className="ml-1 text-[10px] px-1.5 py-0 font-medium bg-neutral-400/20 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 border-0">Deleted</Badge>
                         )}
+                      </td>
+                      <td className="hidden lg:table-cell px-4 py-3.5">
+                        <div className="flex flex-wrap gap-1">
+                          {(docLabels.get(doc.id) ?? []).map((labelId) => {
+                            const label = labels.find(l => l.id === labelId);
+                            if (!label) return null;
+                            return (
+                              <span key={labelId} className="rounded-full px-1.5 py-0.5 text-[10px] text-white" style={{ backgroundColor: label.color }}>
+                                {label.name}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </td>
                       <td className="hidden md:table-cell px-4 py-3.5 text-right text-sm text-muted-foreground tabular-nums">
                         {formatBytes(doc.file_size_bytes)}
@@ -684,6 +693,25 @@ export default function VaultPage() {
           initialDesc={editDesc}
           onClose={() => setEditDocId(null)}
           onSaved={() => { setEditDocId(null); setToast("Document updated"); setTimeout(() => setToast(null), 3000); refresh(); }}
+        />
+      )}
+      {/* ---- Label delete confirmation --------------------------------------- */}
+      {deleteLabelId && (
+        <ConfirmDialog
+          open={deleteLabelId !== null}
+          onOpenChange={(open) => { if (!open) setDeleteLabelId(null); }}
+          title="Delete Label"
+          description={`Are you sure you want to delete the label "${labels.find(l => l.id === deleteLabelId)?.name ?? ""}"? This will remove it from all documents.`}
+          confirmLabel="Delete"
+          variant="destructive"
+          onConfirm={async () => {
+            const id = deleteLabelId;
+            setDeleteLabelId(null);
+            await fetch(`/api/labels?id=${id}`, { method: "DELETE" });
+            setLabels(prev => prev.filter(l => l.id !== id));
+            setToast("Label deleted");
+            setTimeout(() => setToast(null), 3000);
+          }}
         />
       )}
       {confirmDelete && (

@@ -52,3 +52,23 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ label: data }, { status: 201 });
 }
+
+// DELETE /api/labels?id=xxx — delete a label
+export async function DELETE(request: NextRequest) {
+  const auth = await requireAuth();
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth;
+
+  const tenantId = await getUserTenantId(supabase, user.id);
+  if (!tenantId) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id required", code: "INVALID_ID" }, { status: 400 });
+
+  // Verify label belongs to tenant
+  const { data: label } = await supabase.from("labels").select("id").eq("id", id).eq("tenant_id", tenantId).single();
+  if (!label) return NextResponse.json({ error: "Label not found", code: "NOT_FOUND" }, { status: 404 });
+
+  await supabase.from("labels").delete().eq("id", id);
+  return NextResponse.json({ ok: true });
+}

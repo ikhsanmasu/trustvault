@@ -83,14 +83,6 @@ export async function POST(
 
   const { sessionId, projectId, message } = body;
 
-  // Validate projectId
-  if (!projectId || typeof projectId !== "string" || !UUID_RE.test(projectId)) {
-    return NextResponse.json(
-      { error: "Valid projectId is required", code: "MISSING_PROJECT_ID" },
-      { status: 400 },
-    );
-  }
-
   // Validate message
   if (!message || typeof message !== "string" || message.trim().length === 0) {
     return NextResponse.json(
@@ -122,13 +114,13 @@ export async function POST(
     }
   }
 
-  // -- 3. Verify project membership -----------------------------------------
-  const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-    "admin",
-    "editor",
-    "viewer",
-  ]);
-  if (!roleCheck.ok) return roleCheck.response;
+  // -- 3. Verify project membership (if projectId provided) ------------------
+  if (projectId) {
+    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
+      "admin", "editor", "viewer",
+    ]);
+    if (!roleCheck.ok) return roleCheck.response;
+  }
 
   // -- 4. Resolve/create session --------------------------------------------
   let resolvedSessionId: string;
@@ -235,10 +227,16 @@ export async function POST(
         }> = [];
 
         if (questionEmbedding) {
-          const { data: allChunks, error: chunksError } = await supabase
+          let chunkQuery = supabase
             .from("document_chunks")
-            .select("id, document_id, project_id, chunk_index, content, embedding")
-            .eq("project_id", capturedProjectId);
+            .select("id, document_id, chunk_index, content, embedding");
+
+          if (capturedProjectId) {
+            chunkQuery = chunkQuery.eq("project_id", capturedProjectId);
+          }
+          // If no projectId, RLS + tenant scoping handles access
+
+          const { data: allChunks, error: chunksError } = await chunkQuery;
 
           if (!chunksError && allChunks) {
             scored = allChunks
