@@ -91,7 +91,7 @@ export function useAuth(): AuthState {
 
   const signInWithGoogle = useCallback(async () => {
     const supabase = getBrowserClient();
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const origin = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
