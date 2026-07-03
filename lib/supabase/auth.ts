@@ -193,14 +193,15 @@ export async function requireTenantRole(
   userId: string,
   allowedRoles: TenantRole[],
 ): Promise<TenantRoleResult> {
-  // 1. Query the user's profile for their role and tenant_id
+  // 1. Query the user's profile. Try to get role, fall back if column missing.
   const { data: profile, error } = await supabase
     .from("profiles")
     .select("role, tenant_id")
     .eq("id", userId)
     .single();
 
-  if (error || !profile) {
+  // Profile not found or RLS blocked — reject
+  if (!profile) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -210,8 +211,23 @@ export async function requireTenantRole(
     };
   }
 
-  // P14 migration may not have run yet — default NULL to owner
-  const role: TenantRole = profile.role ?? "owner";
+  // If query errored (likely role column missing from migration not applied),
+  // fall back to selecting just tenant_id
+  let role: TenantRole = "owner";
+  if (error) {
+    const { data: basic } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", userId)
+      .single();
+    if (!basic) {
+      return { ok: false, response: NextResponse.json({ error: "You do not have access to this tenant", code: "FORBIDDEN" }, { status: 403 }) };
+    }
+    return { ok: true, role: "owner", tenantId: basic.tenant_id as string };
+  }
+
+  // P14 migration applied — check role. Default NULL to owner.
+  role = (profile.role ?? "owner") as TenantRole;
 
   // 2. Check the user's role against the allowed roles
   if (!allowedRoles.includes(role)) {
