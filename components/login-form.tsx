@@ -21,9 +21,11 @@ export default function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,10 +89,45 @@ export default function LoginForm() {
               autoComplete="current-password"
             />
           </div>
+          <div className="flex items-center justify-between text-sm">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-primary"
+              />
+              <span className="text-muted-foreground">Remember me</span>
+            </label>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!email.trim()) { setError("Enter your email first."); return; }
+                const supabase = (await import("@supabase/ssr")).createBrowserClient(
+                  process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                  redirectTo: `${window.location.origin}/update-password`,
+                });
+                if (resetErr) { setError(resetErr.message); }
+                else { setResetSent(true); }
+              }}
+              className="text-primary hover:text-primary/80 transition-colors"
+            >
+              Forgot password?
+            </button>
+          </div>
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? "Signing in…" : "Sign In"}
           </Button>
         </form>
+
+        {resetSent && (
+          <Alert className="mt-4 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800">
+            <AlertDescription className="text-emerald-800 dark:text-emerald-200 text-sm">
+              If an account exists for {email}, a password reset link has been sent.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="relative mt-4">
           <div className="absolute inset-0 flex items-center">
