@@ -918,3 +918,481 @@ Build sequence for P14 -- must run in this order:
 - `scripts/verify.sh` (eslint + tsc --noEmit + vitest run) must pass before QA/Security review.
 
 Open questions for the human: none for P14 -- all interfaces are fully specified.
+
+---
+
+## 15. P16 Agent System Architecture
+
+### 15a. Overview
+
+P16 adds a **custom AI agent** subsystem. Users create named agents, each with a configurable system prompt (persona) and a selected set of knowledge-base documents. Agents can connect to external messaging channels (WhatsApp via QR scan, Telegram via bot token) and have a playground chat for testing.
+
+The agent system builds on existing infrastructure:
+- **P6 RAG pipeline** for document retrieval (reuses `document_chunks` table and embedding generation).
+- **P2 auth and RBAC** for access control (tenant scoping, role gates).
+- **P6 SSE streaming pattern** for chat responses.
+
+The agent is pinned at **P16** (not P15) because it introduces significant new subsystems: Puppeteer-based WhatsApp Web client, Telegram Bot API integration, channel credential encryption, and a new set of database tables.
+
+### 15b. Agent System Component Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              Browser (React)                                     │
+│  ┌──────────────┐ ┌──────────────┐ ┌───────────────┐ ┌──────────────────────┐   │
+│  │ Agent List   │ │ Agent Editor │ │ Playground    │ │ Channel Manager      │   │
+│  │ (create,     │ │ (name,       │ │ Chat (SSE,    │ │ (WhatsApp QR,        │   │
+│  │  list,       │ │  prompt,     │ │  RAG-scoped  │ │  Telegram connect,   │   │
+│  │  delete)     │ │  docs)       │ │  to agent)   │ │  status poll)        │   │
+│  └──────┬───────┘ └──────┬───────┘ └───────┬───────┘ └──────────┬───────────┘   │
+└─────────┼────────────────┼─────────────────┼─────────────────────┼───────────────┘
+          │                │                  │                     │
+          │  fetch() to /api/agents/*         │                     │
+          ▼                ▼                  ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         Next.js App Router (Vercel)                              │
+│                                                                                  │
+│  lib/agents/                                                                     │
+│  ├── channel-manager.ts    — WhatsApp client pool, Telegram bot registry,       │
+│  │                           channel lifecycle (start/stop/disconnect)           │
+│  ├── channel-encryption.ts — AES-256-GCM encrypt/decrypt for channel configs     │
+│  ├── rag.ts                — Agent-scoped RAG pipeline (queries agent_documents │
+│  │                           to filter document_chunks to selected docs)         │
+│  └── whatsapp-handler.ts   — WhatsApp message event handler (incoming messages, │
+│                              RAG pipeline, reply)                                │
+│                                                                                  │
+│  app/api/agents/route.ts                    POST /api/agents                     │
+│                                            GET  /api/agents                     │
+│  app/api/agents/[id]/route.ts              GET  /api/agents/:id                  │
+│                                            PATCH /api/agents/:id                 │
+│                                            DELETE /api/agents/:id                │
+│  app/api/agents/[id]/channels/route.ts     POST /api/agents/:id/channels        │
+│  app/api/agents/[id]/channels/[channelId]/route.ts  DELETE .../channels/:chanId │
+│  app/api/agents/[id]/chat/route.ts         POST /api/agents/:id/chat            │
+│  app/api/agents/[id]/chat/sessions/route.ts GET /api/agents/:id/chat/sessions   │
+│  app/api/agents/[id]/chat/sessions/[sid]/route.ts GET|DELETE .../sessions/:sid  │
+│  app/api/agents/[id]/whatsapp/connect/route.ts  POST /api/agents/:id/whatsapp/connect │
+│  app/api/agents/[id]/whatsapp/disconnect/route.ts POST .../whatsapp/disconnect  │
+│  app/api/agents/[id]/whatsapp/status/route.ts  GET /api/agents/:id/whatsapp/status │
+│  app/api/agents/[id]/telegram/connect/route.ts  POST .../telegram/connect       │
+│  app/api/agents/[id]/telegram/disconnect/route.ts POST .../telegram/disconnect  │
+│  app/api/webhook/telegram/[agentId]/route.ts  POST /api/webhook/telegram/:agentId │
+│  app/api/webhook/whatsapp/[agentId]/route.ts   POST /api/webhook/whatsapp/:agentId │
+└──────────────────┬──────────────────────┬────────────────────────────────────────┘
+                   │                      │
+          ┌────────▼────────┐    ┌────────▼────────────┐
+          │  Supabase        │    │  DeepSeek API        │
+          │  Postgres (RLS)  │    │  chat/completions    │
+          │  Storage          │    │  (stream: true)      │
+          │  pgvector         │    │  model: deepseek-chat │
+          └─────────────────┘    ├──────────────────────┤
+                                 │  OpenAI API           │
+                                 │  embeddings           │
+                                 │  text-embedding-3-    │
+                                 │  small (1536d)        │
+                                 └──────────────────────┘
+                                         │
+          ┌──────────────────────────────┴──────────────────────────┐
+          │              External Messaging Channels                 │
+          │                                                          │
+          │  ┌─────────────────────────┐  ┌──────────────────────┐  │
+          │  │ WhatsApp Web (Puppeteer)│  │ Telegram Bot API     │  │
+          │  │ whatsapp-web.js         │  │ node-telegram-bot-   │  │
+          │  │ - QR code auth          │  │ api                  │  │
+          │  │ - message events        │  │ - webhook receiver   │  │
+          │  │ - sendMessage()         │  │ - sendMessage()      │  │
+          │  └─────────────────────────┘  └──────────────────────┘  │
+          └─────────────────────────────────────────────────────────┘
+```
+
+### 15c. Agent Lifecycle
+
+```
+┌──────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────┐
+│  Create  │────>│  Configure   │────>│  Connect     │────>│  Deploy  │
+│          │     │              │     │  Channels    │     │          │
+│  POST    │     │  PATCH       │     │  POST        │     │  Agent   │
+│  /api/   │     │  /api/agents │     │  .../channels│     │  responds│
+│  agents  │     │  /:id        │     │  .../connect │     │  to chats│
+│          │     │              │     │              │     │  & msgs  │
+│  - name  │     │  - system_   │     │  WhatsApp:   │     │          │
+│  - system│     │    prompt    │     │    QR scan   │     │  Play-   │
+│    prompt│     │  - knowledge │     │    flow      │     │  ground   │
+│  - docs  │     │    base docs│     │  Telegram:   │     │  chat at  │
+│          │     │  - is_active│     │    bot token │     │  any point│
+│          │     │              │     │              │     │          │
+└──────────┘     └──────────────┘     └──────────────┘     └──────────┘
+```
+
+- **Create:** Agent is created with a name, system prompt, and an initial set of knowledge-base documents.
+- **Configure:** Name, prompt, documents, and active status can be updated at any time via PATCH.
+- **Connect Channels:** Channels are added and then connected. WhatsApp requires a QR scan flow; Telegram requires a bot token.
+- **Deploy/Active:** Once channels are connected, the agent responds to messages on those channels and in the playground.
+- **Playground chat** is available at any point after creation (no channel needed).
+- **Deactivate:** Setting `is_active = false` stops channel responses. Playground chat still works. Individual channels can also be disconnected without deleting them.
+
+### 15d. WhatsApp Integration Flow
+
+Uses `whatsapp-web.js` -- an unofficial WhatsApp Web client based on Puppeteer. This requires a persistent Puppeteer browser instance on the server.
+
+#### Connection Flow
+
+```
+User (Browser)              Next.js Server                    WhatsApp Web
+     │                           │                                │
+     │ POST /whatsapp/connect    │                                │
+     │──────────────────────────>│                                │
+     │                           │── Create WhatsApp Client ──>  │
+     │                           │   (Puppeteer launches)        │
+     │<── 200 { status:'qr_      │                                │
+     │     pending' }            │                                │
+     │                           │                                │
+     │ GET /whatsapp/status      │                                │
+     │ (poll every 2s)           │                                │
+     │──────────────────────────>│                                │
+     │                           │<── 'qr' event ────────────────│
+     │<── 200 { status:          │   (QR string captured)        │
+     │     'qr_pending',         │                                │
+     │     qr_code: '...'}       │                                │
+     │                           │                                │
+     │ [User scans QR with       │                                │
+     │  WhatsApp mobile app]     │                                │
+     │                           │                                │
+     │ GET /whatsapp/status      │                                │
+     │──────────────────────────>│                                │
+     │                           │<── 'ready' event ─────────────│
+     │<── 200 { status:          │   (authenticated)              │
+     │     'connected',          │── Update DB: is_active=true   │
+     │     phone_number: '...'}  │── Persist session state       │
+     │                           │                                │
+     │ [Agent is now connected]  │                                │
+```
+
+#### Incoming Message Flow
+
+```
+WhatsApp Web                    Next.js Server                   DeepSeek
+     │                               │                              │
+     │── 'message' event ──────────>│                              │
+     │   { from, body, ... }        │                              │
+     │                               │── Find agent by client       │
+     │                               │── Create/find session        │
+     │                               │── Insert user message        │
+     │                               │── RAG pipeline (agent docs)  │
+     │                               │── Build prompt (system_      │
+     │                               │   prompt + context)          │
+     │                               │── DeepSeek chat/completions ─>│
+     │                               │<── streaming response ───────│
+     │                               │── Insert assistant message   │
+     │                               │── Send reply via WhatsApp ──>│
+     │<── "Based on your documents, │                              │
+     │     the payment terms..."    │                              │
+```
+
+**Critical design decision:** WhatsApp replies are sent AFTER the full AI response is received (not streamed). WhatsApp Web does not support streaming partial messages; the full text is sent as one message via `client.sendMessage()`.
+
+#### Persistent Client State
+
+WhatsApp Web sessions are stateful. The `whatsapp-web.js` library can serialize and restore session state, avoiding QR re-scan on server restart. The session state is stored in the encrypted `config` column of `agent_channels`:
+
+- On `ready` event: serialize client session state, encrypt, store in `config.client_state`.
+- On server startup (or connect): check if `config.client_state` exists. If yes, restore session instead of showing QR. If the session is expired, clear it and start fresh QR flow.
+- On `disconnected` event: clear `config.client_state`, set `is_active = false`.
+
+**Puppeteer requirements:** The server environment must support Chromium/Chrome. In production (Vercel), this means using `@sparticuz/chromium` or deploying the WhatsApp client as a separate service. For P16, the recommended approach is:
+
+- **Local dev:** Puppeteer launches a local Chrome/Chromium instance.
+- **Production:** Deploy the WhatsApp client as a separate Node.js process (e.g., a Railway service or a dedicated VPS) that connects to the same Supabase database. The Next.js API routes communicate with this service via HTTP or shared database state.
+
+This split is documented but the architecture supports both modes via a swappable `WhatsAppClientProvider` interface in `lib/agents/channel-manager.ts`.
+
+### 15e. Telegram Integration Flow
+
+Uses `node-telegram-bot-api` -- the official Node.js library for the Telegram Bot API. Telegram bots use webhooks (preferred for production) or long-polling.
+
+#### Connection Flow
+
+```
+User (Browser)              Next.js Server                    Telegram API
+     │                           │                                │
+     │ POST /telegram/connect    │                                │
+     │ { bot_token }             │                                │
+     │──────────────────────────>│                                │
+     │                           │── getMe(bot_token) ───────────>│
+     │                           │<── { username: '@mybot' } ─────│
+     │                           │                                │
+     │                           │── Encrypt bot_token            │
+     │                           │── setWebhook(url=/api/         │
+     │                           │   webhook/telegram/:agentId) >│
+     │                           │<── ok ──────────────────────── │
+     │                           │                                │
+     │                           │── Register bot in global       │
+     │                           │   registry (agentId -> bot)    │
+     │                           │── Update DB: is_active=true     │
+     │                           │                                │
+     │<── 200 { bot_username,    │                                │
+     │     webhook_url }         │                                │
+```
+
+#### Incoming Message Flow
+
+```
+Telegram User              Telegram API              Next.js Server
+     │                           │                        │
+     │─ "Hello bot" ────────────>│                        │
+     │                           │── POST /api/webhook/   │
+     │                           │   telegram/:agentId    │
+     │                           │───────────────────────>│
+     │                           │                        │── Validate agentId
+     │                           │                        │── Parse update
+     │                           │                        │── Find/create session
+     │                           │                        │── Insert user message
+     │                           │                        │── RAG pipeline
+     │                           │                        │── DeepSeek chat
+     │                           │                        │── Insert assistant msg
+     │                           │<── 200 { ok: true } ───│
+     │                           │                        │
+     │                           │── sendMessage() ──────>│
+     │                           │                        │── POST to Telegram API
+     │                           │<───────────────────────│
+     │<── "Based on your docs..."│                        │
+```
+
+**Telegram webhook auth:** The `X-Telegram-Bot-Api-Secret-Token` header is used for webhook verification. This token is set via the `TELEGRAM_WEBHOOK_SECRET` env var and included in the `setWebhook` call as `secret_token`. The webhook endpoint verifies this header on every incoming request.
+
+### 15f. Channel Abstraction Pattern
+
+Channels are managed through a unified `ChannelManager` in `lib/agents/channel-manager.ts`. This decouples the API routes from specific channel implementations:
+
+```ts
+// lib/agents/channel-manager.ts -- conceptual interface (pseudocode)
+
+interface ChannelHandler {
+  connect(agentId: string, config: ChannelConfig): Promise<ConnectResult>;
+  disconnect(agentId: string): Promise<void>;
+  getStatus(agentId: string): ChannelStatus;
+  handleIncomingMessage(agentId: string, message: IncomingMessage): Promise<void>;
+}
+
+class ChannelManager {
+  private whatsAppHandlers: Map<string, WhatsAppHandler>;
+  private telegramHandlers: Map<string, TelegramHandler>;
+
+  getHandler(channelType: 'whatsapp' | 'telegram'): ChannelHandler;
+  registerAgent(agentId: string, channelType: string, handler: ChannelHandler): void;
+  unregisterAgent(agentId: string, channelType: string): void;
+
+  // WhatsApp status is polled by the frontend, so the handler
+  // holds in-memory state (qr_code, status, phone_number)
+  getWhatsAppStatus(agentId: string): WhatsAppStatus;
+}
+```
+
+**WhatsApp client pool:** Each connected WhatsApp agent runs its own `whatsapp-web.js` Client instance (with its own Puppeteer page). These are stored in an in-memory Map keyed by `agentId`. The `ChannelManager` singleton manages their lifecycle.
+
+**Telegram bot registry:** Each connected Telegram agent has a `node-telegram-bot-api` instance. The webhook endpoint (`POST /api/webhook/telegram/[agentId]`) looks up the agent by its UUID path parameter, retrieves the bot instance from the registry, and processes the update.
+
+### 15g. Playground Chat Architecture
+
+The playground chat (`POST /api/agents/[id]/chat`) reuses the same SSE streaming pattern as the P6 assistant chat. The key architectural difference is the RAG scope:
+
+| Aspect | P6 Assistant | P16 Agent Playground |
+|---|---|---|
+| **System prompt** | Fixed: "You are TrustVault AI Assistant..." | Agent's `system_prompt` |
+| **RAG scope** | All documents in tenant | Only documents linked via `agent_documents` |
+| **Session storage** | `chat_sessions` + `chat_messages` | `agent_sessions` + `agent_messages` |
+| **Citation source** | `document_chunks` filtered by tenant | `document_chunks` filtered to agent's `document_ids` |
+
+The agent scoping requires an additional JOIN in the RAG retrieval query:
+
+```sql
+-- Agent-scoped RAG retrieval (pseudocode)
+SELECT dc.*
+FROM public.document_chunks dc
+JOIN public.agent_documents ad ON dc.document_id = ad.document_id
+WHERE ad.agent_id = :agentId
+ORDER BY dc.embedding <=> :queryEmbedding
+LIMIT 5;
+```
+
+### 15h. Module Responsibilities (P16)
+
+#### New Modules (owned by `backend`)
+
+**`lib/agents/channel-manager.ts`** -- Singleton managing all channel connections:
+- In-memory Maps: `whatsappClients` (agentId -> WhatsApp Client), `telegramBots` (agentId -> Telegram Bot).
+- `initWhatsApp(agentId, config)`, `destroyWhatsApp(agentId)`.
+- `initTelegram(agentId, config)`, `destroyTelegram(agentId)`.
+- `getWhatsAppStatus(agentId)`, `getTelegramStatus(agentId)`.
+- Handles session persistence (serialize/restore WhatsApp state).
+
+**`lib/agents/channel-encryption.ts`** -- AES-256-GCM encryption for channel credentials:
+- `encryptConfig(plaintext: AgentChannelConfig): string` -- encrypts the config as a base64-encoded ciphertext.
+- `decryptConfig(ciphertext: string): AgentChannelConfig` -- decrypts.
+- Uses `AGENT_CHANNEL_ENCRYPTION_KEY` env var. Falls back to a dev-only warning if missing.
+- Algorithm: AES-256-GCM with random 12-byte IV. Output format: `iv:ciphertext:authTag` (all base64-encoded).
+
+**`lib/agents/rag.ts`** -- Agent-scoped RAG pipeline:
+- `retrieveContext(agentId: string, query: string): Promise<DocumentChunk[]>` -- embeds query, searches chunks filtered to agent's documents.
+- `buildPrompt(systemPrompt: string, context: DocumentChunk[], history: AgentMessage[], question: string): ChatMessage[]` -- builds the messages array for DeepSeek.
+
+**`lib/agents/whatsapp-handler.ts`** -- WhatsApp message event handler:
+- `handleIncomingMessage(agentId: string, msg: WhatsAppMessage): Promise<void>` -- called from the 'message' event.
+- Creates/finds session, inserts messages, runs RAG, sends reply.
+
+**`lib/agents/telegram-handler.ts`** -- Telegram update handler:
+- `handleUpdate(agentId: string, update: TelegramUpdate): Promise<void>` -- called from webhook.
+- Same flow as WhatsApp handler.
+
+**`app/api/agents/route.ts`** -- `POST` and `GET` for `/api/agents`.
+
+**`app/api/agents/[id]/route.ts`** -- `GET`, `PATCH`, `DELETE` for `/api/agents/:id`.
+
+**`app/api/agents/[id]/channels/route.ts`** -- `POST /api/agents/:id/channels`.
+
+**`app/api/agents/[id]/channels/[channelId]/route.ts`** -- `DELETE`.
+
+**`app/api/agents/[id]/chat/route.ts`** -- `POST /api/agents/:id/chat` (SSE).
+
+**`app/api/agents/[id]/chat/sessions/route.ts`** -- `GET` list sessions.
+
+**`app/api/agents/[id]/chat/sessions/[sessionId]/route.ts`** -- `GET` and `DELETE` session.
+
+**`app/api/agents/[id]/whatsapp/connect/route.ts`** -- `POST` start connect flow.
+
+**`app/api/agents/[id]/whatsapp/disconnect/route.ts`** -- `POST` disconnect.
+
+**`app/api/agents/[id]/whatsapp/status/route.ts`** -- `GET` poll status.
+
+**`app/api/agents/[id]/telegram/connect/route.ts`** -- `POST` connect.
+
+**`app/api/agents/[id]/telegram/disconnect/route.ts`** -- `POST` disconnect.
+
+**`app/api/webhook/telegram/[agentId]/route.ts`** -- `POST` receive Telegram updates.
+
+**`app/api/webhook/whatsapp/[agentId]/route.ts`** -- `POST` (placeholder for future WhatsApp Business API).
+
+#### Updated Modules
+
+**`lib/types.ts`** -- Add P16 types:
+- `Agent`, `AgentWithDetails`, `AgentChannel`, `AgentSession`, `AgentMessage`.
+- `CreateAgentRequest`, `UpdateAgentRequest`, `AddChannelRequest`.
+- `WhatsAppConnectResponse`, `WhatsAppStatusResponse`.
+- `TelegramConnectRequest`, `TelegramConnectResponse`.
+- `AgentChatRequest`.
+
+#### New Modules (owned by `frontend`)
+
+**Agent list page** -- New sidebar menu item "Agents" linking to `app/(dashboard)/agents/`:
+- Grid/list of agents with name, status badge (active/inactive), channel icons.
+- "Create Agent" button opens a modal with name, system prompt, and document selector.
+- Clicking an agent opens the agent detail page.
+
+**Agent detail/editor page** -- `app/(dashboard)/agents/[id]/`:
+- Edit name, system prompt, knowledge-base document selector.
+- Toggle active/inactive.
+- Channel management section: add/connect/disconnect WhatsApp and Telegram.
+- Link to playground chat.
+
+**Agent playground chat** -- `app/(dashboard)/agents/[id]/chat/`:
+- Reuses the chat UI pattern from P6 Assistant.
+- Session sidebar showing past conversations.
+- SSE streaming response display.
+
+**WhatsApp QR modal** -- Overlay showing the QR code for scanning:
+- Polls `GET /api/agents/[id]/whatsapp/status` every 2 seconds.
+- Renders QR code using client-side library (`qrcode.react`).
+- Shows status transitions: "Waiting for QR..." -> "Scan QR code" -> "Connecting..." -> "Connected!"
+
+**Channel connection UI** -- Forms for connecting channels:
+- WhatsApp: "Connect WhatsApp" button -> opens QR modal.
+- Telegram: input field for bot token + "Connect" button.
+- Disconnect buttons with confirmation.
+
+#### New Modules (owned by `database`)
+
+**Migration `20260703000002_p16_agents.sql`** -- Creates five tables + indexes + RLS policies (see `database.md` Section 14).
+
+### 15i. Technology Choices (P16)
+
+| Choice | Rationale |
+|---|---|
+| `whatsapp-web.js` | Most mature unofficial WhatsApp Web client for Node.js. Puppeteer-based. Free (no WhatsApp Business API fees). QR code scan authentication. Handles message sending/receiving. |
+| `node-telegram-bot-api` | Official Node.js wrapper for Telegram Bot API. Supports webhooks and long-polling. Lightweight, well-maintained. |
+| `qrcode.react` (frontend) | Client-side QR code rendering. No server dependency needed for QR image generation. The WhatsApp QR string is rendered directly in the browser. |
+| AES-256-GCM for channel config encryption | Industry-standard authenticated encryption. Protects bot tokens and session state at rest in the database. Key never leaves the server. |
+| Separate `agent_sessions` and `agent_messages` tables | Agent chat has different scoping (agent + user), different columns (channel, external_user_id), and different RLS semantics than P6 assistant chat. A separate table avoids schema compromises. |
+| In-memory WhatsApp client pool | WhatsApp Web sessions are long-lived and stateful. An in-memory Map keyed by agentId provides O(1) lookup. Server restarts require reconnection (mitigated by session persistence in `config.client_state`). |
+| Webhook-based Telegram integration | More efficient than long-polling for production. One HTTP request per message instead of persistent polling. Requires a public URL (Vercel provides this). |
+
+### 15j. Environment Variables (P16)
+
+| Variable | Scope | Description |
+|---|---|---|
+| `AGENT_CHANNEL_ENCRYPTION_KEY` | Server-only | 32-byte base64-encoded AES-256 key for encrypting channel configs. Generate via: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. |
+| `APP_URL` | Server-only | Public URL of the deployed app (e.g., `https://trustvault.vercel.app`). Used to construct Telegram webhook URLs. |
+| `TELEGRAM_WEBHOOK_SECRET` | Server-only | (Optional) Secret token for Telegram webhook verification. Set in `setWebhook` as `secret_token`. |
+| `WHATSAPP_WEBHOOK_SECRET` | Server-only | (Future) Secret for WhatsApp Business API webhook validation. Not used in P16. |
+
+### 15k. New npm Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| `whatsapp-web.js` | ^1.25.x (latest) | WhatsApp Web client (Puppeteer-based) |
+| `node-telegram-bot-api` | ^0.66.x (latest) | Telegram Bot API client |
+| `qrcode.react` | ^4.x (latest) | Client-side QR code rendering (frontend). Can also use `qrcode` (server) for SVG generation. |
+
+The `scaffold` agent must add these three packages to `package.json`.
+
+### 15l. Forward Compatibility
+
+- **WhatsApp Business API migration:** The `ChannelHandler` interface abstracts the channel implementation. Replacing `whatsapp-web.js` with the official WhatsApp Business API only requires a new handler implementation. The webhook endpoint (`POST /api/webhook/whatsapp/[agentId]`) is already defined.
+- **Additional channels (Slack, Discord, etc.):** Adding a new channel type requires:
+  1. Adding the channel_type to the CHECK constraint (requires a new migration).
+  2. Implementing a new `ChannelHandler`.
+  3. Adding a new connect/disconnect API route pair.
+- **Per-channel system prompt overrides:** Future enhancement: allow channel-specific system prompt overrides stored in `agent_channels.config`.
+- **Agent-to-agent handoff:** Future: one agent can hand off a conversation to another agent. Requires cross-agent session linking in `agent_messages`.
+- **WhatsApp as a separate service:** The architecture supports splitting the WhatsApp client into a separate Node.js process (e.g., Railway service). The `WhatsAppClientProvider` interface in `channel-manager.ts` can be swapped from in-process Puppeteer to an HTTP-based remote client.
+
+### 15m. Out of Scope for P16
+
+- Multi-agent conversations (agent handoff).
+- Channel-specific system prompt overrides.
+- Agent usage analytics / message count tracking.
+- WhatsApp Business API (official) integration.
+- Slack, Discord, or other channel types.
+- Agent templates or cloning.
+- Scheduled/cron-triggered agent messages.
+- OAuth-based channel authentication flows.
+
+---
+
+## 16. Handoff (P16)
+
+Build sequence for P16 -- must run in this order:
+
+| Step | Agent | Picks up | Runs |
+|---|---|---|---|
+| 0 | `scaffold` | `docs/architecture.md` (Section 15k for new npm dependencies), `CLAUDE.md` (stack) | **Sequential, alone.** Adds `whatsapp-web.js`, `node-telegram-bot-api`, and `qrcode.react` to `package.json`. Verifies skeleton compiles. |
+| 1 | `database` | `docs/database.md` Section 14 -> create migration `20260703000002_p16_agents.sql` | **Parallel** with backend + frontend (after scaffold done) |
+| 1 | `backend` | `docs/api-spec.md` P16 endpoints + `docs/database.md` Section 14 + `docs/architecture.md` Section 15 -> implement `lib/agents/` (channel-manager, channel-encryption, rag, whatsapp-handler, telegram-handler), all P16 route handlers, update `lib/types.ts` | **Parallel** with database + frontend |
+| 1 | `frontend` | `docs/api-spec.md` P16 endpoints + `docs/architecture.md` Section 15h (frontend modules) -> build agent list page, agent editor/detail page, agent playground chat, WhatsApp QR modal, channel connection UI, new "Agents" sidebar menu item | **Parallel** with database + backend |
+| 2 | `qa` | `docs/roadmap.md` P16 acceptance criteria -> write eval tests for agent CRUD, agent chat RAG scoping, channel config encryption, WhatsApp connect/disconnect flow, Telegram webhook handling | **Sequential** after build (gate) |
+| 2 | `security` | `docs/security.md` Section 16 -> audit channel credential encryption, webhook verification, rate limiting per agent, knowledge base access control, WhatsApp session state security, Telegram bot token handling | **Sequential** after build (gate, read-only) |
+| 3 | `deployment` | `docs/deployment.md` P16 section -> add `AGENT_CHANNEL_ENCRYPTION_KEY` and other new env vars to Vercel, verify new migration, configure Puppeteer/Chromium for production WhatsApp client, configure Telegram webhook public URL | **Last**, after gates pass |
+
+**Critical rules:**
+- `scaffold` is a serial prerequisite. No build agent may start before the skeleton exists and compiles with new P16 dependencies.
+- `database`, `backend`, and `frontend` run in parallel. They share contracts (`database.md` Section 14 for schema, `api-spec.md` P16 for API shape) and must not deviate.
+- File ownership matrix in `CLAUDE.md` applies:
+  - `database` owns the P16 migration file (`supabase/migrations/20260703000002_p16_agents.sql`)
+  - `backend` owns `lib/agents/`, all `app/api/agents/` and `app/api/webhook/` route handlers, and `lib/types.ts` P16 type additions
+  - `frontend` owns agent pages, playground chat UI, WhatsApp QR modal, channel connection UI, sidebar menu update
+  - No agent modifies files owned by another agent
+- The existing P6 RAG pipeline (`lib/assistant/rag.ts` or equivalent) is NOT modified. P16 adds `lib/agents/rag.ts` which may share embedding/chunking utilities but has its own scoping logic.
+- `AGENT_CHANNEL_ENCRYPTION_KEY` must never appear in client-side code or env vars with `NEXT_PUBLIC_` prefix.
+- Channel credentials (`bot_token`, `client_state`) must never be logged or returned in API responses.
+- `scripts/verify.sh` (eslint + tsc --noEmit + vitest run) must pass before QA/Security review.
+
+Open questions for the human: none for P16 -- all interfaces are fully specified.

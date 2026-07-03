@@ -653,3 +653,170 @@ Before deploying P5 to production:
 - [ ] Set `ANCHOR_PRIVATE_KEY` to a funded account on the target chain.
 - [ ] Test a full anchor + verify cycle on production (upload a document, anchor it, verify it).
 - [ ] Verify the `ANCHOR_PRIVATE_KEY` account balance is sufficient for expected anchor volume.
+
+---
+
+## 13. P16 Additions: Custom AI Agents Deployment
+
+### 13a. New P16 Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| `whatsapp-web.js` | ^1.25.x (latest) | WhatsApp Web client (Puppeteer-based). Requires a running Chromium instance. |
+| `node-telegram-bot-api` | ^0.66.x (latest) | Telegram Bot API client. Supports webhooks (preferred for Vercel production). |
+| `qrcode.react` | ^4.x (latest) | Client-side QR code rendering for WhatsApp QR scan flow. Alternatively, `qrcode` (server) can be used for SVG generation. |
+
+The `scaffold` agent must add all three to `package.json`.
+
+**Peer dependency note:** `whatsapp-web.js` depends on `puppeteer`. In a Vercel serverless environment, `puppeteer` must be replaced with `@sparticuz/chromium` (serverless-compatible Chromium). The `backend` agent handles this configuration in `lib/agents/channel-manager.ts`. The `scaffold` agent does NOT need to add `puppeteer` or `@sparticuz/chromium` -- these are backend-owned concerns.
+
+### 13b. New Environment Variables for P16
+
+| Variable | Scope | Description | Required |
+|---|---|---|---|
+| `AGENT_CHANNEL_ENCRYPTION_KEY` | Server-only | 32-byte base64-encoded AES-256 key for encrypting channel credentials. Generate via: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. | Yes (for channel functionality) |
+| `APP_URL` | Server-only | Public URL of the deployed application (e.g., `https://trustvault.vercel.app`). Used to construct Telegram webhook URLs. | Yes (for Telegram webhook) |
+| `TELEGRAM_WEBHOOK_SECRET` | Server-only | (Optional but recommended) Secret token for Telegram webhook verification. Passed as `secret_token` in `setWebhook`. | Recommended |
+| `WHATSAPP_WEBHOOK_SECRET` | Server-only | (Future) Secret for WhatsApp Business API webhook validation. Not used in P16. | No |
+
+**Local dev (`.env.local`)** -- add these entries:
+
+```
+# P16: Custom AI Agents
+AGENT_CHANNEL_ENCRYPTION_KEY=<generated 32-byte base64 key>
+APP_URL=http://localhost:3000
+TELEGRAM_WEBHOOK_SECRET=<optional local dev secret>
+```
+
+**Generating `AGENT_CHANNEL_ENCRYPTION_KEY`:**
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Example output: `dGhpcyBpcyBhIDMyIGJ5dGUgZW5jcnlwdGlvbiBrZXk=` (44 characters).
+
+**Dev fallback:** If `AGENT_CHANNEL_ENCRYPTION_KEY` is not set in development, the `channel-encryption.ts` module uses a hardcoded dev key and emits a warning. Production MUST set this variable.
+
+### 13c. Local Dev Workflow (P16 Additions)
+
+Additional steps for P16 agent features:
+
+1. **Generate encryption key:**
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+   Add the output as `AGENT_CHANNEL_ENCRYPTION_KEY` in `.env.local`.
+
+2. **Set APP_URL:**
+   Add `APP_URL=http://localhost:3000` to `.env.local`.
+
+3. **WhatsApp local testing:**
+   - WhatsApp Web client uses local Chrome/Chromium (installed by `puppeteer`).
+   - No additional setup needed. The QR code appears in the browser UI during connect flow.
+   - Scan with WhatsApp mobile app (linked devices feature).
+
+4. **Telegram local testing:**
+   - Create a bot via [@BotFather](https://t.me/BotFather) on Telegram.
+   - Get the bot token.
+   - Use a tunneling service (ngrok, localtunnel) to expose `localhost:3000` to the internet for webhook delivery:
+     ```bash
+     ngrok http 3000
+     ```
+   - Set `APP_URL` to the ngrok URL (e.g., `https://abc123.ngrok.io`).
+   - Connect the agent to Telegram using the bot token. The webhook is registered to the ngrok URL.
+   - For local dev without webhooks, `node-telegram-bot-api` can use long-polling mode as a fallback.
+
+5. **Verify new migration:**
+   ```bash
+   supabase db reset
+   ```
+   This applies all migrations including `20260703000002_p16_agents.sql`.
+
+### 13d. Migration Structure (Updated for P16)
+
+```
+supabase/
+  migrations/
+    20260621000000_init.sql              ← P1: documents table + bucket
+    20260621000001_p2_auth_rbac.sql      ← P2: tenants, profiles, RLS, trigger
+    20260621000002_p3_multiformat.sql    ← P3: multi-format support
+    20260621000003_p4_soft_delete.sql    ← P4: soft delete
+    20260622000000_p5_blockchain_anchor.sql  ← P5: anchoring columns
+    20260701000000_p6_ai_assistant.sql   ← P6: pgvector, chat tables
+    20260703000000_p14_rbac_invitations.sql  ← P14: tenant RBAC + invitations
+    20260703000002_p16_agents.sql        ← P16: agents, agent_documents,
+                                              agent_channels, agent_sessions,
+                                              agent_messages + RLS policies
+  seed.sql
+```
+
+### 13e. Vercel Deployment for P16
+
+**New environment variables required in Vercel:**
+
+| Variable | Environments | Sensitivity |
+|---|---|---|
+| `AGENT_CHANNEL_ENCRYPTION_KEY` | Production, Preview | **Sensitive (secret)** |
+| `APP_URL` | Production, Preview | Plain |
+| `TELEGRAM_WEBHOOK_SECRET` | Production, Preview | **Sensitive (secret)** |
+
+**WhatsApp in Vercel serverless:**
+
+The `whatsapp-web.js` library requires a persistent Chromium process. Vercel's serverless functions are not suitable for long-running Puppeteer instances. Two deployment options:
+
+**Option A -- Separate WhatsApp Service (Recommended for production):**
+- Deploy a separate lightweight Node.js service (Railway, Fly.io, or a VPS) that runs the WhatsApp clients.
+- The Next.js API routes communicate with this service via HTTP (e.g., `POST /connect`, `GET /status`, etc.).
+- The service uses the same Supabase database and encryption key.
+- This is the recommended architecture for production. The `ChannelManager` in `lib/agents/channel-manager.ts` is designed for this via a swappable `WhatsAppClientProvider`.
+
+**Option B -- Vercel + @sparticuz/chromium (Simple, limited):**
+- Use `@sparticuz/chromium` for serverless-compatible Chromium.
+- WhatsApp connections are ephemeral -- serverless cold starts destroy the browser.
+- Session state is persisted to the database (encrypted in `agent_channels.config`) and restored on next invocation.
+- Acceptable for demo/low-traffic scenarios. Not recommended for production use with multiple concurrent agents.
+
+**For P16, Option A (separate service) is the recommended production architecture.** The separate WhatsApp service is documented but its implementation is a deployment concern (not in scope for the `backend` agent). The `backend` agent implements the `WhatsAppClientProvider` interface with both an in-process implementation (for local dev) and an HTTP-based implementation (for production with a separate service).
+
+**Telegram in Vercel serverless:**
+
+Telegram webhooks work well with Vercel serverless functions. Each webhook request is a stateless HTTP call. The `node-telegram-bot-api` library's webhook mode receives the update, processes it via the RAG pipeline, and sends the reply -- all within one function invocation. No persistent process needed.
+
+The `APP_URL` env var must be set to the Vercel deployment URL for webhook registration.
+
+### 13f. CI Updates for P16
+
+The GitHub Actions CI workflow must:
+
+1. Continue running `eslint`, `tsc --noEmit`, and `vitest run` (unchanged).
+2. Validate that the new P16 migration file exists and follows the naming convention (`20260703000002_p16_agents.sql`).
+3. No new CI dependencies are required for P16 (no Solidity compilation needed).
+
+### 13g. Pre-Deploy Checklist Additions (P16)
+
+Before deploying P16 to production:
+
+- [ ] Verify the P16 migration (`20260703000002_p16_agents.sql`) has been applied to the production Supabase database.
+- [ ] Verify the five new tables exist: `agents`, `agent_documents`, `agent_channels`, `agent_sessions`, `agent_messages`.
+- [ ] Verify RLS is enabled on all five new tables.
+- [ ] Generate `AGENT_CHANNEL_ENCRYPTION_KEY` for production (never reuse the dev key).
+- [ ] Set `AGENT_CHANNEL_ENCRYPTION_KEY` in Vercel, marked as **Sensitive**.
+- [ ] Set `APP_URL` in Vercel to the production Vercel domain.
+- [ ] (Optional) Set `TELEGRAM_WEBHOOK_SECRET` in Vercel.
+- [ ] If using a separate WhatsApp service, deploy and configure it.
+- [ ] Test agent creation, knowledge-base document selection, and playground chat.
+- [ ] Test Telegram bot connection and webhook message handling.
+- [ ] Test WhatsApp QR scan flow (if WhatsApp service is deployed).
+- [ ] Verify channel credentials in the database are encrypted (check `agent_channels.config` contains `{ "encrypted": "..." }`).
+
+### 13h. No-Go List Additions (P16)
+
+- Never deploy the application before running the P16 database migration.
+- Never edit prior migration files -- all P16 changes go in `20260703000002_p16_agents.sql`.
+- Never set `AGENT_CHANNEL_ENCRYPTION_KEY` with the `NEXT_PUBLIC_` prefix.
+- Never reuse the development encryption key in production.
+- Never commit `AGENT_CHANNEL_ENCRYPTION_KEY` or any real channel credentials.
+- Never run Puppeteer with `--no-sandbox` in a production environment without proper container isolation.
+- Never leave Telegram webhooks registered for deleted agents or disconnected channels.
+- Never store channel credentials as plaintext in the database or in logs.

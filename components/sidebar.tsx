@@ -15,6 +15,7 @@ import {
   IconCollapseSidebar,
   IconMessageBot,
   IconShare,
+  IconBot,
 } from "@/components/icons";
 
 // ---- Nav item definition -------------------------------------------------------
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: IconDashboard },
   { label: "My Vault", href: "/vault", icon: IconFolder },
   { label: "Assistant", href: "/assistant", icon: IconMessageBot },
+  { label: "Agents", href: "/agents", icon: IconBot },
   { label: "Shared Links", href: "/shares", icon: IconShare },
   { label: "Settings", href: "/settings", icon: IconSettings },
 ];

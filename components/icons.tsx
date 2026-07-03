@@ -1009,3 +1009,30 @@ export function IconDownload({ className }: IconProps) {
     </svg>
   );
 }
+
+// ---- P16: Agents --------------------------------------------------------------
+
+export function IconBot({ className }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("h-5 w-5 shrink-0", className)}
+      role="img"
+      aria-label="Agents"
+    >
+      <title>Agents</title>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <circle cx="9" cy="10" r="1.5" />
+      <circle cx="15" cy="10" r="1.5" />
+      <path d="M8 16c0-2 1.5-3 4-3s4 1 4 3" />
+      <line x1="9" y1="3" x2="9" y2="5" />
+      <line x1="15" y1="3" x2="15" y2="5" />
+    </svg>
+  );
+}

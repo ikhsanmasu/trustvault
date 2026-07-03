@@ -803,3 +803,332 @@ export async function acceptInvitation(
   );
   return handleResponse<JoinResponse>(response);
 }
+
+// ===== P16: Custom AI Agents + Multi-Channel =====
+
+export interface Agent {
+  id: string;
+  tenant_id: string;
+  name: string;
+  system_prompt: string;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentChannel {
+  id: string;
+  agent_id: string;
+  channel_type: "whatsapp" | "telegram";
+  config: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AgentWithDetails extends Agent {
+  documents: Document[];
+  channels: AgentChannel[];
+}
+
+export interface AgentSession {
+  id: string;
+  agent_id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentCitation {
+  document_id: string;
+  document_name: string;
+  chunk_index: number;
+  snippet: string;
+}
+
+export interface AgentMessage {
+  id: string;
+  agent_id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  channel: string | null;
+  external_user_id: string | null;
+  citations: AgentCitation[] | null;
+  created_at: string;
+}
+
+export interface CreateAgentRequest {
+  name: string;
+  system_prompt: string;
+  document_ids: string[];
+}
+
+export interface UpdateAgentRequest {
+  name?: string;
+  system_prompt?: string;
+  document_ids?: string[];
+  is_active?: boolean;
+}
+
+export interface AddChannelRequest {
+  channel_type: "whatsapp" | "telegram";
+  config: Record<string, unknown>;
+}
+
+export interface WhatsAppConnectResponse {
+  channel_id: string;
+  status: "qr_pending" | "connecting" | "connected";
+  qr_code?: string;
+  message: string;
+}
+
+export interface WhatsAppStatusResponse {
+  channel_id: string;
+  status: "disconnected" | "qr_pending" | "connecting" | "connected";
+  qr_code?: string;
+  phone_number?: string;
+}
+
+export interface TelegramConnectRequest {
+  bot_token: string;
+}
+
+export interface TelegramConnectResponse {
+  channel_id: string;
+  bot_username: string;
+  webhook_url: string;
+}
+
+export interface AgentChatRequest {
+  session_id?: string;
+  message: string;
+}
+
+export interface CreateAgentResponse {
+  agent: AgentWithDetails;
+}
+
+export interface ListAgentsResponse {
+  agents: Agent[];
+  total: number;
+}
+
+export interface GetAgentResponse {
+  agent: AgentWithDetails;
+}
+
+export interface UpdateAgentResponse {
+  agent: AgentWithDetails;
+}
+
+export interface AddChannelResponse {
+  channel: AgentChannel;
+}
+
+export interface ListAgentSessionsResponse {
+  sessions: AgentSession[];
+}
+
+export interface GetAgentSessionResponse {
+  session: AgentSession;
+  messages: AgentMessage[];
+}
+
+/**
+ * POST /api/agents — create a new custom AI agent.
+ */
+export async function createAgent(
+  data: CreateAgentRequest,
+): Promise<CreateAgentResponse> {
+  const response = await fetch("/api/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<CreateAgentResponse>(response);
+}
+
+/**
+ * GET /api/agents — list all agents in the tenant.
+ */
+export async function listAgents(): Promise<ListAgentsResponse> {
+  const response = await fetch("/api/agents");
+  return handleResponse<ListAgentsResponse>(response);
+}
+
+/**
+ * GET /api/agents/[id] — get full agent details with channels and documents.
+ */
+export async function getAgent(id: string): Promise<GetAgentResponse> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}`);
+  return handleResponse<GetAgentResponse>(response);
+}
+
+/**
+ * PATCH /api/agents/[id] — update agent (name, prompt, documents, active status).
+ */
+export async function updateAgent(
+  id: string,
+  data: UpdateAgentRequest,
+): Promise<UpdateAgentResponse> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<UpdateAgentResponse>(response);
+}
+
+/**
+ * DELETE /api/agents/[id] — delete an agent and all associated data.
+ */
+export async function deleteAgent(
+  id: string,
+): Promise<{ deleted: boolean }> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  return handleResponse<{ deleted: boolean }>(response);
+}
+
+/**
+ * POST /api/agents/[id]/channels — add a messaging channel to the agent.
+ */
+export async function addAgentChannel(
+  agentId: string,
+  data: AddChannelRequest,
+): Promise<AddChannelResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/channels`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+  return handleResponse<AddChannelResponse>(response);
+}
+
+/**
+ * DELETE /api/agents/[id]/channels/[channelId] — remove a channel.
+ */
+export async function removeAgentChannel(
+  agentId: string,
+  channelId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/channels/${encodeURIComponent(channelId)}`,
+    { method: "DELETE" },
+  );
+  return handleResponse<{ deleted: boolean }>(response);
+}
+
+/**
+ * POST /api/agents/[id]/whatsapp/connect — initialize WhatsApp Web connection.
+ */
+export async function connectWhatsApp(
+  agentId: string,
+): Promise<WhatsAppConnectResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/whatsapp/connect`,
+    { method: "POST" },
+  );
+  return handleResponse<WhatsAppConnectResponse>(response);
+}
+
+/**
+ * POST /api/agents/[id]/whatsapp/disconnect — disconnect WhatsApp.
+ */
+export async function disconnectWhatsApp(
+  agentId: string,
+): Promise<{ disconnected: boolean }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/whatsapp/disconnect`,
+    { method: "POST" },
+  );
+  return handleResponse<{ disconnected: boolean }>(response);
+}
+
+/**
+ * GET /api/agents/[id]/whatsapp/status — poll WhatsApp connection status.
+ */
+export async function getWhatsAppStatus(
+  agentId: string,
+): Promise<WhatsAppStatusResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/whatsapp/status`,
+  );
+  return handleResponse<WhatsAppStatusResponse>(response);
+}
+
+/**
+ * POST /api/agents/[id]/telegram/connect — connect Telegram bot.
+ */
+export async function connectTelegram(
+  agentId: string,
+  botToken: string,
+): Promise<TelegramConnectResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/telegram/connect`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bot_token: botToken }),
+    },
+  );
+  return handleResponse<TelegramConnectResponse>(response);
+}
+
+/**
+ * POST /api/agents/[id]/telegram/disconnect — disconnect Telegram bot.
+ */
+export async function disconnectTelegram(
+  agentId: string,
+): Promise<{ disconnected: boolean }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/telegram/disconnect`,
+    { method: "POST" },
+  );
+  return handleResponse<{ disconnected: boolean }>(response);
+}
+
+/**
+ * GET /api/agents/[id]/chat/sessions — list playground sessions for an agent.
+ */
+export async function listAgentSessions(
+  agentId: string,
+): Promise<ListAgentSessionsResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/chat/sessions`,
+  );
+  return handleResponse<ListAgentSessionsResponse>(response);
+}
+
+/**
+ * GET /api/agents/[id]/chat/sessions/[sessionId] — get a session with messages.
+ */
+export async function getAgentSession(
+  agentId: string,
+  sessionId: string,
+): Promise<GetAgentSessionResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
+  );
+  return handleResponse<GetAgentSessionResponse>(response);
+}
+
+/**
+ * DELETE /api/agents/[id]/chat/sessions/[sessionId] — delete a session.
+ */
+export async function deleteAgentSession(
+  agentId: string,
+  sessionId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
+  );
+  return handleResponse<{ deleted: boolean }>(response);
+}

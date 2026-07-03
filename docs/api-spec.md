@@ -1576,3 +1576,977 @@ P14 replaces project-level RBAC with tenant-level RBAC. All existing endpoints t
 **Special cases:**
 - `DELETE /api/assistant/sessions/[id]` -- the user can only delete their own sessions. RLS on `chat_sessions` enforces this via `user_id = auth.uid()`. No role check needed beyond viewer+.
 - `POST /api/share/*`, `DELETE /api/share/*` -- share link management. RLS on `shared_links` enforces creator or admin/owner access (Section 13e of `database.md`). Application-layer check mirrors RLS.
+
+---
+
+## P16 Endpoint Index -- Custom AI Agents + Multi-Channel
+
+| Method | Path | Auth | Role Required | Description |
+|---|---|---|---|---|
+| `POST` | `/api/agents` | Yes | editor/admin/owner | Create a new custom AI agent |
+| `GET` | `/api/agents` | Yes | viewer+ | List all agents in the tenant |
+| `GET` | `/api/agents/[id]` | Yes | viewer+ | Get agent details (with channels and documents) |
+| `PATCH` | `/api/agents/[id]` | Yes | editor/admin/owner | Update agent (name, prompt, knowledge docs) |
+| `DELETE` | `/api/agents/[id]` | Yes | editor/admin/owner | Delete agent (cascades to channels, sessions, messages) |
+| `POST` | `/api/agents/[id]/channels` | Yes | editor/admin/owner | Add a messaging channel to the agent |
+| `DELETE` | `/api/agents/[id]/channels/[channelId]` | Yes | editor/admin/owner | Remove a channel from the agent |
+| `POST` | `/api/agents/[id]/chat` | Yes | viewer+ | Playground chat (SSE streaming, same pattern as assistant) |
+| `GET` | `/api/agents/[id]/chat/sessions` | Yes | viewer+ | List playground sessions for this agent |
+| `GET` | `/api/agents/[id]/chat/sessions/[sessionId]` | Yes | viewer+ | Get a session with messages |
+| `DELETE` | `/api/agents/[id]/chat/sessions/[sessionId]` | Yes | viewer+ | Delete a session (own session only) |
+| `POST` | `/api/agents/[id]/whatsapp/connect` | Yes | editor/admin/owner | Initialize WhatsApp Web connection and return QR code |
+| `POST` | `/api/agents/[id]/whatsapp/disconnect` | Yes | editor/admin/owner | Disconnect WhatsApp and destroy the client session |
+| `GET` | `/api/agents/[id]/whatsapp/status` | Yes | editor/admin/owner | Poll for WhatsApp connection status (qr_code / connecting / connected / disconnected) |
+| `POST` | `/api/agents/[id]/telegram/connect` | Yes | editor/admin/owner | Connect Telegram bot via bot token |
+| `POST` | `/api/agents/[id]/telegram/disconnect` | Yes | editor/admin/owner | Disconnect Telegram bot and remove webhook |
+| `POST` | `/api/webhook/whatsapp/[agentId]` | No (internal) | -- | Receive incoming WhatsApp messages (reserved for future WhatsApp Business API) |
+| `POST` | `/api/webhook/telegram/[agentId]` | No (webhook) | -- | Receive incoming Telegram messages from Telegram servers |
+
+---
+
+## P16 Shared Types
+
+```ts
+// ===== Agent =====
+
+type Agent = {
+  id: string;              // UUID
+  tenant_id: string;       // UUID
+  name: string;            // display name (1-255 chars)
+  system_prompt: string;   // the persona-defining system prompt
+  created_by: string;      // UUID of auth.users
+  is_active: boolean;      // whether the agent is active
+  created_at: string;      // ISO 8601 UTC
+  updated_at: string;      // ISO 8601 UTC
+};
+
+type AgentWithDetails = Agent & {
+  documents: Document[];           // knowledge-base documents
+  channels: AgentChannel[];        // connected messaging channels
+};
+
+// ===== Agent Channel =====
+
+type AgentChannel = {
+  id: string;              // UUID
+  agent_id: string;        // UUID
+  channel_type: 'whatsapp' | 'telegram';
+  config: Record<string, unknown>;  // channel-specific config (credentials REDACTED in response -- see processing)
+  is_active: boolean;
+  created_at: string;      // ISO 8601 UTC
+};
+
+// WhatsApp-specific config shape (returned with secrets redacted):
+// { phone_number: string | null, bot_username?: string | null }
+
+// Telegram-specific config shape (returned with secrets redacted):
+// { bot_username: string | null }
+
+// ===== Agent Session =====
+
+type AgentSession = {
+  id: string;              // UUID
+  agent_id: string;        // UUID
+  user_id: string;         // UUID of auth.users
+  title: string;           // session display title
+  created_at: string;      // ISO 8601 UTC
+  updated_at: string;      // ISO 8601 UTC
+};
+
+// ===== Agent Message =====
+
+type AgentMessage = {
+  id: string;                  // UUID
+  agent_id: string;            // UUID
+  session_id: string;          // UUID
+  role: 'user' | 'assistant';
+  content: string;
+  channel: string | null;      // null for playground, 'whatsapp', 'telegram'
+  external_user_id: string | null;  // WhatsApp number or Telegram user ID
+  citations: Citation[] | null;     // same shape as P6 Citation
+  created_at: string;          // ISO 8601 UTC
+};
+
+// ===== Agent Create Request =====
+
+type CreateAgentRequest = {
+  name: string;                // 1-255 chars
+  system_prompt: string;       // the persona prompt (1-10000 chars)
+  document_ids: string[];      // UUIDs of documents for knowledge base (0-100)
+};
+
+// ===== Agent Update Request =====
+
+type UpdateAgentRequest = {
+  name?: string;               // 1-255 chars
+  system_prompt?: string;      // 1-10000 chars
+  document_ids?: string[];     // UUIDs of documents (replaces entire knowledge base)
+  is_active?: boolean;         // toggle agent on/off
+};
+
+// ===== Add Channel Request =====
+
+type AddChannelRequest = {
+  channel_type: 'whatsapp' | 'telegram';
+  config: Record<string, unknown>;
+  // For whatsapp: { phone_number: string }
+  // For telegram: { bot_token: string }
+};
+
+// ===== WhatsApp Connect Response =====
+
+type WhatsAppConnectResponse = {
+  channel_id: string;          // UUID of the created/updated agent_channel row
+  status: 'qr_pending' | 'connecting' | 'connected';
+  qr_code?: string;            // the QR code string to render (only when status = 'qr_pending')
+  message: string;             // human-readable status message
+};
+
+// ===== WhatsApp Status Response =====
+
+type WhatsAppStatusResponse = {
+  channel_id: string;
+  status: 'disconnected' | 'qr_pending' | 'connecting' | 'connected';
+  qr_code?: string;            // present only when status = 'qr_pending'
+  phone_number?: string;       // present when status = 'connected'
+};
+
+// ===== Telegram Connect Request =====
+
+type TelegramConnectRequest = {
+  bot_token: string;           // the Telegram Bot API token from @BotFather
+};
+
+// ===== Telegram Connect Response =====
+
+type TelegramConnectResponse = {
+  channel_id: string;
+  bot_username: string;        // resolved from getMe() API call
+  webhook_url: string;         // the registered webhook URL
+};
+
+// ===== Agent Chat Request =====
+
+type AgentChatRequest = {
+  session_id?: string;         // existing session UUID; omit to create a new session
+  message: string;             // user's question (1-4000 characters)
+};
+
+// SSE event types (identical to P6 assistant chat):
+// - "token": { token: string } — streaming token from LLM
+// - "citations": { citations: Citation[] } — source citations (from agent's knowledge docs)
+// - "done": { sessionId: string, messageId: string } — completion
+// - "error": { error: string, code: string } — error
+```
+
+---
+
+## P16 Endpoints
+
+---
+
+### POST /api/agents
+
+Create a new custom AI agent. The agent is tenant-scoped and created by an editor, admin, or owner.
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type CreateAgentRequest = {
+  name: string;                // 1-255 chars
+  system_prompt: string;       // 1-10000 chars
+  document_ids: string[];      // UUIDs of knowledge-base documents (0-100)
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Get user's profile (tenant_id + role).
+3. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+4. Validate `name`: non-empty, max 255 chars. Return 400 `INVALID_NAME` if not.
+5. Validate `system_prompt`: non-empty, max 10000 chars. Return 400 `INVALID_SYSTEM_PROMPT` if not.
+6. Validate `document_ids`: array of valid UUIDs, max 100 entries. Return 400 `INVALID_DOCUMENT_IDS` if not.
+7. Verify each `document_id` belongs to the user's tenant (fetch from `documents` where `tenant_id = :tenantId`). Return 400 `DOCUMENT_NOT_IN_TENANT` if any document is not in the tenant.
+8. INSERT into `agents` with `tenant_id` and `created_by = user.id`.
+9. For each `document_id` in the request, INSERT into `agent_documents`.
+10. Return 201 with the created agent.
+
+#### Response -- 201 Created
+
+```ts
+type CreateAgentResponse = {
+  agent: AgentWithDetails;
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_NAME` | `name` missing, empty, or > 255 chars |
+| 400 | `INVALID_SYSTEM_PROMPT` | `system_prompt` missing, empty, or > 10000 chars |
+| 400 | `INVALID_DOCUMENT_IDS` | `document_ids` not a valid array, or > 100 entries |
+| 400 | `DOCUMENT_NOT_IN_TENANT` | One or more document IDs do not belong to the user's tenant |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is a viewer |
+| 500 | `DB_ERROR` | Postgres insert failed |
+
+---
+
+### GET /api/agents
+
+List all agents in the authenticated user's tenant. Returns basic agent info without nested details.
+
+#### Request
+
+`Content-Type: none` (GET)
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Get user's `tenant_id` from profiles.
+3. Query `agents` where `tenant_id = :tenantId`, ordered by `created_at DESC`.
+4. Return the list.
+
+#### Response -- 200 OK
+
+```ts
+type ListAgentsResponse = {
+  agents: Agent[];
+  total: number;
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No valid session |
+| 500 | `DB_ERROR` | Postgres query failed |
+
+---
+
+### GET /api/agents/[id]
+
+Get full agent details including its knowledge-base documents and connected channels. Channel configs are returned with credentials redacted.
+
+#### Request
+
+`Content-Type: none` (GET with path parameter)
+
+| Path param | Type | Required | Description |
+|---|---|---|---|
+| `id` | string (UUID) | Yes | The agent UUID |
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. RLS ensures user is in the same tenant.
+4. Return 404 if not found.
+5. Fetch linked documents via `agent_documents` JOIN `documents`.
+6. Fetch connected channels via `agent_channels`. **Redact secrets in config:** for WhatsApp, only return `{ phone_number }`; for Telegram, only return `{ bot_username }`. Never return `bot_token`, `client_state`, or `qr_code` in the response.
+7. Return 200.
+
+#### Response -- 200 OK
+
+```ts
+type GetAgentResponse = {
+  agent: AgentWithDetails;
+};
+```
+
+`AgentWithDetails.channels[].config` contains only non-sensitive fields. WhatsApp returns `{ phone_number: string | null }`. Telegram returns `{ bot_username: string | null }`.
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_ID` | `id` not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 404 | `NOT_FOUND` | Agent not found or not in user's tenant |
+| 500 | `DB_ERROR` | Postgres query failed |
+
+---
+
+### PATCH /api/agents/[id]
+
+Update an agent's name, system prompt, knowledge-base documents, or active status. All fields are optional -- only provided fields are updated.
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type UpdateAgentRequest = {
+  name?: string;
+  system_prompt?: string;
+  document_ids?: string[];     // replaces the entire knowledge base
+  is_active?: boolean;
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. RLS ensures user is in the same tenant. Return 404 if not found.
+4. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+5. Validate fields if provided:
+   - `name`: non-empty, max 255 chars.
+   - `system_prompt`: non-empty, max 10000 chars.
+   - `document_ids`: array of valid UUIDs, max 100. Each must belong to the tenant.
+   - `is_active`: must be boolean.
+6. If `name` provided, UPDATE `agents.name`.
+7. If `system_prompt` provided, UPDATE `agents.system_prompt`.
+8. If `is_active` provided, UPDATE `agents.is_active`.
+9. If `document_ids` provided:
+   a. DELETE all existing rows from `agent_documents` where `agent_id = :id`.
+   b. INSERT new rows for each document_id in the request.
+10. Set `agents.updated_at = now()`.
+11. Return 200 with the updated agent (full details).
+
+#### Response -- 200 OK
+
+```ts
+type UpdateAgentResponse = {
+  agent: AgentWithDetails;
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_ID` | `id` not a valid UUID |
+| 400 | `INVALID_NAME` | `name` provided but empty or > 255 chars |
+| 400 | `INVALID_SYSTEM_PROMPT` | `system_prompt` provided but empty or > 10000 chars |
+| 400 | `INVALID_DOCUMENT_IDS` | `document_ids` provided but not valid or > 100 |
+| 400 | `DOCUMENT_NOT_IN_TENANT` | A document ID does not belong to the tenant |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is a viewer |
+| 404 | `NOT_FOUND` | Agent not found |
+| 500 | `DB_ERROR` | Postgres update failed |
+
+---
+
+### DELETE /api/agents/[id]
+
+Delete an agent. All associated channels, sessions, messages, and document links are removed via CASCADE.
+
+#### Request
+
+`Content-Type: none` (DELETE)
+
+| Path param | Type | Required | Description |
+|---|---|---|---|
+| `id` | string (UUID) | Yes | The agent UUID |
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. Return 404 if not found.
+4. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+5. **Disconnect channels:** If any active channel exists, disconnect it first (destroy WhatsApp client, remove Telegram webhook) before deleting the row.
+6. DELETE from `agents` where `id = :id`. CASCADE handles child rows.
+7. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{ "deleted": true }
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_ID` | `id` not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is a viewer |
+| 404 | `NOT_FOUND` | Agent not found |
+| 500 | `DB_ERROR` | Postgres delete failed |
+| 500 | `CHANNEL_DISCONNECT_ERROR` | Failed to disconnect an active channel |
+
+---
+
+### POST /api/agents/[id]/channels
+
+Add a messaging channel to the agent. If a channel of the same type already exists, the old one is removed first (at most one channel per type per agent).
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type AddChannelRequest = {
+  channel_type: 'whatsapp' | 'telegram';
+  config: Record<string, unknown>;
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. Return 404 if not found.
+4. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+5. Validate `channel_type` is `'whatsapp'` or `'telegram'`. Return 400 `INVALID_CHANNEL_TYPE` if not.
+6. Validate `config` based on channel type:
+   - **WhatsApp:** `config.phone_number` must be present, non-empty string. Other fields are ignored at creation time (they are populated during connect flow).
+   - **Telegram:** `config.bot_token` must be present, non-empty string.
+   - Return 400 `INVALID_CONFIG` if validation fails.
+7. If an existing channel of the same `channel_type` exists for this agent, DELETE it first (the route handler also disconnects any active connection).
+8. **Encrypt the config:** Before storing, encrypt the entire `config` JSONB value using AES-256-GCM with `AGENT_CHANNEL_ENCRYPTION_KEY`. Store the encrypted blob in the `config` column. (The ciphertext is stored as a base64-encoded JSONB wrapper.)
+9. INSERT into `agent_channels` with `is_active = false` (channel is not active until the connect flow completes).
+10. Return 201 with the channel (config redacted -- only `channel_type` and `is_active` are returned).
+
+#### Response -- 201 Created
+
+```ts
+type AddChannelResponse = {
+  channel: AgentChannel;
+};
+```
+
+The `channel.config` field in the response is redacted -- only identifies the channel type, phone_number (WhatsApp) or bot_username (Telegram, null until connected). Never returns `bot_token` or `client_state`.
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `id` not a valid UUID |
+| 400 | `INVALID_CHANNEL_TYPE` | `channel_type` is not `'whatsapp'` or `'telegram'` |
+| 400 | `INVALID_CONFIG` | `config` does not contain required fields for the channel type |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is a viewer |
+| 404 | `NOT_FOUND` | Agent not found |
+| 500 | `DB_ERROR` | Postgres insert failed |
+
+---
+
+### DELETE /api/agents/[id]/channels/[channelId]
+
+Remove a channel from the agent. If the channel is active (WhatsApp connected or Telegram webhook active), it is disconnected first.
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate both UUIDs.
+3. Fetch agent. Return 404 if not found.
+4. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+5. Fetch channel. Return 404 if not found or not belonging to this agent.
+6. If channel is active, disconnect:
+   - **WhatsApp:** destroy the WhatsApp client instance.
+   - **Telegram:** call `deleteWebhook` on the Telegram Bot API.
+7. DELETE the channel row.
+8. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{ "deleted": true }
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `id` not a valid UUID |
+| 400 | `INVALID_CHANNEL_ID` | `channelId` not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is a viewer |
+| 404 | `AGENT_NOT_FOUND` | Agent not found |
+| 404 | `CHANNEL_NOT_FOUND` | Channel not found or not belonging to agent |
+| 500 | `DB_ERROR` | Postgres delete failed |
+| 500 | `CHANNEL_DISCONNECT_ERROR` | Failed to disconnect active channel |
+
+---
+
+### POST /api/agents/[id]/chat
+
+Playground chat for testing an agent. Follows the same SSE streaming pattern as `POST /api/assistant/chat` (P6). Uses the agent's `system_prompt` as the system message and retrieves context only from the agent's knowledge-base documents (via `agent_documents`).
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type AgentChatRequest = {
+  session_id?: string;     // existing session UUID; omit to create a new session
+  message: string;         // user's question (1-4000 characters)
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. RLS ensures user is in the same tenant. Return 404 if not found.
+4. Validate `message`: non-empty, max 4000 chars. Return 400 `MISSING_MESSAGE` or `MESSAGE_TOO_LONG` if not.
+5. **Session resolution:**
+   - If `session_id` provided: fetch session, verify it belongs to this agent AND the user owns it. Return 404 if not found.
+   - If no `session_id`: create a new `agent_sessions` row with `agent_id`, `user_id`, and `title = message.slice(0, 100)`.
+6. Insert the user message into `agent_messages` with `channel = NULL`.
+7. **RAG pipeline (agent-scoped):**
+   a. Get agent's knowledge-base document IDs from `agent_documents`.
+   b. If no documents selected, skip RAG -- use plain chat (no context).
+   c. Generate embedding for the user's message via OpenAI.
+   d. Query `document_chunks` where `document_id IN (agent's document IDs)`, ordered by `embedding <=> queryEmbedding` (cosine distance), LIMIT 5.
+   e. If no chunks found (documents not ingested): fall back to plain chat with a note that the knowledge base is empty.
+8. **Build RAG prompt:**
+   - System: the agent's `system_prompt` + "Answer questions based on the provided document excerpts. Cite sources when possible."
+   - User prompt: context chunks + conversation history (last 10 messages) + current question.
+9. **Stream response via SSE:** (identical pattern to P6 assistant chat)
+   - Call DeepSeek `chat/completions` with `stream: true`.
+   - Emit `token` events as tokens arrive.
+   - After stream completes, extract citations.
+   - Emit `citations` event.
+   - Save the assistant message to `agent_messages` with citations.
+   - Update `agent_sessions.updated_at`.
+   - Emit `done` event with `sessionId` and `messageId`.
+10. On error, emit `error` event and close the stream.
+
+#### Response -- 200 OK (SSE stream)
+
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+
+event: token
+data: {"token":"Based"}
+
+event: token
+data: {"token":" on"}
+
+...
+
+event: citations
+data: {"citations":[{"document_id":"...","document_name":"contract.pdf","chunk_index":2,"snippet":"..."}]}
+
+event: done
+data: {"sessionId":"...","messageId":"..."}
+```
+
+#### Errors (non-streaming -- returned as JSON before SSE starts)
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `id` not a valid UUID |
+| 400 | `MISSING_MESSAGE` | `message` missing or empty |
+| 400 | `MESSAGE_TOO_LONG` | `message` > 4000 characters |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 404 | `AGENT_NOT_FOUND` | Agent not found or not in user's tenant |
+| 404 | `SESSION_NOT_FOUND` | `session_id` provided but not found or not owned by user |
+| 500 | `EMBEDDING_ERROR` | OpenAI embedding API call failed |
+| 500 | `AI_API_ERROR` | DeepSeek API call failed |
+| 500 | `DB_ERROR` | Postgres query/insert failed |
+
+---
+
+### GET /api/agents/[id]/chat/sessions
+
+List playground chat sessions for the specified agent. Returns only sessions owned by the current user.
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. Return 404 if not found.
+4. Query `agent_sessions` where `agent_id = :id AND user_id = :userId`, ordered by `updated_at DESC`.
+5. Return the list.
+
+#### Response -- 200 OK
+
+```ts
+type ListAgentSessionsResponse = {
+  sessions: AgentSession[];
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `id` not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 404 | `NOT_FOUND` | Agent not found |
+| 500 | `DB_ERROR` | Postgres query failed |
+
+---
+
+### GET /api/agents/[id]/chat/sessions/[sessionId]
+
+Get a single session with its messages.
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate both UUIDs.
+3. Fetch session. RLS ensures user owns the session. Return 404 if not found or not belonging to this agent.
+4. Fetch messages ordered by `created_at ASC`.
+5. Return session + messages.
+
+#### Response -- 200 OK
+
+```ts
+type GetAgentSessionResponse = {
+  session: AgentSession;
+  messages: AgentMessage[];
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `id` not a valid UUID |
+| 400 | `INVALID_SESSION_ID` | `sessionId` not a valid UUID |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 404 | `NOT_FOUND` | Session not found or not owned by user |
+| 500 | `DB_ERROR` | Postgres query failed |
+
+---
+
+### DELETE /api/agents/[id]/chat/sessions/[sessionId]
+
+Delete a session and all its messages (CASCADE).
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate both UUIDs.
+3. Delete session. RLS ensures user can only delete own sessions.
+4. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{ "deleted": true }
+```
+
+---
+
+### POST /api/agents/[id]/whatsapp/connect
+
+Initialize the WhatsApp Web connection for an agent. This starts the whatsapp-web.js Puppeteer client, captures the QR code, and returns it to the frontend for the user to scan with their WhatsApp mobile app. The QR code is ephemeral and regenerates on each connect call.
+
+#### Precondition
+
+A WhatsApp channel must already exist for this agent (created via `POST /api/agents/[id]/channels` with `channel_type: 'whatsapp'`). If no WhatsApp channel exists, return 400 `NO_WHATSAPP_CHANNEL`.
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. Return 404 if not found.
+4. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+5. Fetch the WhatsApp channel for this agent. Return 400 `NO_WHATSAPP_CHANNEL` if none exists.
+6. If a WhatsApp client is already connected for this agent, return 409 `ALREADY_CONNECTED`.
+7. Decrypt the channel `config` using `AGENT_CHANNEL_ENCRYPTION_KEY`.
+8. Initialize a `whatsapp-web.js` Client instance with the decrypted config.
+9. Register event handlers:
+   - **`qr` event:** Capture the QR string. Store it temporarily for polling via the status endpoint. The QR is valid for ~20 seconds. If not scanned within 30 seconds, the client regenerates a new QR.
+   - **`ready` event:** The user has scanned the QR. Update `agent_channels.is_active = true`, persist the client session state to the encrypted `config` column, clear the temporary QR.
+   - **`message` event:** Incoming WhatsApp messages are processed by the channel message handler (see Architecture Section 15).
+   - **`disconnected` event:** Update `agent_channels.is_active = false`.
+10. Start the WhatsApp client (this triggers Puppeteer and the QR flow).
+11. Return 200 with `status: 'qr_pending'` and `message`. The frontend should then poll `GET /api/agents/[id]/whatsapp/status` to get the QR code.
+
+#### Response -- 200 OK
+
+```ts
+type WhatsAppConnectResponse = {
+  channel_id: string;
+  status: 'qr_pending';
+  qr_code: undefined;        // QR is delivered via the status endpoint
+  message: string;           // "WhatsApp client initializing. Poll /status for the QR code."
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `id` not a valid UUID |
+| 400 | `NO_WHATSAPP_CHANNEL` | No WhatsApp channel exists for this agent |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is a viewer |
+| 404 | `AGENT_NOT_FOUND` | Agent not found |
+| 409 | `ALREADY_CONNECTED` | WhatsApp is already connected for this agent |
+| 500 | `CHANNEL_INIT_ERROR` | Failed to initialize WhatsApp client (Puppeteer error) |
+
+---
+
+### GET /api/agents/[id]/whatsapp/status
+
+Poll for the current WhatsApp connection status. Used during the QR scan flow: the frontend calls this endpoint every 2 seconds while the QR modal is open.
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id` is a valid UUID.
+3. Fetch agent. Return 404 if not found.
+4. Fetch the WhatsApp channel. Return 404 if none exists.
+5. Return the current status snapshot from the in-memory WhatsApp client state:
+   - `disconnected`: No active client.
+   - `qr_pending`: Client is waiting for QR scan. `qr_code` field contains the QR string.
+   - `connecting`: QR has been scanned, authentication in progress.
+   - `connected`: Client is ready. `phone_number` field contains the connected number.
+
+#### Response -- 200 OK
+
+```ts
+type WhatsAppStatusResponse = {
+  channel_id: string;
+  status: 'disconnected' | 'qr_pending' | 'connecting' | 'connected';
+  qr_code?: string;            // present only when status = 'qr_pending'
+  phone_number?: string;       // present only when status = 'connected'
+};
+```
+
+Example (QR pending):
+```json
+{
+  "channel_id": "uuid-...",
+  "status": "qr_pending",
+  "qr_code": "1@ABCDEFGH..."
+}
+```
+
+Example (connected):
+```json
+{
+  "channel_id": "uuid-...",
+  "status": "connected",
+  "phone_number": "+1234567890"
+}
+```
+
+---
+
+### POST /api/agents/[id]/whatsapp/disconnect
+
+Disconnect the WhatsApp client and destroy the Puppeteer session. The channel row is NOT deleted -- only deactivated. The user can reconnect later.
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id`. Fetch agent. Return 404 if not found.
+3. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+4. Fetch the WhatsApp channel. Return 404 if none exists.
+5. If the WhatsApp client instance exists, call `client.destroy()` to shut down Puppeteer.
+6. Update `agent_channels.is_active = false`.
+7. Clear the in-memory client reference.
+8. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{ "disconnected": true }
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 404 | `NOT_FOUND` | Agent or WhatsApp channel not found |
+| 500 | `DISCONNECT_ERROR` | Failed to destroy WhatsApp client |
+
+---
+
+### POST /api/agents/[id]/telegram/connect
+
+Connect a Telegram bot to the agent. This validates the bot token, retrieves the bot's username, and registers a webhook with Telegram so incoming messages are sent to TrustVault's webhook endpoint.
+
+#### Precondition
+
+A Telegram channel must already exist for this agent (created via `POST /api/agents/[id]/channels` with `channel_type: 'telegram'`).
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type TelegramConnectRequest = {
+  bot_token: string;           // the Telegram Bot API token from @BotFather
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id`. Fetch agent. Return 404 if not found.
+3. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+4. Fetch the Telegram channel for this agent. Return 400 `NO_TELEGRAM_CHANNEL` if none exists.
+5. Validate `bot_token` format (roughly `digits:alphanumeric`). Return 400 `INVALID_BOT_TOKEN` if not.
+6. Call Telegram Bot API `getMe` to validate the token and retrieve the bot's username.
+   - If the API returns an error, return 400 `INVALID_BOT_TOKEN` with the Telegram error description.
+7. Encrypt the `bot_token` using `AGENT_CHANNEL_ENCRYPTION_KEY` and store it in the channel's `config`.
+8. Register the webhook with Telegram:
+   - Call `setWebhook` with `url = {APP_URL}/api/webhook/telegram/{agentId}`.
+   - If webhook registration fails, return 500 `WEBHOOK_REGISTRATION_ERROR`.
+9. Create a `node-telegram-bot-api` instance for this agent (or register the agent in a global bot registry) to handle incoming updates via the webhook.
+10. Update `agent_channels`:
+    - Encrypt and update `config` with `{ bot_token, bot_username, webhook_url }`.
+    - Set `is_active = true`.
+11. Return 200 with the bot username and webhook URL.
+
+#### Response -- 200 OK
+
+```ts
+type TelegramConnectResponse = {
+  channel_id: string;
+  bot_username: string;        // from getMe()
+  webhook_url: string;         // the registered webhook URL
+};
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `id` not a valid UUID |
+| 400 | `NO_TELEGRAM_CHANNEL` | No Telegram channel exists for this agent |
+| 400 | `INVALID_BOT_TOKEN` | `bot_token` is missing, empty, or rejected by Telegram |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is a viewer |
+| 404 | `AGENT_NOT_FOUND` | Agent not found |
+| 500 | `WEBHOOK_REGISTRATION_ERROR` | Failed to register webhook with Telegram |
+| 500 | `DB_ERROR` | Postgres update failed |
+
+---
+
+### POST /api/agents/[id]/telegram/disconnect
+
+Disconnect the Telegram bot. Removes the webhook registration and deactivates the channel.
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Validate `id`. Fetch agent. Return 404 if not found.
+3. `requireTenantRole(user.id, ['owner', 'admin', 'editor'])` -- return 403 if viewer.
+4. Fetch the Telegram channel. Return 404 if none exists.
+5. Decrypt the channel `config` to get the `bot_token`.
+6. Call Telegram Bot API `deleteWebhook` with the bot token.
+7. Remove the bot instance from the global registry.
+8. Update `agent_channels.is_active = false`.
+9. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{ "disconnected": true }
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 404 | `NOT_FOUND` | Agent or Telegram channel not found |
+| 500 | `DISCONNECT_ERROR` | Failed to delete webhook or update DB |
+
+---
+
+### POST /api/webhook/whatsapp/[agentId]
+
+Receive incoming WhatsApp messages. **Reserved for future WhatsApp Business API integration.** With the unofficial whatsapp-web.js library, incoming messages are handled internally via the client's `message` event, not through webhooks. This endpoint is defined for forward compatibility.
+
+#### Auth
+
+No Supabase session required. This endpoint is called by external services (WhatsApp Business API). Validation is done via a shared secret in a custom header (`X-Webhook-Secret` compared against `WHATSAPP_WEBHOOK_SECRET` env var). Return 401 if the header is missing or incorrect.
+
+#### Processing
+
+1. Validate `agentId` UUID.
+2. Verify `X-Webhook-Secret` header matches `WHATSAPP_WEBHOOK_SECRET`.
+3. Fetch agent. Return 404 if not found or `is_active = false`.
+4. Process the incoming message through the channel handler (same pipeline as the `message` event handler).
+5. Return 200.
+
+**Note for P16:** This endpoint is not used with whatsapp-web.js (unofficial). It is a placeholder for future WhatsApp Business API support. In P16, WhatsApp messages arrive via the `message` event on the whatsapp-web.js Client instance, which is handled by a server-side event listener registered during `POST /api/agents/[id]/whatsapp/connect`.
+
+---
+
+### POST /api/webhook/telegram/[agentId]
+
+Receive incoming Telegram messages via webhook. Called by Telegram's servers when a user sends a message to the connected bot.
+
+#### Auth
+
+No Supabase session required. This endpoint is called by Telegram servers. The request contains a Telegram update object. Validation: verify the incoming `update` payload and the agent's existence.
+
+#### Processing
+
+1. Validate `agentId` UUID.
+2. Fetch agent. Return 404 if not found or `is_active = false`.
+3. Fetch the Telegram channel for this agent. Return 404 if none exists or `is_active = false`.
+4. Parse the Telegram update from the request body.
+5. Extract the message text and sender information (`chat.id`, `from.id`, `from.first_name`).
+6. **Create or find session:** Look up an existing `agent_sessions` for this agent + external user (using `external_user_id`). If none exists, create a new session with `title = 'Telegram: {from.first_name}'`.
+7. Insert the user message into `agent_messages` with `channel = 'telegram'` and `external_user_id = chat.id.toString()`.
+8. **Run RAG pipeline** (same as playground chat, scoped to agent's knowledge docs).
+9. Insert the assistant response into `agent_messages`.
+10. Decrypt the `bot_token` from the channel config.
+11. Send the assistant response back to the Telegram chat via `sendMessage` API call.
+12. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{ "ok": true }
+```
+
+Telegram expects a 200 response to acknowledge receipt. The actual reply is sent via the `sendMessage` API call.
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_AGENT_ID` | `agentId` not a valid UUID |
+| 404 | `AGENT_NOT_FOUND` | Agent not found or inactive |
+| 404 | `CHANNEL_NOT_FOUND` | No active Telegram channel for this agent |
+| 500 | `PROCESSING_ERROR` | Failed to process message or send reply |
+
+---
+
+## P16 Environment Variables
+
+| Variable | Used by |
+|---|---|
+| `AGENT_CHANNEL_ENCRYPTION_KEY` | Server-side AES-256-GCM encryption key for channel credentials. Must be a 32-byte base64-encoded string. Generate via `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. |
+| `APP_URL` | Public URL of the deployed application (e.g., `https://trustvault.vercel.app`). Used for Telegram webhook URL construction. |
+| `TELEGRAM_WEBHOOK_SECRET` | (Optional) Secret for validating Telegram webhook requests. If set, the webhook endpoint checks the `X-Telegram-Bot-Api-Secret-Token` header. |
+| `WHATSAPP_WEBHOOK_SECRET` | (Future) Secret for validating WhatsApp Business API webhook requests. Not used in P16 with whatsapp-web.js unofficial. |
+
+These are in addition to all existing P1-P14 environment variables.
+
+---
+
+## P16 Role Requirement Summary
+
+| Endpoint | Method | P16 Minimum Role |
+|---|---|---|
+| `/api/agents` | `POST` | `editor` |
+| `/api/agents` | `GET` | `viewer` |
+| `/api/agents/[id]` | `GET` | `viewer` |
+| `/api/agents/[id]` | `PATCH` | `editor` |
+| `/api/agents/[id]` | `DELETE` | `editor` |
+| `/api/agents/[id]/channels` | `POST` | `editor` |
+| `/api/agents/[id]/channels/[channelId]` | `DELETE` | `editor` |
+| `/api/agents/[id]/chat` | `POST` | `viewer` |
+| `/api/agents/[id]/chat/sessions` | `GET` | `viewer` |
+| `/api/agents/[id]/chat/sessions/[sessionId]` | `GET` | `viewer` |
+| `/api/agents/[id]/chat/sessions/[sessionId]` | `DELETE` | `viewer` (own sessions only) |
+| `/api/agents/[id]/whatsapp/connect` | `POST` | `editor` |
+| `/api/agents/[id]/whatsapp/disconnect` | `POST` | `editor` |
+| `/api/agents/[id]/whatsapp/status` | `GET` | `editor` |
+| `/api/agents/[id]/telegram/connect` | `POST` | `editor` |
+| `/api/agents/[id]/telegram/disconnect` | `POST` | `editor` |
+| `/api/webhook/whatsapp/[agentId]` | `POST` | N/A (webhook auth) |
+| `/api/webhook/telegram/[agentId]` | `POST` | N/A (webhook) |

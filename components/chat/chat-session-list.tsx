@@ -4,12 +4,19 @@ import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import type { ChatSession } from "@/lib/ai-api-client";
+
+// ---- Generic session shape for cross-page reuse (P6 assistant + P16 agents) --
+
+export interface SessionLike {
+  id: string;
+  title: string;
+  updated_at: string;
+}
 
 // ---- Props ------------------------------------------------------------------
 
 interface ChatSessionListProps {
-  sessions: ChatSession[];
+  sessions: SessionLike[];
   currentSessionId: string | null;
   isLoading: boolean;
   onSelectSession: (sessionId: string) => void;
@@ -47,7 +54,7 @@ export function ChatSessionList({
   onNewSession,
   onDeleteSession,
 }: ChatSessionListProps) {
-  const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SessionLike | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
