@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, requireProjectRole } from "@/lib/supabase/auth";
+import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { ingestDocument } from "@/lib/ai-assistant";
 import type {
   IngestRequest,
@@ -113,20 +113,16 @@ export async function POST(
         continue;
       }
 
-      // 3c. Role check: must be admin or editor (P11: null-safe)
-      const docProjectId: string | null = (document.project_id as string | null) ?? null;
-      if (docProjectId) {
-        const roleCheck = await requireProjectRole(
-          supabase,
-          user.id,
-          docProjectId,
-          ["admin", "editor"],
-        );
-        if (!roleCheck.ok) {
-          failed++;
-          errors.push(`Document ${documentId}: FORBIDDEN`);
-          continue;
-        }
+      // 3c. Role check: must be editor+ (P14 tenant-level RBAC)
+      const roleCheck = await requireTenantRole(supabase, user.id, [
+        "owner",
+        "admin",
+        "editor",
+      ]);
+      if (!roleCheck.ok) {
+        failed++;
+        errors.push(`Document ${documentId}: FORBIDDEN`);
+        continue;
       }
 
       // 3d. Check for empty text

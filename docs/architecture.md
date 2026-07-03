@@ -655,3 +655,282 @@ Build sequence for P5 -- must run in this order:
 - The existing hashing pipeline (`lib/core.ts`) is NOT modified by any agent. P5 is a consumer only.
 
 Open questions for the human: none for P5 -- all interfaces are fully specified.
+
+---
+
+## 13. P14 Tenant-Level RBAC + Invitations Architecture
+
+### 13a. RBAC Model Shift
+
+P12 removed the projects layer and project-level RBAC (`project_members` table). P14 introduces **tenant-level RBAC** via a `role` column on `profiles` and an **invitation system** for onboarding new members. Every user who belongs to a tenant has exactly one role within that tenant.
+
+This replaces the P2 project-level admin/editor/viewer model. The authorization primitive changes from `requireProjectRole(userId, projectId, minRole)` to `requireTenantRole(userId, tenantId, allowedRoles)`. All existing route handlers that previously checked project-level roles must be updated to use the tenant-level check.
+
+### 13b. Role Definitions
+
+Four roles, defined at the tenant level via `profiles.role`:
+
+| Role | Description | How assigned |
+|------|-------------|--------------|
+| **owner** | The user who created the tenant. Exactly one per tenant. Cannot be demoted, removed, or have their role changed. Full control over all tenant resources including deletion. | Automatically on sign-up via the `handle_new_user` trigger. Cannot be assigned via invitation. |
+| **admin** | Full CRUD on all tenant resources. Can manage members (invite, remove, change roles) except the owner. Cannot delete the tenant. | Assigned by owner or another admin via invitation or direct role change. |
+| **editor** | Can upload documents, soft-delete documents, trigger compare, anchor documents, manage labels, and run AI ingest. Cannot manage members or tenant settings. | Assigned by owner or admin via invitation or direct role change. Default role for new invited members who need write access. |
+| **viewer** | Read-only access. Can view documents, trigger compare, verify documents, run AI chat. Cannot upload, delete, modify, anchor, or ingest. | Default role for new profiles (column default). Assigned when no write access is needed. |
+
+### 13c. Permission Matrix
+
+| Action | owner | admin | editor | viewer |
+|--------|-------|-------|--------|--------|
+| Upload documents (POST /api/documents) | Yes | Yes | Yes | No |
+| View documents (GET /api/documents) | Yes | Yes | Yes | Yes |
+| Compare documents (POST /api/compare) | Yes | Yes | Yes | Yes |
+| Soft-delete documents (PATCH /api/documents/[id]) | Yes | Yes | Yes | No |
+| Anchor documents (POST /api/anchor) | Yes | Yes | Yes | No |
+| Verify documents (POST /api/verify) | Yes | Yes | Yes | Yes |
+| AI Assistant chat (POST /api/assistant/chat) | Yes | Yes | Yes | Yes |
+| AI Ingest documents (POST /api/assistant/ingest) | Yes | Yes | Yes | No |
+| Manage labels (CRUD labels, attach/detach) | Yes | Yes | Yes | No |
+| Create/revoke share links | Yes | Yes | Yes | Yes |
+| View tenant members (GET /api/tenant/members) | Yes | Yes | No | No |
+| Invite new members (POST /api/tenant/invite) | Yes | Yes | No | No |
+| Change member roles (PATCH /api/tenant/members/[userId]) | Yes | Yes (not owner) | No | No |
+| Remove members (DELETE /api/tenant/members/[userId]) | Yes | Yes (not owner) | No | No |
+| Revoke invitations (DELETE invitation) | Yes | Yes | No | No |
+| Delete tenant | Yes | No | No | No |
+
+### 13d. Invitation Flow
+
+The invitation system allows admins and owners to invite new members by email. The invitee does not need an existing account -- they can sign up after receiving the invitation.
+
+```
+┌──────────────┐     ┌───────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Admin/Owner │     │  Next.js API  │     │  Supabase    │     │  Invitee     │
+│  (browser)   │     │  /api/tenant  │     │  Postgres    │     │  (email)     │
+└──────┬───────┘     └───────┬───────┘     └──────┬───────┘     └──────┬───────┘
+       │                     │                     │                     │
+       │ POST /invite        │                     │                     │
+       │ {email, role}       │                     │                     │
+       │────────────────────>│                     │                     │
+       │                     │ requireTenantRole   │                     │
+       │                     │ (admin+)            │                     │
+       │                     │                     │                     │
+       │                     │ generate token      │                     │
+       │                     │ (crypto.randomBytes │                     │
+       │                     │  32 -> hex, 64 chars│                     │
+       │                     │                     │                     │
+       │                     │ DELETE old pending  │                     │
+       │                     │ for same email      │                     │
+       │                     │────────────────────>│                     │
+       │                     │                     │                     │
+       │                     │ INSERT invitations  │                     │
+       │                     │ (tenant_id, email,  │                     │
+       │                     │  role, token,       │                     │
+       │                     │  created_by,        │                     │
+       │                     │  expires_at=now+7d) │                     │
+       │                     │────────────────────>│                     │
+       │                     │<────────────────────│                     │
+       │                     │                     │                     │
+       │                     │ (email service sends│                     │
+       │                     │ link with token)    │                     │
+       │<── 201 {invitation} │                     │                     │
+       │                     │                     │                     │
+       │                     │                     │  (invitee clicks    │
+       │                     │                     │   email link,       │
+       │                     │                     │   signs up if new,  │
+       │                     │                     │   logs in if exist) │
+       │                     │                     │                     │
+       │                     │ GET /join?token=xxx │                     │
+       │                     │<─────────────────────────────────────────│
+       │                     │                     │                     │
+       │                     │ requireAuth()       │                     │
+       │                     │ (any authenticated  │                     │
+       │                     │  user -- no tenant  │                     │
+       │                     │  membership needed) │                     │
+       │                     │                     │                     │
+       │                     │ Look up token:      │                     │
+       │                     │ - EXISTS?           │                     │
+       │                     │ - accepted_at=NULL? │                     │
+       │                     │ - expires_at>now()? │                     │
+       │                     │                     │                     │
+       │                     │ Match email:        │                     │
+       │                     │ LOWER(auth.user     │                     │
+       │                     │   .email) =         │                     │
+       │                     │ LOWER(invitation    │                     │
+       │                     │   .email)            │                     │
+       │                     │                     │                     │
+       │                     │ Check target user   │                     │
+       │                     │ is NOT already in   │                     │
+       │                     │ a tenant            │                     │
+       │                     │                     │                     │
+       │                     │ UPDATE profiles     │                     │
+       │                     │ SET tenant_id, role │                     │
+       │                     │────────────────────>│                     │
+       │                     │                     │                     │
+       │                     │ UPDATE invitations  │                     │
+       │                     │ SET accepted_at     │                     │
+       │                     │ (using service_role │                     │
+       │                     │  client -- user     │                     │
+       │                     │  has no tenant yet) │                     │
+       │                     │────────────────────>│                     │
+       │                     │                     │                     │
+       │ 200 { tenant_id,    │                     │                     │
+       │   role }            │                     │                     │
+       │──────────────────────────────────────────────────────────────>│
+```
+
+**Invitation rules:**
+1. Token is 64-char hex: `crypto.randomBytes(32).toString('hex')`.
+2. Token expires after 7 days (`expires_at` column checked on accept).
+3. Token is single-use: once `accepted_at` is set, the invitation is consumed.
+4. If a pending invitation already exists for the same `(tenant_id, email)`, the old one is deleted before inserting the new one (at most one pending invitation per email per tenant).
+5. The invitee must be authenticated (any session is valid -- no prior tenant membership needed).
+6. The authenticated user's email must match the invitation email (case-insensitive `LOWER()` comparison).
+7. The target user must not already belong to a tenant.
+8. The owner role cannot be granted via invitation.
+
+### 13e. requireTenantRole() Helper Pattern
+
+Replaces the P2 `requireProjectRole()` pattern. Located in `lib/auth.ts`. Since projects no longer exist (dropped P12), all authorization checks now use the user's tenant-level role from `profiles.role`.
+
+**Signature (pseudocode):**
+
+```
+async function requireTenantRole(
+  supabase: SupabaseClient,
+  userId: string,
+  allowedRoles: TenantRole[]
+): Promise<{ role: TenantRole; tenantId: string }>
+```
+
+**Logic (pseudocode):**
+
+1. Query `profiles` where `id = userId`.
+2. If no profile, return 403 `FORBIDDEN` (no tenant membership).
+3. If `profile.role` is not in `allowedRoles`, return 403 `FORBIDDEN` (insufficient role).
+4. Return `{ role: profile.role, tenantId: profile.tenant_id }`.
+
+**Usage in route handlers:**
+
+```ts
+// Example: protecting POST /api/documents
+const { user } = await requireAuth();
+const { tenantId } = await requireTenantRole(supabase, user.id, ['owner', 'admin', 'editor']);
+// ... proceed with tenantId scoped query
+```
+
+**Route handler pattern migration:**
+All endpoints that previously called `requireProjectRole(userId, projectId, minRole)` must be updated to call `requireTenantRole(userId, allowedRoles)`. The tenant ID is always obtained from the user's profile -- it is never accepted from the request body.
+
+### 13f. Module Responsibilities (P14)
+
+#### New Modules (owned by `backend`)
+
+**`app/api/tenant/members/route.ts`** -- `GET /api/tenant/members`:
+- Requires auth + admin/owner role.
+- Lists all profiles in the calling user's tenant with their roles.
+- Supports `?search=` query param for filtering by display_name or email.
+- Response includes `members: { id, display_name, role, created_at }[]` and `total`.
+
+**`app/api/tenant/members/[userId]/route.ts`** -- `PATCH` and `DELETE`:
+- `PATCH` -- Update a member's role (admin/owner only).
+  - Cannot change the owner's role.
+  - Cannot promote anyone to owner.
+  - Self-demotion check: if caller demotes themselves and they are the last admin/owner, block with `LAST_ADMIN`.
+- `DELETE` -- Remove a member from the tenant (admin/owner only).
+  - Cannot remove the owner.
+  - Self-removal check: if caller removes themselves and they are the last admin/owner, block with `LAST_ADMIN`.
+  - Resets the removed user's `profiles.tenant_id` to NULL and `profiles.role` to `'viewer'` (they retain their account but lose tenant access).
+
+**`app/api/tenant/invite/route.ts`** -- `POST /api/tenant/invite`:
+- Requires auth + admin/owner role.
+- Validates `email` and `role` (cannot be `'owner'`).
+- If a pending invitation already exists for this `(tenant_id, email)`, deletes it first.
+- Generates token, inserts invitation row.
+- Sends invitation email (via email service or logs token in dev).
+
+**`app/api/tenant/join/route.ts`** -- `GET /api/tenant/join`:
+- Requires auth (any authenticated user -- no tenant membership required).
+- Validates `token` query parameter.
+- Looks up invitation: must exist, not expired, not already accepted.
+- Matches authenticated user's email to invitation email (case-insensitive).
+- Verifies the user does not already belong to a tenant.
+- Updates `profiles.tenant_id` and `profiles.role` for the accepting user.
+- Sets `invitations.accepted_at`.
+- Returns `{ tenant_id, role }`.
+
+#### Updated Modules
+
+**`lib/auth.ts`** -- Add `requireTenantRole()` function. Deprecate and remove `requireProjectRole()`.
+
+**`lib/types.ts`** -- Add/update P14 types:
+- `TenantRole = 'owner' | 'admin' | 'editor' | 'viewer'`
+- Update `Profile` type: add `role: TenantRole`
+- Add `TenantMember`, `Invitation`, `InviteRequest`, `UpdateMemberRoleRequest`, `JoinResponse` types.
+
+**All existing route handlers** -- Replace `requireProjectRole()` calls with `requireTenantRole()`. The minimum role per endpoint:
+
+| Endpoint | Minimum Role | Notes |
+|----------|-------------|-------|
+| `POST /api/documents` | editor | Upload requires write access |
+| `POST /api/documents/bulk` | editor | Bulk upload requires write access |
+| `PATCH /api/documents/[id]` | editor | Soft-delete/restore requires write access |
+| `POST /api/anchor` | editor | Anchoring modifies DB + sends tx |
+| `POST /api/assistant/ingest` | editor | Ingestion creates chunks in DB |
+| `POST /api/compare` | viewer | Read-only operation |
+| `POST /api/verify` | viewer | Read-only verification |
+| `POST /api/assistant/chat` | viewer | Read-only chat |
+| `GET /api/assistant/sessions` | viewer | Read-only session list |
+| `DELETE /api/assistant/sessions/[id]` | viewer | User deletes own session only |
+
+**`supabase/migrations/`** -- New migration file `20260703000000_p14_rbac_invitations.sql` (see `database.md` Section 13 for full SQL).
+
+#### New Modules (owned by `frontend`)
+
+**Tenant members management screen** -- Accessible from the Settings page (`app/(dashboard)/settings/`):
+- Members list with name, email, role badge, and "joined" date.
+- Role dropdown (admin/owner only) to change roles. Owner's role is not editable.
+- Remove member button (admin/owner only). Owner row has no remove button.
+- Invite member form: email input + role dropdown (admin/editor/viewer).
+- Pending invitations list with status (pending/expired) and revoke button.
+- Toast notifications for success/error on all actions.
+
+### 13g. Technology Choices (P14)
+
+| Choice | Rationale |
+|--------|-----------|
+| `crypto.randomBytes(32).toString('hex')` for invitation tokens | Node.js built-in, zero dependencies. 256 bits of entropy is sufficient for invitation tokens. Hex encoding creates a 64-character URL-safe token. |
+| 7-day invitation expiry | Standard SaaS practice. Long enough for email delivery and user response, short enough to limit exposure of dangling invitations. |
+| Role on `profiles`, not a separate membership table | Since projects are gone (P12), each user has exactly one role per tenant. A column on profiles is simpler and more performant than a separate membership table with a join. |
+| `owner` as a role, not a separate column | Simplifies authorization checks: `allowedRoles.includes(profile.role)`. The owner is just a role with special protections (cannot be demoted, removed, or changed). |
+| No owner via invitation | Prevents privilege escalation. Only the sign-up flow (or a future admin transfer mechanism) can create an owner. |
+| Service-role client for join endpoint acceptance | The accepting user does not yet have `tenant_id` set, so user-scoped RLS on `invitations` would block the UPDATE to set `accepted_at`. The route handler uses a service-role client for this specific operation only. |
+
+---
+
+## 14. Handoff (P14)
+
+Build sequence for P14 -- must run in this order:
+
+| Step | Agent | Picks up | Runs |
+|------|-------|----------|------|
+| 0 | `scaffold` | `docs/architecture.md` (Section 13f for module map), `CLAUDE.md` (stack) | **Sequential, alone.** No new dependencies needed for P14 (no new npm packages). Verify existing skeleton compiles. |
+| 1 | `database` | `docs/database.md` Section 13 -> create migration `20260703000000_p14_rbac_invitations.sql` | **Parallel** with backend + frontend (after scaffold done) |
+| 1 | `backend` | `docs/api-spec.md` P14 endpoints + `docs/database.md` Section 13 + `docs/architecture.md` Section 13 -> implement `requireTenantRole()` in `lib/auth.ts`, update `lib/types.ts`, create all P14 route handlers (`app/api/tenant/`), update all existing route handlers to use `requireTenantRole()`, update `handle_new_user` trigger in migration | **Parallel** with database + frontend |
+| 1 | `frontend` | `docs/api-spec.md` P14 endpoints + `docs/architecture.md` Section 13d (invitation flow), 13f (settings page) -> build tenant members management screen in Settings, invite form, pending invitations list, role badges, member remove/role-change controls | **Parallel** with database + backend |
+| 2 | `qa` | `docs/roadmap.md` P14 acceptance criteria -> write eval tests for RBAC enforcement, role gating on endpoints, invitation flow, owner protection | **Sequential** after build (gate) |
+| 2 | `security` | `docs/security.md` Section 15 -> audit role enforcement (route handler + RLS), invitation token security, owner immutability, last-admin protection, service-role usage in join endpoint | **Sequential** after build (gate, read-only) |
+| 3 | `deployment` | `docs/deployment.md` -> update migration list, verify new migration applies, add invitation email config if needed | **Last**, after gates pass |
+
+**Critical rules:**
+- `scaffold` is a serial prerequisite. No build agent may start before the skeleton exists and compiles.
+- `database`, `backend`, and `frontend` run in parallel. They share contracts (`database.md` Section 13 for schema, `api-spec.md` P14 for API shape) and must not deviate.
+- File ownership matrix in `CLAUDE.md` applies:
+  - `database` owns the P14 migration file (`supabase/migrations/20260703000000_p14_rbac_invitations.sql`)
+  - `backend` owns `lib/auth.ts` (add `requireTenantRole`), `app/api/tenant/`, `lib/types.ts` (P14 type additions), and updates to all existing route handlers
+  - `frontend` owns the Settings > Members page and all invitation-related UI components
+  - No agent modifies files owned by another agent
+- The `requireProjectRole()` function must not be called after P14 -- all route handlers must use `requireTenantRole()`.
+- The service-role client may only be used in `GET /api/tenant/join` for updating the `invitations.accepted_at` column. All other invitation operations use the user-scoped client.
+- `scripts/verify.sh` (eslint + tsc --noEmit + vitest run) must pass before QA/Security review.
+
+Open questions for the human: none for P14 -- all interfaces are fully specified.

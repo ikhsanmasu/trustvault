@@ -10,6 +10,7 @@ import {
 import { ingestDocument } from "@/lib/ai-assistant";
 import {
   requireAuth,
+  requireTenantRole,
   getUserTenantId,
 } from "@/lib/supabase/auth";
 import type {
@@ -58,6 +59,14 @@ export async function POST(
       { status: 404 },
     );
   }
+
+  // -- 4. Role check: require editor+ (P14 tenant-level RBAC) ----------------
+  const roleCheck = await requireTenantRole(supabase, user.id, [
+    "owner",
+    "admin",
+    "editor",
+  ]);
+  if (!roleCheck.ok) return roleCheck.response;
 
   // -- 6. Collect files from form data --------------------------------------
   const files: File[] = [];

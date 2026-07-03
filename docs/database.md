@@ -1424,3 +1424,536 @@ CREATE POLICY "chat_messages_insert_own" ON public.chat_messages
 - Existing queries and API endpoints continue to work without modification.
 - The new tables are only accessed by the new P6 API endpoints and library code.
 - The `Document` type in `lib/types.ts` is unchanged — chunk data is separate.
+
+---
+
+## 13. P14 Additions: Tenant-Level RBAC + Invitations
+
+### 13a. Overview
+
+P12 removed the projects layer and project-level RBAC (`project_members` table). P14 introduces **tenant-level RBAC** via a `role` column on `profiles` and an **invitation system** for adding members to a tenant. Every user who belongs to a tenant has exactly one role within that tenant: `owner`, `admin`, `editor`, or `viewer`.
+
+P14 also fixes broken RLS policies on `document_labels` and `shared_links` that still referenced the now-dropped `project_members` table, and tightens document/chunk write policies to enforce the new tenant-level role checks.
+
+### 13b. Updated Table: `profiles`
+
+Add a `role` column to encode the user's tenant-level RBAC role.
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `role` | `text` | NOT NULL | `'viewer'` | One of: `'owner'`, `'admin'`, `'editor'`, `'viewer'`. Determines what the user can do within their tenant. |
+
+**Constraint:** `CHECK (role IN ('owner', 'admin', 'editor', 'viewer'))`.
+
+**Backfill rule:** For existing profiles, the earliest-created profile in each tenant is set to `role = 'owner'`. All other profiles default to `'viewer'`.
+
+**Updated full `profiles` table columns (P14):**
+
+| Column | Type | Nullable | Default | Phase Added |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | -- | P2 |
+| `tenant_id` | `uuid` | NOT NULL | -- | P2 |
+| `display_name` | `text` | NULL | `NULL` | P2 |
+| `role` | `text` | NOT NULL | `'viewer'` | **P14** |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | P2 |
+
+### 13c. New Table: `invitations`
+
+#### Purpose
+
+Stores pending (and accepted) tenant membership invitations. An admin or owner invites someone by email. The invitee receives a link with a cryptographically random token. When they accept, their `profiles` row is updated with the tenant's ID and the granted role.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `tenant_id` | `uuid` | NOT NULL | -- | FK to `tenants.id`. The tenant the invitee will join. ON DELETE CASCADE. |
+| `email` | `text` | NOT NULL | -- | Email address of the invitee (case-insensitive match at accept time via `LOWER()`). |
+| `role` | `text` | NOT NULL | -- | The role the invitee will receive. Cannot be `'owner'`. CHECK constraint enforces. |
+| `token` | `text` | NOT NULL | -- | 64-character hex string. `UNIQUE`. Generated server-side via `crypto.randomBytes(32).toString('hex')`. |
+| `created_by` | `uuid` | NOT NULL | -- | FK to `auth.users.id`. The admin/owner who sent the invitation. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC). |
+| `expires_at` | `timestamptz` | NOT NULL | -- | 7 days after `created_at`. Invitation is invalid after this time. |
+| `accepted_at` | `timestamptz` | NULL | `NULL` | Set when the invitee accepts. NULL means pending. |
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `UNIQUE (token)` -- token must be globally unique.
+- `FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE`
+- `FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE CASCADE`
+- `CHECK (role IN ('admin', 'editor', 'viewer'))` -- owner cannot be granted via invitation.
+- Application-layer rule: if a pending invitation already exists for the same `(tenant_id, email)` pair, the old one is revoked (deleted) before the new one is created. This ensures at most one pending invitation per email per tenant.
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `invitations_pkey` | `id` | Primary key lookup |
+| `invitations_token_unique` | `token` | Unique constraint index (auto-created). Fast token lookup on accept. |
+| `invitations_tenant_id_idx` | `tenant_id` | List pending invitations for a tenant. |
+| `invitations_tenant_email_idx` | `tenant_id`, `email` | Check for existing invitation for the same email in a tenant. |
+
+### 13d. RLS Policies for `invitations`
+
+```sql
+ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: members of the tenant can see pending invitations
+CREATE POLICY "invitations_select_tenant_member" ON public.invitations
+  FOR SELECT
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+  );
+
+-- INSERT: admin or owner can create invitations
+CREATE POLICY "invitations_insert_admin" ON public.invitations
+  FOR INSERT
+  WITH CHECK (
+    created_by = auth.uid()
+    AND tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+
+-- DELETE: admin or owner can revoke invitations
+CREATE POLICY "invitations_delete_admin" ON public.invitations
+  FOR DELETE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+```
+
+There is no UPDATE policy on `invitations`. The only mutation to an existing invitation row is setting `accepted_at`, which happens in a route handler using a service-role client (the accepting user does not yet have a tenant_id to satisfy RLS).
+
+### 13e. Fixed RLS Policies (Broken by P12)
+
+P12 dropped `project_members` and `projects` tables, but several RLS policies on `document_labels` and `shared_links` still reference `project_members`. The P14 migration drops and recreates them using tenant-level checks.
+
+#### document_labels (fix)
+
+The old policies joined through `project_members` (which no longer exists). The new policies check that the user belongs to the same tenant as the document.
+
+```sql
+-- Drop broken policies
+DROP POLICY IF EXISTS "document_labels_select_member" ON public.document_labels;
+DROP POLICY IF EXISTS "document_labels_insert_editor" ON public.document_labels;
+DROP POLICY IF EXISTS "document_labels_delete_editor" ON public.document_labels;
+
+-- SELECT: user can see labels attached to documents in their tenant
+CREATE POLICY "document_labels_select_tenant" ON public.document_labels
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_labels.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+-- INSERT: user must be owner, admin, or editor in the tenant
+CREATE POLICY "document_labels_insert_editor" ON public.document_labels
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_labels.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- DELETE: user must be owner, admin, or editor in the tenant
+CREATE POLICY "document_labels_delete_editor" ON public.document_labels
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_labels.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+```
+
+#### shared_links (fix)
+
+The old policies on `shared_links` referenced `project_members`. P12 dropped the `project_id` column from `shared_links`. The fixed policies are scoped to the link creator and tenant admins.
+
+```sql
+-- Drop broken policies
+DROP POLICY IF EXISTS "shared_links_select_member" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_insert_editor" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_update_editor" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_delete_editor" ON public.shared_links;
+
+-- SELECT: user can see their own shared links
+-- PLUS admins/owners can see all shared links in their tenant
+-- (tenant is derived from created_by -> profiles.tenant_id)
+CREATE POLICY "shared_links_select_own_or_admin" ON public.shared_links
+  FOR SELECT
+  USING (
+    created_by = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.profiles creator
+      WHERE creator.id = shared_links.created_by
+        AND creator.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+        AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+    )
+  );
+
+-- INSERT: any authenticated user in a tenant can create shared links
+CREATE POLICY "shared_links_insert_auth" ON public.shared_links
+  FOR INSERT
+  WITH CHECK (
+    created_by = auth.uid()
+    AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid())
+  );
+
+-- UPDATE: owner, admin, or the creator
+CREATE POLICY "shared_links_update_own_or_admin" ON public.shared_links
+  FOR UPDATE
+  USING (
+    created_by = auth.uid()
+    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+
+-- DELETE: owner, admin, or the creator
+CREATE POLICY "shared_links_delete_own_or_admin" ON public.shared_links
+  FOR DELETE
+  USING (
+    created_by = auth.uid()
+    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+```
+
+### 13f. Tightened RLS Policies with Role Checks
+
+P11 created permissive tenant-scoped INSERT and UPDATE policies on `documents` and `document_chunks` (any authenticated user in the tenant could write). P14 tightens these to require at least `editor` role for write operations.
+
+#### documents (tighten)
+
+```sql
+-- Drop existing permissive policies
+DROP POLICY IF EXISTS "documents_tenant_insert" ON public.documents;
+DROP POLICY IF EXISTS "documents_tenant_update" ON public.documents;
+
+-- INSERT: owner, admin, or editor only
+CREATE POLICY "documents_tenant_insert" ON public.documents
+  FOR INSERT
+  WITH CHECK (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND uploaded_by = auth.uid()
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- UPDATE: owner, admin, or editor only (soft-delete, anchoring)
+CREATE POLICY "documents_tenant_update" ON public.documents
+  FOR UPDATE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+```
+
+The SELECT policy (`documents_tenant_access`) remains permissive -- viewers can still read documents.
+
+#### document_chunks (tighten)
+
+```sql
+-- Drop existing permissive policies
+DROP POLICY IF EXISTS "document_chunks_tenant_insert" ON public.document_chunks;
+DROP POLICY IF EXISTS "document_chunks_tenant_delete" ON public.document_chunks;
+
+-- INSERT: owner, admin, or editor only
+CREATE POLICY "document_chunks_tenant_insert" ON public.document_chunks
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_chunks.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- DELETE: owner, admin, or editor only
+CREATE POLICY "document_chunks_tenant_delete" ON public.document_chunks
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_chunks.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+```
+
+The SELECT policy (`document_chunks_tenant_access`) remains permissive -- viewers can still read chunks (needed for RAG).
+
+### 13g. Updated `handle_new_user` Trigger
+
+The `on_auth_user_created` trigger (from P2) must be updated to set `role = 'owner'` for the new user who creates a tenant during sign-up. The updated trigger:
+
+```sql
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+DECLARE
+  new_tenant_id uuid;
+BEGIN
+  INSERT INTO public.tenants (name) VALUES (NEW.email) RETURNING id INTO new_tenant_id;
+  INSERT INTO public.profiles (id, tenant_id, display_name, role)
+  VALUES (NEW.id, new_tenant_id, NEW.email, 'owner');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+### 13h. Complete P14 Migration SQL
+
+**File:** `supabase/migrations/20260703000000_p14_rbac_invitations.sql`
+
+```sql
+-- ============================================================================
+-- TrustVault P14: Tenant-Level RBAC + Invitations
+-- Migration: 20260703000000_p14_rbac_invitations.sql
+-- Prerequisite: 20260702000000_p13_fix_chat_sessions.sql
+-- ============================================================================
+
+-- --------------------------------------------------------------------------
+-- 1. ADD role COLUMN TO profiles
+-- --------------------------------------------------------------------------
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'viewer'
+  CHECK (role IN ('owner', 'admin', 'editor', 'viewer'));
+
+-- --------------------------------------------------------------------------
+-- 2. BACKFILL: earliest profile per tenant becomes owner
+-- --------------------------------------------------------------------------
+WITH first_profiles AS (
+  SELECT DISTINCT ON (tenant_id) id
+  FROM public.profiles
+  ORDER BY tenant_id, created_at ASC
+)
+UPDATE public.profiles p
+SET role = 'owner'
+FROM first_profiles fp
+WHERE p.id = fp.id;
+
+-- --------------------------------------------------------------------------
+-- 3. UPDATE handle_new_user TRIGGER to set owner role
+-- --------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+DECLARE
+  new_tenant_id uuid;
+BEGIN
+  INSERT INTO public.tenants (name) VALUES (NEW.email) RETURNING id INTO new_tenant_id;
+  INSERT INTO public.profiles (id, tenant_id, display_name, role)
+  VALUES (NEW.id, new_tenant_id, NEW.email, 'owner');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- --------------------------------------------------------------------------
+-- 4. CREATE invitations TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.invitations (
+  id            uuid          NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id     uuid          NOT NULL,
+  email         text          NOT NULL,
+  role          text          NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
+  token         text          NOT NULL,
+  created_by    uuid          NOT NULL,
+  created_at    timestamptz   NOT NULL DEFAULT now(),
+  expires_at    timestamptz   NOT NULL,
+  accepted_at   timestamptz   NULL DEFAULT NULL,
+
+  CONSTRAINT invitations_pkey PRIMARY KEY (id),
+  CONSTRAINT invitations_token_unique UNIQUE (token),
+  CONSTRAINT invitations_tenant_id_fkey FOREIGN KEY (tenant_id)
+    REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT invitations_created_by_fkey FOREIGN KEY (created_by)
+    REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS invitations_tenant_id_idx
+  ON public.invitations (tenant_id);
+
+CREATE INDEX IF NOT EXISTS invitations_tenant_email_idx
+  ON public.invitations (tenant_id, email);
+
+-- --------------------------------------------------------------------------
+-- 5. RLS POLICIES FOR invitations
+-- --------------------------------------------------------------------------
+ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "invitations_select_tenant_member" ON public.invitations
+  FOR SELECT
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+  );
+
+CREATE POLICY "invitations_insert_admin" ON public.invitations
+  FOR INSERT
+  WITH CHECK (
+    created_by = auth.uid()
+    AND tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+
+CREATE POLICY "invitations_delete_admin" ON public.invitations
+  FOR DELETE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+
+-- --------------------------------------------------------------------------
+-- 6. FIX BROKEN document_labels RLS (remove project_members dependency)
+-- --------------------------------------------------------------------------
+DROP POLICY IF EXISTS "document_labels_select_member" ON public.document_labels;
+DROP POLICY IF EXISTS "document_labels_insert_editor" ON public.document_labels;
+DROP POLICY IF EXISTS "document_labels_delete_editor" ON public.document_labels;
+
+CREATE POLICY "document_labels_select_tenant" ON public.document_labels
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_labels.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+CREATE POLICY "document_labels_insert_editor" ON public.document_labels
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_labels.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+CREATE POLICY "document_labels_delete_editor" ON public.document_labels
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_labels.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- --------------------------------------------------------------------------
+-- 7. FIX BROKEN shared_links RLS (remove project_members dependency)
+-- --------------------------------------------------------------------------
+DROP POLICY IF EXISTS "shared_links_select_member" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_insert_editor" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_update_editor" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_delete_editor" ON public.shared_links;
+
+CREATE POLICY "shared_links_select_own_or_admin" ON public.shared_links
+  FOR SELECT
+  USING (
+    created_by = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.profiles creator
+      WHERE creator.id = shared_links.created_by
+        AND creator.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+        AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+    )
+  );
+
+CREATE POLICY "shared_links_insert_auth" ON public.shared_links
+  FOR INSERT
+  WITH CHECK (
+    created_by = auth.uid()
+    AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid())
+  );
+
+CREATE POLICY "shared_links_update_own_or_admin" ON public.shared_links
+  FOR UPDATE
+  USING (
+    created_by = auth.uid()
+    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+
+CREATE POLICY "shared_links_delete_own_or_admin" ON public.shared_links
+  FOR DELETE
+  USING (
+    created_by = auth.uid()
+    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin')
+  );
+
+-- --------------------------------------------------------------------------
+-- 8. TIGHTEN documents INSERT/UPDATE POLICIES (require editor+)
+-- --------------------------------------------------------------------------
+DROP POLICY IF EXISTS "documents_tenant_insert" ON public.documents;
+DROP POLICY IF EXISTS "documents_tenant_update" ON public.documents;
+
+CREATE POLICY "documents_tenant_insert" ON public.documents
+  FOR INSERT
+  WITH CHECK (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND uploaded_by = auth.uid()
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+CREATE POLICY "documents_tenant_update" ON public.documents
+  FOR UPDATE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- --------------------------------------------------------------------------
+-- 9. TIGHTEN document_chunks INSERT/DELETE POLICIES (require editor+)
+-- --------------------------------------------------------------------------
+DROP POLICY IF EXISTS "document_chunks_tenant_insert" ON public.document_chunks;
+DROP POLICY IF EXISTS "document_chunks_tenant_delete" ON public.document_chunks;
+
+CREATE POLICY "document_chunks_tenant_insert" ON public.document_chunks
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_chunks.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+CREATE POLICY "document_chunks_tenant_delete" ON public.document_chunks
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_chunks.document_id
+        AND d.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+```
+
+### 13i. Migration Strategy
+
+- **Additive with fixes:** Adds one column to `profiles`, creates one new table (`invitations`), updates the `handle_new_user` trigger, and replaces broken/permissive RLS policies. No existing columns or data are destroyed.
+- **Existing rows:** All existing profiles get `role = 'viewer'` except the earliest profile per tenant, which gets `role = 'owner'`. Existing invitations table is initially empty.
+- **New sign-ups:** The updated `handle_new_user` trigger sets `role = 'owner'` for the tenant creator.
+- **New invitations:** When an invitee accepts, the route handler updates `profiles.role` and `profiles.tenant_id` for that user.
+- **Rollback:** Drop the `invitations` table, drop the `role` column from `profiles`, restore previous RLS policies, restore the old `handle_new_user` trigger. All reversible.
+- **Supabase GitHub auto-deploy:** The migration file goes in `supabase/migrations/` alongside the existing thirteen migrations. The timestamp `20260703000000` places it after all P1-P13 migrations.
+
+### 13j. No Breaking Changes
+
+- All existing columns (except the new `role` on `profiles`) are preserved.
+- Existing queries on `profiles` continue to work -- the `role` column is added with a default, so `SELECT *` returns one extra column.
+- The `on_auth_user_created` trigger remains; its behavior is enhanced to set `role`.
+- Tightened RLS policies are backwards-compatible for existing users with `owner` or `viewer` roles -- no existing user loses access they previously had (the previous policies allowed ALL authenticated users in the tenant to write; after P14, viewers lose write access, which is the intended behavior of RBAC).
+- The `Document` and `Profile` types in `lib/types.ts` must be updated with the `role` field.

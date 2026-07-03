@@ -577,6 +577,7 @@ describe("P3: Profile endpoint contracts", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
       tenant_id: "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
       display_name: "Alice",
+      role: "admin",
       created_at: "2026-06-21T10:00:00.000Z",
     };
 
@@ -591,6 +592,7 @@ describe("P3: Profile endpoint contracts", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
       tenant_id: "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
       display_name: null,
+      role: "viewer",
       created_at: "2026-06-21T10:00:00.000Z",
     };
 

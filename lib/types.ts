@@ -1,10 +1,13 @@
-/** Shared TypeScript types for TrustVault P3. */
+/** Shared TypeScript types for TrustVault P14. */
 
 // ---------------------------------------------------------------------------
 // Role type (RBAC)
 // ---------------------------------------------------------------------------
 
 export type Role = "admin" | "editor" | "viewer";
+
+// P14: Tenant-level role hierarchy: owner > admin > editor > viewer
+export type TenantRole = "owner" | "admin" | "editor" | "viewer";
 
 // ---------------------------------------------------------------------------
 // Auth
@@ -23,6 +26,7 @@ export interface Profile {
   id: string;
   tenant_id: string;
   display_name: string | null;
+  role: TenantRole; // P14: tenant-level RBAC role
   created_at: string;
 }
 
@@ -360,4 +364,67 @@ export interface PublicChatRequest {
 
 export interface RevokeShareResponse {
   revoked: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// P14: Tenant-Level RBAC + Invitations
+// ---------------------------------------------------------------------------
+
+/** A member of the tenant, as returned by GET /api/tenant/members. */
+export interface TenantMember {
+  id: string; // auth.users.id
+  email: string; // from auth.users
+  display_name: string | null;
+  role: TenantRole;
+  created_at: string; // ISO 8601 UTC
+}
+
+/** An invitation to join a tenant. */
+export interface Invitation {
+  id: string; // UUID
+  tenant_id: string; // UUID
+  email: string;
+  role: "admin" | "editor" | "viewer"; // owner not allowed via invitation
+  created_by: string; // UUID of auth.users who sent the invite
+  created_at: string; // ISO 8601 UTC
+  expires_at: string; // ISO 8601 UTC (7 days after created_at)
+  accepted_at: string | null; // ISO 8601 UTC, null if pending
+}
+
+/** Request body for POST /api/tenant/invite. */
+export interface InviteRequest {
+  email: string;
+  role: "admin" | "editor" | "viewer"; // cannot be owner
+}
+
+/** Response for POST /api/tenant/invite. */
+export interface InviteResponse {
+  invitation: Invitation;
+}
+
+/** Request body for PATCH /api/tenant/members/[userId]. */
+export interface UpdateMemberRoleRequest {
+  role: "admin" | "editor" | "viewer"; // cannot set to owner
+}
+
+/** Response for PATCH /api/tenant/members/[userId]. */
+export interface UpdateMemberRoleResponse {
+  member: TenantMember;
+}
+
+/** Response for DELETE /api/tenant/members/[userId]. */
+export interface RemoveMemberResponse {
+  removed: true;
+}
+
+/** Response for GET /api/tenant/members. */
+export interface ListMembersResponse {
+  members: TenantMember[];
+  total: number;
+}
+
+/** Response for GET /api/tenant/join. */
+export interface JoinResponse {
+  tenant_id: string; // UUID of the tenant the user joined
+  role: string; // the role assigned
 }

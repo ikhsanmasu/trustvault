@@ -406,6 +406,7 @@ describe("P2: Document type contract", () => {
       id: "user-uuid",
       tenant_id: "tenant-uuid",
       display_name: "Alice",
+      role: "admin",
       created_at: "2026-06-21T10:00:00.000Z",
     };
 

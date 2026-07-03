@@ -22,34 +22,45 @@ import {
   getProfile,
   updateProfile,
   changePassword,
+  getTenantMembers,
+  updateMemberRole,
+  removeMember,
   type Profile,
+  type TenantMember,
+  type TenantRole,
   ApiClientError,
 } from "@/lib/api-client";
 import { useTenant } from "@/hooks/use-tenant";
+import { InviteModal } from "@/components/invite-modal";
 import { useToastState, type ToastData } from "@/hooks/use-toast-state";
 import { cn } from "@/lib/utils";
 import {
   IconUser,
   IconLock,
   IconHome,
+  IconUsers,
   IconX,
   IconSpinner,
+  IconPlus,
+  IconTrash,
 } from "@/components/icons";
 
 // ---- Settings tab type -------------------------------------------------------
 
-type SettingsTab = "profile" | "password" | "tenant";
+type SettingsTab = "profile" | "password" | "tenant" | "members";
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   profile: "Profile",
   password: "Password",
   tenant: "Tenant",
+  members: "Members",
 };
 
 const TAB_ICONS: Record<SettingsTab, React.ReactNode> = {
   profile: <IconUser className="h-5 w-5" />,
   password: <IconLock className="h-5 w-5" />,
   tenant: <IconHome className="h-5 w-5" />,
+  members: <IconUsers className="h-5 w-5" />,
 };
 
 function getInitials(email: string | undefined): string {
@@ -605,6 +616,303 @@ function TenantTab() {
   );
 }
 
+// ---- Members Tab -------------------------------------------------------------
+
+function RoleBadge({ role }: { role: TenantRole }) {
+  const variants: Record<TenantRole, string> = {
+    owner:
+      "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-700",
+    admin:
+      "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-700",
+    editor:
+      "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-700",
+    viewer:
+      "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-600",
+  };
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize",
+        variants[role],
+      )}
+    >
+      {role}
+    </span>
+  );
+}
+
+function MembersTab() {
+  const [members, setMembers] = useState<TenantMember[]>([]);
+  const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
+  const [showInvite, setShowInvite] = useState(false);
+  const [changingRoleFor, setChangingRoleFor] = useState<string | null>(null);
+  const [removingMember, setRemovingMember] = useState<string | null>(null);
+  const { toast, showToast, dismissToast } = useToastState();
+
+  const fetchMembers = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [membersResult, profileResult] = await Promise.all([
+        getTenantMembers(),
+        getProfile(),
+      ]);
+      setMembers(membersResult.members);
+      setTotal(membersResult.total);
+      setCurrentProfile(profileResult.profile);
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        setError(err.message);
+      } else {
+        setError("Failed to load members.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
+
+  const currentUserRole = currentProfile?.role ?? null;
+  const currentUserId = currentProfile?.id;
+
+  async function handleRoleChange(userId: string, newRole: "admin" | "editor" | "viewer") {
+    setChangingRoleFor(userId);
+    setActionError(null);
+    try {
+      await updateMemberRole(userId, newRole);
+      showToast("Member role updated successfully.", "success");
+      await fetchMembers();
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        setActionError(err.message);
+      } else {
+        setActionError("Failed to update role.");
+      }
+    } finally {
+      setChangingRoleFor(null);
+    }
+  }
+
+  async function handleRemove(userId: string) {
+    setRemovingMember(userId);
+    setActionError(null);
+    try {
+      await removeMember(userId);
+      showToast("Member removed from tenant.", "success");
+      await fetchMembers();
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        setActionError(err.message);
+      } else {
+        setActionError("Failed to remove member.");
+      }
+    } finally {
+      setRemovingMember(null);
+    }
+  }
+
+  function canChangeRole(member: TenantMember): boolean {
+    if (currentUserRole === "owner") return member.role !== "owner";
+    if (currentUserRole === "admin") {
+      if (member.role === "owner" || member.role === "admin") return false;
+      return true;
+    }
+    return false;
+  }
+
+  function canRemove(member: TenantMember): boolean {
+    if (member.id === currentUserId) return false; // Will be checked server-side but per spec admin can't remove self if last admin
+    if (currentUserRole === "owner") return member.role !== "owner";
+    if (currentUserRole === "admin") {
+      if (member.role === "owner" || member.role === "admin") return false;
+      return true;
+    }
+    return false;
+  }
+
+  function getAvailableRoles(): { value: "admin" | "editor" | "viewer"; label: string }[] {
+    const allRoles = [
+      { value: "admin" as const, label: "Admin" },
+      { value: "editor" as const, label: "Editor" },
+      { value: "viewer" as const, label: "Viewer" },
+    ];
+    if (currentUserRole === "admin") {
+      // Admins cannot assign the admin role
+      return allRoles.filter((r) => r.value !== "admin");
+    }
+    return allRoles;
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-10 space-y-4">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-72" />
+          <Skeleton className="h-px w-full" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 py-3">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="space-y-1 flex-1">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+              <Skeleton className="h-6 w-16 rounded-full" />
+              <Skeleton className="h-8 w-24 rounded-md" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-10">
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-xl">Tenant Members</CardTitle>
+            <CardDescription>
+              Manage members of your organization. {total} member{total !== 1 ? "s" : ""}.
+            </CardDescription>
+          </div>
+          {currentUserRole && (currentUserRole === "owner" || currentUserRole === "admin") && (
+            <Button
+              size="sm"
+              onClick={() => setShowInvite(true)}
+              className="rounded-lg"
+            >
+              <IconPlus className="h-4 w-4 mr-1.5" />
+              Invite
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {actionError && (
+          <Alert variant="destructive">
+            <AlertDescription>{actionError}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Members list */}
+        <div className="divide-y divide-border/60">
+          {members.map((member) => {
+            const isSelf = member.id === currentUserId;
+            return (
+              <div
+                key={member.id}
+                className="flex flex-col sm:flex-row sm:items-center gap-3 py-4 first:pt-0 last:pb-0"
+              >
+                {/* Member info */}
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <Avatar size="sm" className="h-9 w-9 shrink-0">
+                    <AvatarFallback
+                      initials={member.email ? member.email.slice(0, 2).toUpperCase() : "U"}
+                    />
+                  </Avatar>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">
+                        {member.display_name || member.email.split("@")[0]}
+                        {isSelf && (
+                          <span className="text-xs text-muted-foreground ml-1.5 font-normal">
+                            (you)
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {member.email}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Role badge + actions */}
+                <div className="flex items-center gap-2 ml-11 sm:ml-0">
+                  {canChangeRole(member) && !isSelf ? (
+                    <select
+                      value={member.role}
+                      onChange={(e) =>
+                        handleRoleChange(
+                          member.id,
+                          e.target.value as "admin" | "editor" | "viewer",
+                        )
+                      }
+                      disabled={changingRoleFor === member.id}
+                      className="h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold capitalize focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer disabled:opacity-50"
+                      aria-label={`Change role for ${member.display_name || member.email}`}
+                    >
+                      {getAvailableRoles().map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                      {member.role === "owner" && (
+                        <option value="owner">Owner</option>
+                      )}
+                    </select>
+                  ) : (
+                    <RoleBadge role={member.role} />
+                  )}
+
+                  {/* Remove button */}
+                  {canRemove(member) && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(member.id)}
+                      disabled={removingMember === member.id}
+                      className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                      title={`Remove ${member.display_name || member.email}`}
+                      aria-label={`Remove ${member.display_name || member.email}`}
+                    >
+                      {removingMember === member.id ? (
+                        <IconSpinner className="h-4 w-4" />
+                      ) : (
+                        <IconTrash className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+
+      <InviteModal
+        open={showInvite}
+        onOpenChange={setShowInvite}
+        onInvited={() => {
+          fetchMembers();
+        }}
+      />
+
+      {toast && <ToastUI toast={toast} onDismiss={dismissToast} />}
+    </Card>
+  );
+}
+
 // ---- Settings Page (main) ---------------------------------------------------
 
 export default function SettingsPage() {
@@ -638,7 +946,7 @@ export default function SettingsPage() {
     );
   }
 
-  const tabs: SettingsTab[] = ["profile", "password", "tenant"];
+  const tabs: SettingsTab[] = ["profile", "password", "tenant", "members"];
 
   return (
     <div className="space-y-6">
@@ -721,6 +1029,7 @@ export default function SettingsPage() {
           {activeTab === "profile" && <ProfileTab />}
           {activeTab === "password" && <PasswordTab />}
           {activeTab === "tenant" && <TenantTab />}
+          {activeTab === "members" && <MembersTab />}
         </div>
       </div>
     </div>

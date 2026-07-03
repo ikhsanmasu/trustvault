@@ -476,3 +476,175 @@ P5 adds a new RLS policy (`documents_update_anchor`) that allows editors and adm
 17. **Never commit a `.env.local` file or any file containing a real private key.**
 18. **Never allow the browser to construct or sign an anchor transaction.**
 19. **Never modify `binary_hash` or `text_hash` after a document has been anchored.** Anchoring creates a permanent cryptographic link between those hashes and the on-chain fingerprint.
+
+---
+
+## 15. P14 RBAC Security
+
+### 15a. Threat Model (P14 Additions)
+
+P14 introduces tenant-level role-based access control and an email-based invitation system. The threat surface expands to include privilege escalation through role manipulation, invitation token forgery, and unauthorized tenant membership changes.
+
+| Threat | Control |
+|---|---|
+| Viewer/editor elevates their own role | Route handler checks caller is admin/owner before allowing any role change. RLS on `profiles` update (existing `profiles_update_own` policy only allows updating own display_name -- not role). Role changes must go through `PATCH /api/tenant/members/[userId]` which enforces admin/owner check. No self-service role change endpoint exists. |
+| Admin changes owner's role or removes owner | Route handler explicitly checks `target.role !== 'owner'`. Returns 403 `CANNOT_MODIFY_OWNER` or `CANNOT_REMOVE_OWNER`. |
+| Admin changes another admin's role | Route handler checks: if caller is `'admin'` and target is `'admin'`, returns 403 `ADMINS_CANNOT_MODIFY_ADMINS`. Only the owner can manage admins. |
+| Admin invites someone as admin | Route handler checks: if caller is `'admin'` and requested role is `'admin'`, returns 403 `ADMINS_CANNOT_INVITE_ADMINS`. |
+| Last admin removes themselves | Route handler counts remaining admins/owners. If caller is the last one, returns 400 `LAST_ADMIN`. |
+| Invitation token brute-force | 256 bits of entropy (`crypto.randomBytes(32)`). 2^256 possible tokens. Brute-force is computationally infeasible. Additionally, tokens are single-use and expire after 7 days. |
+| Invitation token leakage (e.g., email intercepted) | The token alone is insufficient to join -- the accepting user must be authenticated with an email matching the invitation's email. An attacker who steals a token but cannot authenticate as the invitee's email cannot use it. Also, the invitee must not already belong to a tenant. |
+| Expired invitation replay | `expires_at` is checked on every join attempt. Expired invitations return 410. |
+| Accepted invitation replay | `accepted_at IS NOT NULL` check returns 409 for already-accepted invitations. Token is single-use. |
+| User joins a tenant they already belong to | `ALREADY_IN_TENANT` check prevents the join. |
+| User in tenant A accepts invitation to tenant B | Check: if user already has `profiles.tenant_id` set, return 409 `ALREADY_IN_TENANT`. A user can only belong to one tenant. |
+| Attacker invites themselves to gain write access | Only admins/owners can create invitations (route handler gated + RLS policy `invitations_insert_admin`). |
+| Deleted/removed member retains access via cached session | Supabase JWTs are short-lived. The Next.js middleware refreshes sessions, and `requireAuth()` fetches the latest profile on each request. If a user's `tenant_id` is set to NULL (removed), subsequent queries will find no tenant and return 403. The user's JWT itself remains valid (they can still call `GET /api/profile`), but all tenant-scoped operations fail. |
+| Service-role misuse in join endpoint | The service-role client is used ONLY for two operations in `GET /api/tenant/join`: (1) updating `profiles.tenant_id` and `profiles.role`, and (2) setting `invitations.accepted_at`. These operations require the service-role client because the accepting user does not yet have a tenant_id to satisfy user-scoped RLS on the invitations table. The route handler validates the token, email match, and expiry BEFORE using the service-role client. The service-role client is NOT used for any other invitation or member operation. |
+
+### 15b. Role Enforcement Layers
+
+RBAC is enforced at two layers (defence in depth):
+
+**Layer 1 -- Route Handler (application code):**
+- Every protected route handler calls `requireTenantRole(userId, tenantId, allowedRoles)` before executing business logic.
+- Returns 403 with a specific `code` if the role is insufficient.
+- Enforces owner immutability and admin-to-admin restrictions (business rules that RLS cannot express).
+
+**Layer 2 -- RLS (database):**
+- `documents_tenant_insert` policy: checks `profiles.role IN ('owner', 'admin', 'editor')`.
+- `documents_tenant_update` policy: checks `profiles.role IN ('owner', 'admin', 'editor')`.
+- `document_chunks_tenant_insert` / `document_chunks_tenant_delete`: same check.
+- `document_labels_insert_editor` / `document_labels_delete_editor`: checks role.
+- `invitations_insert_admin` / `invitations_delete_admin`: checks `profiles.role IN ('owner', 'admin')`.
+- `profiles_update_own` policy: only allows updating `display_name` -- the `role` column cannot be changed via a direct PATCH to `/api/profile`. Role changes must go through the dedicated admin endpoint.
+
+**Why both layers are needed:**
+- Route handler gives clear error messages to legitimate users (403 with a descriptive code vs. opaque RLS rejection).
+- RLS catches bugs in the route handler. Even if a handler forgets to call `requireTenantRole()`, the database rejects unauthorized writes.
+
+### 15c. Invitation Token Security
+
+**Token generation:**
+```
+crypto.randomBytes(32).toString('hex')  // 64-character hex string, 256 bits of entropy
+```
+
+**Why `crypto.randomBytes`:**
+- Uses the system's cryptographically secure PRNG (`/dev/urandom` on Linux, `BCryptGenRandom` on Windows). Not Math.random().
+- 32 bytes = 256 bits. Birthday bound for collision is ~2^128. For all practical purposes, tokens are globally unique.
+- Hex encoding is URL-safe and case-insensitive. No base64 encoding quirks.
+
+**Token lifecycle:**
+1. Generated on the server during `POST /api/tenant/invite`.
+2. Stored in the `invitations.token` column (hashed? No -- tokens are not secrets in the traditional sense. They are single-use, time-limited, and require email matching. Hashing would prevent looking up the invitation by token on accept. The token is treated as a bearer capability, not an authentication secret).
+3. Delivered to the invitee via email. The token appears in the URL: `{APP_URL}/join?token={token}`.
+4. On accept, the token is validated (exists, not expired, not used) and the invitation is marked `accepted_at = now()`.
+5. After acceptance (or expiry), the token has no value. It is never returned in API responses.
+
+**Token in the URL -- acceptable risk:**
+- The token appears in the browser URL bar and may be logged in server access logs.
+- Mitigation: tokens are single-use. Even if a token leaks via logs, the legitimate user will likely use it first. If an attacker uses it first, the legitimate user gets 409 `INVITATION_ALREADY_ACCEPTED` and can request a new invitation.
+- Future enhancement (not in P14): rate-limit join attempts per token to prevent rapid brute-force of the email match.
+
+**Expiry enforcement:**
+- `expires_at` is set to `created_at + 7 days`. Stored in the database.
+- Checked at accept time: `if (invitation.expires_at < new Date()) -> 410 INVITATION_EXPIRED`.
+- Expired invitations are not automatically purged from the database (kept for audit trail). They are simply rejected at accept time.
+
+### 15d. Owner Protection Rules
+
+The owner role has special protections that prevent accidental or malicious lockout:
+
+| Rule | Enforcement |
+|---|---|
+| Owner cannot be demoted | `PATCH /api/tenant/members/[userId]` returns 403 `CANNOT_MODIFY_OWNER` if target role is `'owner'`. |
+| Owner cannot be removed | `DELETE /api/tenant/members/[userId]` returns 403 `CANNOT_REMOVE_OWNER` if target role is `'owner'`. |
+| Owner role cannot be assigned via invitation | `POST /api/tenant/invite` validates `role` against CHECK constraint (`admin`, `editor`, `viewer` only). `'owner'` is not in the allowed set. |
+| Owner role cannot be set via role change | `PATCH /api/tenant/members/[userId]` validates `role` against `['admin', 'editor', 'viewer']`. `'owner'` is not accepted. |
+| Exactly one owner per tenant (by convention) | The `handle_new_user` trigger creates exactly one owner per new tenant. Existing tenants have the earliest profile backfilled as owner. No API endpoint can create a second owner. Application-layer convention (not a DB constraint) maintains the single-owner invariant. |
+
+**Owner transfer (not in P14):** There is no owner transfer mechanism. If the owner needs to be changed, it must be done directly in the database. A future phase may add an explicit owner transfer flow.
+
+### 15e. Last Admin Protection
+
+Prevents an admin from accidentally locking the tenant out of administrative access:
+
+| Scenario | Enforcement |
+|---|---|
+| Admin demotes themselves to editor/viewer | `PATCH /api/tenant/members/[userId]` counts remaining admins/owners. If self-demotion would leave zero admins/owners, returns 400 `LAST_ADMIN`. |
+| Admin removes themselves from tenant | `DELETE /api/tenant/members/[userId]` counts remaining admins/owners. If self-removal would leave zero admins/owners, returns 400 `LAST_ADMIN`. |
+
+**How the count works:**
+```sql
+SELECT COUNT(*) FROM public.profiles
+WHERE tenant_id = :tenantId
+  AND role IN ('owner', 'admin')
+  AND id != :callingUserId;
+```
+If the count is 0, the operation is blocked.
+
+**Note:** This is enforced at the application layer only (route handler). RLS does not enforce this because it requires a multi-row COUNT. The database layer relies on the fact that an admin cannot directly UPDATE their own `role` (the `profiles_update_own` RLS policy only allows updating `display_name`). The admin must go through `PATCH /api/tenant/members/[userId]`, which applies the count check.
+
+### 15f. Service-Role Usage in P14
+
+The service-role client (`SUPABASE_SERVICE_ROLE_KEY`) is used in two specific P14 operations. This is an expansion of its previous use (profile creation trigger only).
+
+| Operation | Location | Justification |
+|---|---|---|
+| Update `profiles.tenant_id` and `profiles.role` on join | `GET /api/tenant/join` | The accepting user does not yet have a `tenant_id` set on their profile. User-scoped RLS on profiles (`profiles_select_own`, `profiles_update_own`) would still work (the user owns their profile via `id = auth.uid()`). However, to be explicit and avoid any RLS edge cases, the join handler uses service-role. |
+| Set `invitations.accepted_at` on join | `GET /api/tenant/join` | The invitations table has RLS that requires `tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())`. The accepting user has no tenant_id at this point, so their user-scoped client cannot UPDATE the invitations row. The service-role client bypasses this. |
+| Remove member's tenant membership | `DELETE /api/tenant/members/[userId]` | When removing a member, the target user's `tenant_id` is set to NULL and `role` to `'viewer'`. The user-scoped client with RLS may have edge cases when updating a row that changes `tenant_id`. Using service-role for this specific UPDATE ensures the removal completes cleanly. The route handler has already verified the caller is admin/owner. |
+
+**Hard rules for service-role usage in P14:**
+1. The service-role client must NEVER be used in a general-purpose way in P14 route handlers.
+2. It is only used for the three specific operations listed above.
+3. Before any service-role operation, the route handler must complete all authorization checks (token validation, email match, admin/owner role check, owner protection, last-admin check).
+4. The service-role client is never exposed to the browser or returned in API responses.
+
+### 15g. Security Audit Checklist Additions (P14)
+
+#### RBAC Enforcement
+- [ ] Viewer cannot call `POST /api/documents` (returns 403).
+- [ ] Viewer cannot call `PATCH /api/documents/[id]` (returns 403).
+- [ ] Viewer cannot call `POST /api/anchor` (returns 403).
+- [ ] Viewer cannot call `POST /api/assistant/ingest` (returns 403).
+- [ ] Editor cannot call `GET /api/tenant/members` (returns 403).
+- [ ] Editor cannot call `POST /api/tenant/invite` (returns 403).
+- [ ] Admin cannot change owner's role (returns 403 `CANNOT_MODIFY_OWNER`).
+- [ ] Admin cannot remove owner (returns 403 `CANNOT_REMOVE_OWNER`).
+- [ ] Admin cannot change another admin's role (returns 403 `ADMINS_CANNOT_MODIFY_ADMINS`).
+- [ ] Admin cannot invite as admin (returns 403 `ADMINS_CANNOT_INVITE_ADMINS`).
+- [ ] Last admin cannot demote themselves (returns 400 `LAST_ADMIN`).
+- [ ] Last admin cannot remove themselves (returns 400 `LAST_ADMIN`).
+
+#### RLS Verification
+- [ ] Viewer cannot INSERT into `documents` (RLS rejects).
+- [ ] Viewer cannot UPDATE `documents` (RLS rejects).
+- [ ] Viewer cannot INSERT into `document_chunks` (RLS rejects).
+- [ ] Viewer cannot DELETE from `document_chunks` (RLS rejects).
+- [ ] Non-admin cannot INSERT into `invitations` (RLS rejects).
+- [ ] Non-admin cannot DELETE from `invitations` (RLS rejects).
+- [ ] User cannot UPDATE their own `profiles.role` via direct profile PATCH (RLS `profiles_update_own` only allows `display_name`).
+
+#### Invitation Security
+- [ ] `POST /api/tenant/invite` returns 403 for viewers and editors.
+- [ ] Token is not returned in the API response body.
+- [ ] Expired invitation returns 410 `INVITATION_EXPIRED`.
+- [ ] Already-accepted invitation returns 409 `INVITATION_ALREADY_ACCEPTED`.
+- [ ] Email mismatch returns 403 `EMAIL_MISMATCH`.
+- [ ] User already in tenant cannot join another (409 `ALREADY_IN_TENANT`).
+- [ ] Admin cannot invite as admin (403 `ADMINS_CANNOT_INVITE_ADMINS`).
+
+#### Service-Role Safety
+- [ ] Service-role client is only used in the three operations listed in Section 15f.
+- [ ] `git grep "createServiceClient"` finds only `lib/supabase/client.ts`, `GET /api/tenant/join`, and `DELETE /api/tenant/members/[userId]`.
+
+#### Never-Do Additions (P14)
+20. **Never allow a viewer or editor to change any user's role.**
+21. **Never allow the owner's role to be changed or the owner to be removed.**
+22. **Never allow an admin to change another admin's role or remove another admin.**
+23. **Never allow an admin to invite someone as admin.**
+24. **Never return the invitation token in any API response.** The token is delivered via email only.
+25. **Never use the service-role client without completing all authorization checks first.**
+26. **Never allow a user to belong to more than one tenant.**

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { requireAuth, requireProjectRole } from "@/lib/supabase/auth";
+import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import type {
   CreateShareResponse,
   ListSharesResponse,
@@ -96,14 +96,13 @@ export async function POST(
     );
   }
 
-  // -- 3. Check project role (P11: only when projectId is provided) ----------
-  if (resolvedProjectId) {
-    const roleCheck = await requireProjectRole(supabase, user.id, resolvedProjectId, [
-      "admin",
-      "editor",
-    ]);
-    if (!roleCheck.ok) return roleCheck.response;
-  }
+  // -- 3. Role check: require editor+ (P14 tenant-level RBAC) ----------------
+  const roleCheck = await requireTenantRole(supabase, user.id, [
+    "owner",
+    "admin",
+    "editor",
+  ]);
+  if (!roleCheck.ok) return roleCheck.response;
 
   // -- 4. Verify all documentIds are accessible (P11: project-scoped or tenant-scoped)
   let docsQuery = supabase.from("documents").select("id").in("id", documentIds);
@@ -184,32 +183,21 @@ export async function GET(
   // -- 1. requireAuth -------------------------------------------------------
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
-  const { user, supabase } = auth;
+  const { supabase } = auth;
 
   // -- 2. Parse projectId query param ---------------------------------------
   const searchParams = request.nextUrl.searchParams;
   const projectId = searchParams.get("projectId")?.trim();
 
-  // -- 3. Query shares — all projects if no projectId given ------------------
+  // -- 3. Query shares — all projects if no projectId given (P14: tenant-scoped)
   let query = supabase.from("shared_links").select("*");
 
   if (projectId && UUID_RE.test(projectId)) {
-    const roleCheck = await requireProjectRole(supabase, user.id, projectId, ["admin", "editor", "viewer"]);
-    if (!roleCheck.ok) return roleCheck.response;
+    // Filter by project_id if provided (RLS handles access)
     query = query.eq("project_id", projectId);
-  } else {
-    const { data: memberships } = await supabase
-      .from("project_members").select("project_id").eq("user_id", user.id);
-    const projectIds = (memberships ?? []).map((m: { project_id: string }) => m.project_id);
-    // P11: include shares with null project_id as well
-    if (projectIds.length > 0) {
-      query = query.or(
-        `project_id.in.(${projectIds.join(",")}),project_id.is.null`,
-      );
-    } else {
-      query = query.is("project_id", null);
-    }
   }
+  // P14: RLS on shared_links enforces creator-or-admin ownership.
+  // No project_members query needed — tenant-level RLS handles it.
 
   const { data: shares, error } = await query.order("created_at", { ascending: false });
 

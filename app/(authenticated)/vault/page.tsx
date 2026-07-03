@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSort } from "@/hooks/use-sort";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
+import { useProfile, isEditorOrAbove } from "@/hooks/use-profile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,8 @@ type ViewMode = "table" | "grid";
 export default function VaultPage() {
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuthContext();
+  const { role: currentRole } = useProfile();
+  const canEdit = isEditorOrAbove(currentRole);
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
@@ -238,11 +241,13 @@ export default function VaultPage() {
 
       {/* ---- Action bar ------------------------------------------------------- */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        {/* Upload button - left */}
-        <Button size="sm" onClick={() => setShowUpload(true)}>
-          <IconPlus className="mr-1.5 h-4 w-4" />
-          Upload
-        </Button>
+        {/* Upload button - left (editor+) */}
+        {canEdit && (
+          <Button size="sm" onClick={() => setShowUpload(true)}>
+            <IconPlus className="mr-1.5 h-4 w-4" />
+            Upload
+          </Button>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -417,7 +422,7 @@ export default function VaultPage() {
               Clear all filters
             </Button>
           )}
-          {!hasActiveFilters && (
+          {!hasActiveFilters && canEdit && (
             <Button
               size="sm"
               className="mt-5"
@@ -439,9 +444,9 @@ export default function VaultPage() {
               labels={labels.filter(l => (docLabels.get(doc.id) ?? []).includes(l.id))}
               onCompare={(d) => setCompareDoc(d)}
               onView={(d) => setViewDoc(d)}
-              onShare={(d) => setShareDoc(d)}
-              onAnchor={(d) => setAnchorDoc(d)}
-              onDelete={(d) => setConfirmDelete(d)}
+              onShare={canEdit ? (d) => setShareDoc(d) : undefined}
+              onAnchor={canEdit ? (d) => setAnchorDoc(d) : undefined}
+              onDelete={canEdit ? (d) => setConfirmDelete(d) : undefined}
             />
           ))}
         </div>
@@ -453,55 +458,61 @@ export default function VaultPage() {
             <span className="text-sm font-medium text-primary mr-2">
               {selectedIds.size} selected
             </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                setBulkToast("Anchoring…");
-                for (const id of selectedIds) {
-                  try { await fetch("/api/anchor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ documentId: id }) }); } catch {}
-                }
-                setBulkToast(`Anchored ${selectedIds.size} document(s)`);
-                setTimeout(() => setBulkToast(null), 3000);
-                setSelectedIds(new Set());
-                refresh();
-              }}
-            >
-              <IconShield className="h-4 w-4 mr-1.5" /> Anchor
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const ids = Array.from(selectedIds);
-                setBulkShareIds(ids);
-                const firstDoc = visibleDocs.find(d => ids.includes(d.id));
-                if (firstDoc) setShareDoc(firstDoc);
-              }}
-            >
-              <IconShare className="h-4 w-4 mr-1.5" /> Share
-            </Button>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  setBulkToast("Anchoring…");
+                  for (const id of selectedIds) {
+                    try { await fetch("/api/anchor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ documentId: id }) }); } catch {}
+                  }
+                  setBulkToast(`Anchored ${selectedIds.size} document(s)`);
+                  setTimeout(() => setBulkToast(null), 3000);
+                  setSelectedIds(new Set());
+                  refresh();
+                }}
+              >
+                <IconShield className="h-4 w-4 mr-1.5" /> Anchor
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const ids = Array.from(selectedIds);
+                  setBulkShareIds(ids);
+                  const firstDoc = visibleDocs.find(d => ids.includes(d.id));
+                  if (firstDoc) setShareDoc(firstDoc);
+                }}
+              >
+                <IconShare className="h-4 w-4 mr-1.5" /> Share
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => router.push("/assistant")}>
               <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Ask AI
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-destructive hover:bg-destructive/10"
-              onClick={async () => {
-                setBulkToast(`Deleting ${selectedIds.size} document(s)…`);
-                for (const id of selectedIds) {
-                  try { await deleteDocument(id); } catch {}
-                }
-                setBulkToast(`Deleted ${selectedIds.size} document(s)`);
-                setTimeout(() => setBulkToast(null), 3000);
-                setSelectedIds(new Set());
-                refresh();
-              }}
-            >
-              Delete
-            </Button>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:bg-destructive/10"
+                onClick={async () => {
+                  setBulkToast(`Deleting ${selectedIds.size} document(s)…`);
+                  for (const id of selectedIds) {
+                    try { await deleteDocument(id); } catch {}
+                  }
+                  setBulkToast(`Deleted ${selectedIds.size} document(s)`);
+                  setTimeout(() => setBulkToast(null), 3000);
+                  setSelectedIds(new Set());
+                  refresh();
+                }}
+              >
+                Delete
+              </Button>
+            )}
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
@@ -616,9 +627,12 @@ export default function VaultPage() {
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-0.5">
-                          <button type="button" onClick={() => setAnchorDoc(doc)} className={cn("inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors", doc.fingerprint ? "text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950" : "text-muted-foreground hover:text-secondary hover:bg-secondary/10")} title={doc.fingerprint ? "View anchor details" : "Anchor on blockchain"} aria-label={doc.fingerprint ? `Anchor details for ${doc.name}` : `Anchor ${doc.name}`}>
-                            <IconShield className="h-[15px] w-[15px]" />
-                          </button>
+                          {/* Anchor: editor+ */}
+                          {canEdit && (
+                            <button type="button" onClick={() => setAnchorDoc(doc)} className={cn("inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors", doc.fingerprint ? "text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950" : "text-muted-foreground hover:text-secondary hover:bg-secondary/10")} title={doc.fingerprint ? "View anchor details" : "Anchor on blockchain"} aria-label={doc.fingerprint ? `Anchor details for ${doc.name}` : `Anchor ${doc.name}`}>
+                              <IconShield className="h-[15px] w-[15px]" />
+                            </button>
+                          )}
                           <button type="button" onClick={() => setCompareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Compare" aria-label={`Compare ${doc.name}`}>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                           </button>
@@ -628,22 +642,31 @@ export default function VaultPage() {
                           <a href={`/api/documents/${doc.id}/file`} download onClick={(e) => e.stopPropagation()} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-colors" title="Download" aria-label={`Download ${doc.name}`}>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                           </a>
-                          <button type="button" onClick={() => setShareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors" title="Share" aria-label={`Share ${doc.name}`}>
-                            <IconShare className="h-[15px] w-[15px]" />
-                          </button>
-                          <button type="button" onClick={() => {
-                            setEditDocId(doc.id);
-                            setEditDesc(doc.description ?? "");
-                          }} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950 transition-colors" title="Edit" aria-label={`Edit ${doc.name}`}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </button>
-                          <button type="button" onClick={() => setConfirmDelete(doc)} className={doc.deleted_at ? "inline-flex items-center justify-center h-8 w-8 rounded-lg text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" : "inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"} title={doc.deleted_at ? "Restore" : "Delete"} aria-label={doc.deleted_at ? `Restore ${doc.name}` : `Delete ${doc.name}`}>
-                            {doc.deleted_at ? (
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                            ) : (
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            )}
-                          </button>
+                          {/* Share: editor+ */}
+                          {canEdit && (
+                            <button type="button" onClick={() => setShareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors" title="Share" aria-label={`Share ${doc.name}`}>
+                              <IconShare className="h-[15px] w-[15px]" />
+                            </button>
+                          )}
+                          {/* Edit: editor+ */}
+                          {canEdit && (
+                            <button type="button" onClick={() => {
+                              setEditDocId(doc.id);
+                              setEditDesc(doc.description ?? "");
+                            }} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950 transition-colors" title="Edit" aria-label={`Edit ${doc.name}`}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                          )}
+                          {/* Delete/Restore: editor+ */}
+                          {canEdit && (
+                            <button type="button" onClick={() => setConfirmDelete(doc)} className={doc.deleted_at ? "inline-flex items-center justify-center h-8 w-8 rounded-lg text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" : "inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"} title={doc.deleted_at ? "Restore" : "Delete"} aria-label={doc.deleted_at ? `Restore ${doc.name}` : `Delete ${doc.name}`}>
+                              {doc.deleted_at ? (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                              ) : (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                              )}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

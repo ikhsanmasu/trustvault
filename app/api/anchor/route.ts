@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, requireProjectRole } from "@/lib/supabase/auth";
+import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { computeFingerprint, getAnchorService } from "@/lib/anchor";
 import type {
   AnchorRequest,
@@ -84,24 +84,20 @@ export async function POST(
     );
   }
 
-  // -- 6. Role check: admin/editor of document's project, or tenant member if no project (P11)
-  if (doc.project_id) {
-    const roleCheck = await requireProjectRole(
-      supabase,
-      user.id,
-      doc.project_id,
-      ["admin", "editor"],
+  // -- 6. Role check: require editor+ (P14 tenant-level RBAC) ----------------
+  const roleCheck = await requireTenantRole(supabase, user.id, [
+    "owner",
+    "admin",
+    "editor",
+  ]);
+  if (!roleCheck.ok) return roleCheck.response;
+
+  // Verify user belongs to same tenant as the document
+  if (roleCheck.tenantId !== doc.tenant_id) {
+    return NextResponse.json(
+      { error: "Access denied", code: "FORBIDDEN" },
+      { status: 403 },
     );
-    if (!roleCheck.ok) return roleCheck.response;
-  } else {
-    // No project — verify tenant access
-    const { data: profile } = await supabase.from("profiles").select("tenant_id").eq("id", user.id).single();
-    if (!profile || profile.tenant_id !== doc.tenant_id) {
-      return NextResponse.json(
-        { error: "Access denied", code: "FORBIDDEN" },
-        { status: 403 },
-      );
-    }
   }
 
   // -- 7. Compute fingerprint -----------------------------------------------
@@ -170,22 +166,20 @@ export async function PATCH(
   if (!auth.ok) return auth.response;
   const { user, supabase } = auth;
 
-  // Fetch all active (non-deleted) documents the user has editor/admin access to
-  const { data: memberships } = await supabase
-    .from("project_members")
-    .select("project_id")
-    .eq("user_id", user.id)
-    .in("role", ["admin", "editor"]);
+  // -- P14: Verify tenant-level RBAC (editor+) ------------------------------
+  const roleCheck = await requireTenantRole(supabase, user.id, [
+    "owner",
+    "admin",
+    "editor",
+  ]);
+  if (!roleCheck.ok) return roleCheck.response;
+  const { tenantId } = roleCheck;
 
-  if (!memberships?.length) {
-    return NextResponse.json({ anchored: 0, skipped: 0, failed: 0, errors: [] });
-  }
-
-  const projectIds = memberships.map((m: { project_id: string }) => m.project_id);
+  // Fetch all active (non-deleted) documents in the user's tenant
   const { data: docs } = await supabase
     .from("documents")
     .select("id, name, binary_hash, text_hash, fingerprint, deleted_at")
-    .in("project_id", projectIds)
+    .eq("tenant_id", tenantId)
     .is("deleted_at", null)
     .is("fingerprint", null); // Only un-anchored
 

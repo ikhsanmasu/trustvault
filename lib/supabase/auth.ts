@@ -1,7 +1,7 @@
 import { type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
-import type { ErrorResponse, Role } from "@/lib/types";
+import type { ErrorResponse, Role, TenantRole } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Auth result types
@@ -152,4 +152,79 @@ export async function getUserTenantId(
   }
 
   return profile.tenant_id as string;
+}
+
+// ---------------------------------------------------------------------------
+// P14: Tenant-level RBAC result types
+// ---------------------------------------------------------------------------
+
+export type TenantRoleSuccess = {
+  ok: true;
+  role: TenantRole;
+  tenantId: string;
+};
+
+export type TenantRoleFailure = {
+  ok: false;
+  response: NextResponse<ErrorResponse>;
+};
+
+export type TenantRoleResult = TenantRoleSuccess | TenantRoleFailure;
+
+// ---------------------------------------------------------------------------
+// requireTenantRole — check tenant-level RBAC for the authenticated user
+// ---------------------------------------------------------------------------
+
+/**
+ * Checks that the given user has one of the allowed tenant-level roles
+ * by querying the `profiles` table.
+ *
+ * Role hierarchy: owner > admin > editor > viewer.
+ * The caller specifies the set of roles permitted for the operation.
+ *
+ * Returns `{ ok: true, role, tenantId }` on success.
+ * Returns `{ ok: false, response }` with a 403 response on failure.
+ *
+ * The `supabase` client should be the user-scoped client (from `requireAuth()`)
+ * so that RLS is enforced. RLS on `profiles` only lets users read their own profile.
+ */
+export async function requireTenantRole(
+  supabase: SupabaseClient,
+  userId: string,
+  allowedRoles: TenantRole[],
+): Promise<TenantRoleResult> {
+  // 1. Query the user's profile for their role and tenant_id
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("role, tenant_id")
+    .eq("id", userId)
+    .single();
+
+  if (error || !profile) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "You do not have access to this tenant", code: "FORBIDDEN" },
+        { status: 403 },
+      ),
+    };
+  }
+
+  const role = profile.role as TenantRole;
+
+  // 2. Check the user's role against the allowed roles
+  if (!allowedRoles.includes(role)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "Insufficient permissions for this operation",
+          code: "FORBIDDEN",
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { ok: true, role, tenantId: profile.tenant_id as string };
 }

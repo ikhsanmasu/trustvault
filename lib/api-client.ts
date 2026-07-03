@@ -6,10 +6,13 @@
 
 // ---- Shared types from api-spec.md (P3) ------------------------------------
 
+export type TenantRole = "owner" | "admin" | "editor" | "viewer";
+
 export interface Profile {
   id: string;
   tenant_id: string;
   display_name: string | null;
+  role: TenantRole;
   created_at: string;
 }
 
@@ -678,4 +681,129 @@ export function shareChat(
     });
 
   return controller;
+}
+
+// ===== P14: Tenant-Level RBAC + Invitations =====
+
+export interface TenantMember {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: TenantRole;
+  created_at: string;
+}
+
+export interface Invitation {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role: "admin" | "editor" | "viewer";
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+}
+
+export interface ListMembersResponse {
+  members: TenantMember[];
+  total: number;
+}
+
+export interface UpdateMemberRoleRequest {
+  role: "admin" | "editor" | "viewer";
+}
+
+export interface UpdateMemberRoleResponse {
+  member: TenantMember;
+}
+
+export interface InviteRequest {
+  email: string;
+  role: "admin" | "editor" | "viewer";
+}
+
+export interface InviteResponse {
+  invitation: Invitation;
+}
+
+export interface JoinResponse {
+  tenant_id: string;
+  role: string;
+}
+
+export interface RemoveMemberResponse {
+  removed: true;
+}
+
+/**
+ * GET /api/tenant/members — list all members of the current user's tenant.
+ */
+export async function getTenantMembers(
+  params?: { search?: string; limit?: number; offset?: number },
+): Promise<ListMembersResponse> {
+  const sp = new URLSearchParams();
+  if (params?.search) sp.set("search", params.search);
+  if (params?.limit !== undefined) sp.set("limit", String(params.limit));
+  if (params?.offset !== undefined) sp.set("offset", String(params.offset));
+  const qs = sp.toString();
+  const url = `/api/tenant/members${qs ? `?${qs}` : ""}`;
+  const response = await fetch(url);
+  return handleResponse<ListMembersResponse>(response);
+}
+
+/**
+ * PATCH /api/tenant/members/[userId] — update a member's role.
+ */
+export async function updateMemberRole(
+  userId: string,
+  role: "admin" | "editor" | "viewer",
+): Promise<UpdateMemberRoleResponse> {
+  const response = await fetch(
+    `/api/tenant/members/${encodeURIComponent(userId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    },
+  );
+  return handleResponse<UpdateMemberRoleResponse>(response);
+}
+
+/**
+ * DELETE /api/tenant/members/[userId] — remove a member from the tenant.
+ */
+export async function removeMember(
+  userId: string,
+): Promise<RemoveMemberResponse> {
+  const response = await fetch(
+    `/api/tenant/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+  return handleResponse<RemoveMemberResponse>(response);
+}
+
+/**
+ * POST /api/tenant/invite — send an invitation to join the tenant.
+ */
+export async function inviteMember(
+  data: InviteRequest,
+): Promise<InviteResponse> {
+  const response = await fetch("/api/tenant/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<InviteResponse>(response);
+}
+
+/**
+ * GET /api/tenant/join — accept an invitation to join a tenant.
+ */
+export async function acceptInvitation(
+  token: string,
+): Promise<JoinResponse> {
+  const response = await fetch(
+    `/api/tenant/join?token=${encodeURIComponent(token)}`,
+  );
+  return handleResponse<JoinResponse>(response);
 }

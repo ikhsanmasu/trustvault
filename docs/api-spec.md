@@ -1565,3 +1565,436 @@ Delete a chat session and all its messages (CASCADE).
 | `DEEPSEEK_API_KEY` | (existing) DeepSeek `deepseek-chat` for AI chat + compare |
 
 Both are required for P6.
+
+---
+
+## P14 Endpoint Index -- Tenant-Level RBAC + Invitations
+
+| Method | Path | Auth | Role Required | Description |
+|---|---|---|---|---|
+| `GET` | `/api/tenant/members` | Yes | admin/owner | List all members of the current user's tenant |
+| `PATCH` | `/api/tenant/members/[userId]` | Yes | admin/owner | Update a member's role |
+| `DELETE` | `/api/tenant/members/[userId]` | Yes | admin/owner | Remove a member from the tenant |
+| `POST` | `/api/tenant/invite` | Yes | admin/owner | Send an invitation to join the tenant |
+| `GET` | `/api/tenant/join` | Yes | -- | Accept an invitation (any authenticated user) |
+
+---
+
+## P14 Shared Types
+
+```ts
+// ===== RBAC =====
+
+type TenantRole = 'owner' | 'admin' | 'editor' | 'viewer';
+
+// Updated Profile type (P14 adds role)
+type Profile = {
+  id: string;              // UUID, equals auth.users.id
+  tenant_id: string;       // UUID
+  display_name: string | null;
+  role: TenantRole;        // P14: tenant-level role
+  created_at: string;      // ISO 8601 UTC
+};
+
+// ===== Tenant Members =====
+
+type TenantMember = {
+  id: string;              // UUID (auth.users.id)
+  email: string;           // from auth.users
+  display_name: string | null;
+  role: TenantRole;
+  created_at: string;      // ISO 8601 UTC
+};
+
+// ===== Invitations =====
+
+type Invitation = {
+  id: string;              // UUID
+  tenant_id: string;       // UUID
+  email: string;
+  role: 'admin' | 'editor' | 'viewer';  // owner not allowed
+  created_by: string;      // UUID of auth.users who sent the invite
+  created_at: string;      // ISO 8601 UTC
+  expires_at: string;      // ISO 8601 UTC (7 days after created_at)
+  accepted_at: string | null;  // ISO 8601 UTC, null if pending
+};
+
+type InviteRequest = {
+  email: string;           // email address of invitee
+  role: 'admin' | 'editor' | 'viewer';  // cannot be owner
+};
+
+type InviteResponse = {
+  invitation: Invitation;
+  // Note: token is NOT returned in the response body.
+  // The token is delivered to the invitee via email only.
+};
+
+type UpdateMemberRoleRequest = {
+  role: 'admin' | 'editor' | 'viewer';  // cannot set to owner
+};
+
+type UpdateMemberRoleResponse = {
+  member: TenantMember;
+};
+
+type RemoveMemberResponse = {
+  removed: true;
+};
+
+type ListMembersResponse = {
+  members: TenantMember[];
+  total: number;
+};
+
+type JoinResponse = {
+  tenant_id: string;       // UUID of the tenant the user joined
+  role: string;            // the role assigned ('admin', 'editor', or 'viewer')
+};
+```
+
+---
+
+## P14 Endpoints
+
+---
+
+### GET /api/tenant/members
+
+List all members of the authenticated user's tenant. User must be an admin or owner.
+
+#### Request
+
+`Content-Type: none` (GET with optional query params)
+
+| Query param | Type | Required | Description |
+|---|---|---|---|
+| `search` | string | No | Case-insensitive substring match against member's display_name or email. |
+| `limit` | number | No | Max results. Default: 50. Max: 200. |
+| `offset` | number | No | Rows to skip. Default: 0. |
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Get user's profile (tenant_id + role).
+3. `requireTenantRole(user.id, user.profile.tenant_id, ['owner', 'admin'])` -- return 403 if viewer/editor.
+4. Query `profiles` joined with `auth.users` (for email) where `tenant_id = :tenantId`.
+5. Apply `search` filter on `display_name` or `email` if provided (ILIKE).
+6. Order by `created_at ASC`.
+7. Apply `LIMIT` and `OFFSET`.
+8. Return member list. The calling user is included in the results.
+
+#### Response -- 200 OK
+
+```ts
+type ListMembersResponse = {
+  members: TenantMember[];
+  total: number;
+};
+```
+
+Example:
+```json
+{
+  "members": [
+    {
+      "id": "550e8400-...",
+      "email": "alice@example.com",
+      "display_name": "Alice",
+      "role": "owner",
+      "created_at": "2026-06-21T10:00:00.000Z"
+    },
+    {
+      "id": "3f2504e0-...",
+      "email": "bob@example.com",
+      "display_name": "Bob",
+      "role": "editor",
+      "created_at": "2026-07-01T14:30:00.000Z"
+    }
+  ],
+  "total": 2
+}
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | User is not an admin or owner |
+| 400 | `INVALID_LIMIT` | `limit` not a positive integer or exceeds 200 |
+| 400 | `INVALID_OFFSET` | `offset` not a non-negative integer |
+| 500 | `DB_ERROR` | Postgres query failed |
+
+---
+
+### PATCH /api/tenant/members/[userId]
+
+Update a member's role. User must be an admin or owner. Cannot change the owner's role. Cannot promote anyone to owner. An admin cannot change another admin's role (only the owner can). An admin demoting themselves is blocked if they are the last admin.
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type UpdateMemberRoleRequest = {
+  role: 'admin' | 'editor' | 'viewer';
+};
+```
+
+#### Path Parameters
+
+| Path param | Type | Required | Description |
+|---|---|---|---|
+| `userId` | string (UUID) | Yes | The auth.users.id of the member to update |
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Get calling user's profile.
+3. `requireTenantRole(caller.id, tenantId, ['owner', 'admin'])` -- return 403 if not.
+4. Validate `userId` is a valid UUID.
+5. Validate `role` is one of `'admin'`, `'editor'`, `'viewer'`. Return 400 `INVALID_ROLE` if not (owner cannot be set via this endpoint).
+6. Fetch the target member's profile. Return 404 if not found or not in the same tenant.
+7. **Owner protection:** If target's `role` is `'owner'`, return 403 `CANNOT_MODIFY_OWNER`.
+8. **Admin-to-admin restriction:** If caller's `role` is `'admin'` and target's current `role` is `'admin'`, return 403 `ADMINS_CANNOT_MODIFY_ADMINS`. Only the owner can change admin roles.
+9. **Self-demotion check:** If `userId === caller.id` and the caller is demoting themselves from admin, count remaining admins/owners. If this is the last one, return 400 `LAST_ADMIN`.
+10. Update `profiles.role` for the target user. Use user-scoped client (RLS: caller must be admin/owner; application-layer check already verified).
+11. Return 200 with the updated member.
+
+#### Response -- 200 OK
+
+```ts
+type UpdateMemberRoleResponse = {
+  member: TenantMember;
+};
+```
+
+Example:
+```json
+{
+  "member": {
+    "id": "3f2504e0-...",
+    "email": "bob@example.com",
+    "display_name": "Bob",
+    "role": "admin",
+    "created_at": "2026-07-01T14:30:00.000Z"
+  }
+}
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_USER_ID` | `userId` is not a valid UUID |
+| 400 | `INVALID_ROLE` | `role` is not `admin`, `editor`, or `viewer` |
+| 400 | `LAST_ADMIN` | Caller is demoting themselves and is the last admin/owner |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | Caller is not an admin or owner |
+| 403 | `CANNOT_MODIFY_OWNER` | Target is the owner |
+| 403 | `ADMINS_CANNOT_MODIFY_ADMINS` | Caller is admin trying to change another admin |
+| 404 | `NOT_FOUND` | Target user not found or not in the same tenant |
+| 500 | `DB_ERROR` | Postgres update failed |
+
+---
+
+### DELETE /api/tenant/members/[userId]
+
+Remove a member from the tenant. User must be an admin or owner. The owner cannot be removed. An admin removing themselves is blocked if they are the last admin.
+
+#### Request
+
+`Content-Type: none` (DELETE, no body)
+
+| Path param | Type | Required | Description |
+|---|---|---|---|
+| `userId` | string (UUID) | Yes | The auth.users.id of the member to remove |
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Get calling user's profile.
+3. `requireTenantRole(caller.id, tenantId, ['owner', 'admin'])` -- return 403 if not.
+4. Validate `userId` is a valid UUID.
+5. Fetch the target member's profile. Return 404 if not found or not in the same tenant.
+6. **Owner protection:** If target's `role` is `'owner'`, return 403 `CANNOT_REMOVE_OWNER`.
+7. **Admin-to-admin restriction:** If caller's `role` is `'admin'` and target's current `role` is `'admin'`, return 403 `ADMINS_CANNOT_REMOVE_ADMINS`. Only the owner can remove admins.
+8. **Self-removal check:** If `userId === caller.id`, count remaining admins/owners. If this is the last one, return 400 `LAST_ADMIN`.
+9. Update the target user's profile: set `tenant_id = NULL` and `role = 'viewer'`. This removes them from the tenant but preserves their account. Use service-role client for this update (the user-scoped client with RLS may restrict the UPDATE, and the target user should not need to satisfy RLS to be removed).
+10. Return 200.
+
+#### Response -- 200 OK
+
+```json
+{
+  "removed": true
+}
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_USER_ID` | `userId` is not a valid UUID |
+| 400 | `LAST_ADMIN` | Caller is removing themselves and is the last admin/owner |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | Caller is not an admin or owner |
+| 403 | `CANNOT_REMOVE_OWNER` | Target is the owner |
+| 403 | `ADMINS_CANNOT_REMOVE_ADMINS` | Caller is admin trying to remove another admin |
+| 404 | `NOT_FOUND` | Target user not found or not in the same tenant |
+| 500 | `DB_ERROR` | Postgres update failed |
+
+---
+
+### POST /api/tenant/invite
+
+Send an invitation to join the tenant. User must be an admin or owner. The invitee receives an email with a link containing the invitation token. If a pending invitation already exists for the same email in this tenant, it is revoked (deleted) before the new one is created.
+
+#### Request
+
+`Content-Type: application/json`
+
+```ts
+type InviteRequest = {
+  email: string;   // email address of invitee, 1-255 chars, valid email format
+  role: 'admin' | 'editor' | 'viewer';  // cannot be owner
+};
+```
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session.
+2. Get calling user's profile.
+3. `requireTenantRole(caller.id, tenantId, ['owner', 'admin'])` -- return 403 if not.
+4. Validate `email` is non-empty, <= 255 chars, and roughly valid email format (contains `@`). Return 400 `INVALID_EMAIL` if not.
+5. Validate `role` is one of `'admin'`, `'editor'`, `'viewer'`. Return 400 `INVALID_ROLE` if not.
+6. **Admin cannot invite as admin:** If caller's `role` is `'admin'` and `role` is `'admin'`, return 403 `ADMINS_CANNOT_INVITE_ADMINS`. Only the owner can invite admins.
+7. Check if the invitee email already belongs to an active member of the tenant. Query `profiles` joined with `auth.users` for `LOWER(email) = LOWER(:email)` and `tenant_id = :tenantId`. If found, return 409 `ALREADY_MEMBER`.
+8. Check if a pending invitation already exists for this `(tenant_id, LOWER(email))`. If yes, DELETE the old invitation (revoke it).
+9. Generate token: `crypto.randomBytes(32).toString('hex')` -- 64-char hex string.
+10. Compute `expires_at = now() + 7 days`.
+11. INSERT into `invitations` with `tenant_id`, `email` (lowercased), `role`, `token`, `created_by = caller.id`, `expires_at`.
+12. **Send email** to the invitee with the join link: `{APP_URL}/join?token={token}`. In dev mode, log the link to console instead.
+13. Return 201 with the invitation (token is NOT included in the response -- it is delivered via email only).
+
+#### Response -- 201 Created
+
+```ts
+type InviteResponse = {
+  invitation: Invitation;
+};
+```
+
+Example:
+```json
+{
+  "invitation": {
+    "id": "7a1b2c3d-...",
+    "tenant_id": "123e4567-...",
+    "email": "newuser@example.com",
+    "role": "editor",
+    "created_by": "550e8400-...",
+    "created_at": "2026-07-03T10:00:00.000Z",
+    "expires_at": "2026-07-10T10:00:00.000Z",
+    "accepted_at": null
+  }
+}
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_EMAIL` | `email` is empty, > 255 chars, or not a valid email format |
+| 400 | `INVALID_ROLE` | `role` is not `admin`, `editor`, or `viewer` |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `FORBIDDEN` | Caller is not an admin or owner |
+| 403 | `ADMINS_CANNOT_INVITE_ADMINS` | Caller is admin trying to invite as admin |
+| 409 | `ALREADY_MEMBER` | The invitee email is already a member of the tenant |
+| 500 | `DB_ERROR` | Postgres insert failed |
+| 500 | `EMAIL_ERROR` | Email sending failed (the invitation row is still created; the admin can retry by re-inviting) |
+
+---
+
+### GET /api/tenant/join
+
+Accept an invitation to join a tenant. Requires auth (any authenticated user) but no prior tenant membership. The authenticated user's email must match the invitation email.
+
+#### Request
+
+`Content-Type: none` (GET with query parameter)
+
+| Query param | Type | Required | Description |
+|---|---|---|---|
+| `token` | string (64 hex chars) | Yes | The invitation token from the email link |
+
+#### Processing
+
+1. `requireAuth()` -- return 401 if no session. Note: the user may or may not already belong to a tenant -- both are acceptable at this stage.
+2. Validate `token` is a non-empty 64-character hex string. Return 400 `INVALID_TOKEN` if not.
+3. Look up the invitation by token. Return 404 `INVITATION_NOT_FOUND` if no row exists.
+4. **Expiry check:** If `expires_at < now()`, return 410 `INVITATION_EXPIRED`.
+5. **Already accepted check:** If `accepted_at IS NOT NULL`, return 409 `INVITATION_ALREADY_ACCEPTED`.
+6. **Email match:** Get the authenticated user's email from `auth.users`. Compare `LOWER(auth_user.email)` to `LOWER(invitation.email)`. Return 403 `EMAIL_MISMATCH` if they do not match.
+7. **Already in tenant check:** If the user's `profiles.tenant_id` is already set (to any tenant), return 409 `ALREADY_IN_TENANT`. A user can only belong to one tenant.
+8. Update `profiles` for the accepting user (service-role client -- user-scoped RLS would block because the user has no tenant_id yet): SET `tenant_id = invitation.tenant_id`, `role = invitation.role`.
+9. Update `invitations`: SET `accepted_at = now()` (service-role client -- same reason).
+10. Return 200 with `{ tenant_id, role }`.
+
+#### Response -- 200 OK
+
+```ts
+type JoinResponse = {
+  tenant_id: string;
+  role: string;
+};
+```
+
+Example:
+```json
+{
+  "tenant_id": "123e4567-...",
+  "role": "editor"
+}
+```
+
+#### Errors
+
+| Status | `code` | Condition |
+|---|---|---|
+| 400 | `INVALID_TOKEN` | `token` is missing or not a 64-character hex string |
+| 401 | `UNAUTHORIZED` | No valid session |
+| 403 | `EMAIL_MISMATCH` | Authenticated user's email does not match the invitation email |
+| 404 | `INVITATION_NOT_FOUND` | No invitation exists with this token |
+| 409 | `INVITATION_ALREADY_ACCEPTED` | Invitation has already been accepted |
+| 409 | `ALREADY_IN_TENANT` | User already belongs to a tenant |
+| 410 | `INVITATION_EXPIRED` | Invitation has expired (past `expires_at`) |
+| 500 | `DB_ERROR` | Postgres update failed |
+
+---
+
+## P14 Role Requirement Overrides for Existing Endpoints
+
+P14 replaces project-level RBAC with tenant-level RBAC. All existing endpoints that previously called `requireProjectRole()` must now call `requireTenantRole()`. The table below maps each existing write/mutate endpoint to its new P14 role requirement.
+
+**Read-only endpoints that require any tenant membership (viewer+) are unchanged and not listed below.**
+
+| Endpoint | Method | P14 Minimum Role | Notes |
+|---|---|---|---|
+| `/api/documents` | `POST` | `editor` | Upload single document |
+| `/api/documents/bulk` | `POST` | `editor` | Bulk upload |
+| `/api/documents/[id]` | `PATCH` | `editor` | Soft-delete/restore |
+| `/api/anchor` | `POST` | `editor` | Anchor document on-chain |
+| `/api/assistant/ingest` | `POST` | `editor` | Ingest documents for RAG |
+| `/api/labels` | `POST` | `editor` | Create label |
+| `/api/labels/[id]` | `PATCH` | `editor` | Update label |
+| `/api/labels/[id]` | `DELETE` | `editor` | Delete label |
+| `/api/documents/[id]/labels` | `POST` | `editor` | Attach label to document |
+| `/api/documents/[id]/labels/[labelId]` | `DELETE` | `editor` | Detach label from document |
+
+**Read-only endpoints (viewer+):** `GET /api/documents`, `GET /api/documents/[id]`, `POST /api/compare`, `POST /api/verify`, `POST /api/assistant/chat`, `GET /api/assistant/sessions`, `GET /api/assistant/sessions/[id]`, `DELETE /api/assistant/sessions/[id]` (user deletes own sessions only).
+
+**Special cases:**
+- `DELETE /api/assistant/sessions/[id]` -- the user can only delete their own sessions. RLS on `chat_sessions` enforces this via `user_id = auth.uid()`. No role check needed beyond viewer+.
+- `POST /api/share/*`, `DELETE /api/share/*` -- share link management. RLS on `shared_links` enforces creator or admin/owner access (Section 13e of `database.md`). Application-layer check mirrors RLS.

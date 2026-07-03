@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, requireProjectRole } from "@/lib/supabase/auth";
+import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
 import type {
   PublicShareResponse,
@@ -163,14 +163,14 @@ export async function DELETE(
     );
   }
 
-  // -- 3. Check project role (P11: only when share has a project) -----------
-  if (share.project_id) {
-    const roleCheck = await requireProjectRole(supabase, user.id, share.project_id, [
-      "admin",
-      "editor",
-    ]);
-    if (!roleCheck.ok) return roleCheck.response;
-  }
+  // -- 3. Role check: require editor+ (P14 tenant-level RBAC) ----------------
+  // RLS on shared_links further enforces creator or admin/owner access.
+  const roleCheck = await requireTenantRole(supabase, user.id, [
+    "owner",
+    "admin",
+    "editor",
+  ]);
+  if (!roleCheck.ok) return roleCheck.response;
 
   // -- 4. Set is_active = false (by id to be unambiguous) -------------------
   const { error: updateError } = await supabase
