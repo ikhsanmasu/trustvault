@@ -22,7 +22,10 @@ export interface UseAssistantChatReturn {
   streamingContent: string;
   citations: Citation[] | null;
   error: string | null;
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (
+    message: string,
+    options?: { selectedDocIds?: string[]; customPrompt?: string },
+  ) => Promise<void>;
   selectSession: (sessionId: string) => void;
   newSession: () => void;
   deleteSession: (sessionId: string) => Promise<boolean>;
@@ -127,7 +130,10 @@ export function useAssistantChat(): UseAssistantChatReturn {
   // ---- Send a message (streaming SSE) --------------------------------------
 
   const sendMessage = useCallback(
-    async (message: string) => {
+    async (
+      message: string,
+      options?: { selectedDocIds?: string[]; customPrompt?: string },
+    ) => {
       // Cancel any previous in-progress stream
       if (abortRef.current) {
         abortRef.current.abort();
@@ -153,13 +159,24 @@ export function useAssistantChat(): UseAssistantChatReturn {
       abortRef.current = controller;
 
       try {
+        const bodyPayload: Record<string, unknown> = {
+          sessionId: currentSessionId || undefined,
+          message,
+        };
+        if (
+          options?.selectedDocIds &&
+          options.selectedDocIds.length > 0
+        ) {
+          bodyPayload.documentIds = options.selectedDocIds;
+        }
+        if (options?.customPrompt) {
+          bodyPayload.customPrompt = options.customPrompt;
+        }
+
         const response = await fetch("/api/assistant/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: currentSessionId || undefined,
-            message,
-          }),
+          body: JSON.stringify(bodyPayload),
           signal: controller.signal,
         });
 
