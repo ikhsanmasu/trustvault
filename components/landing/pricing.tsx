@@ -9,7 +9,7 @@ const PLANS = [
     period: "forever",
     description: "Perfect for individuals getting started with secure document storage.",
     features: [
-      "Up to 50 documents",
+      "Up to 10 documents",
       "Secure encrypted vault storage",
       "Essential integrity verification",
       "AI change analysis (10/month)",
@@ -22,7 +22,7 @@ const PLANS = [
   },
   {
     name: "Pro",
-    price: "$29",
+    price: "$65",
     period: "/month",
     description: "For growing teams that need full integrity, intelligence, and collaboration.",
     features: [
