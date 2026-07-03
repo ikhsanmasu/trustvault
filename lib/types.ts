@@ -556,25 +556,27 @@ export interface DeleteChannelResponse {
   deleted: true;
 }
 
+/** Request body for POST /api/agents/[id]/whatsapp/connect (Meta Cloud API). */
+export interface WhatsAppConnectRequest {
+  phoneNumberId: string;
+  accessToken: string;
+}
+
 /** Response for POST /api/agents/[id]/whatsapp/connect. */
 export interface WhatsAppConnectResponse {
-  channel_id: string;
-  status: "qr_pending" | "connecting" | "connected";
-  qr_code?: string;            // present only when status = 'qr_pending'
-  message: string;
+  status: "connected";
+  phoneNumberId: string;
 }
 
 /** Response for GET /api/agents/[id]/whatsapp/status. */
 export interface WhatsAppStatusResponse {
-  channel_id: string;
-  status: "disconnected" | "qr_pending" | "connecting" | "connected";
-  qr_code?: string;            // present only when status = 'qr_pending'
-  phone_number?: string;       // present when status = 'connected'
+  status: "connected" | "disconnected";
+  phoneNumberId: string | null;
 }
 
 /** Response for POST /api/agents/[id]/whatsapp/disconnect. */
 export interface WhatsAppDisconnectResponse {
-  disconnected: true;
+  status: "disconnected";
 }
 
 /** Response for POST /api/agents/[id]/telegram/connect. */

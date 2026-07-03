@@ -23,22 +23,15 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-export interface WhatsAppStatus {
-  status: "disconnected" | "qr_pending" | "connecting" | "connected";
-  qrCode?: string;
-  phoneNumber?: string;
-}
-
 export interface TelegramStatus {
   status: "disconnected" | "connected";
   botUsername?: string;
 }
 
-/** Decrypted (plaintext) WhatsApp channel config. */
+/** Decrypted (plaintext) WhatsApp channel config (Meta Cloud API). */
 export interface WhatsAppPlainConfig {
-  phone_number?: string;
-  client_state?: unknown;
-  qr_code?: string;
+  phoneNumberId?: string;
+  accessToken?: string;
 }
 
 /** Decrypted (plaintext) Telegram channel config. */
@@ -168,7 +161,7 @@ export function redactChannelConfig(
   }
 
   if (channelType === "whatsapp") {
-    return { phone_number: plain.phone_number ?? null };
+    return { phone_number_id: plain.phoneNumberId ?? null };
   }
   if (channelType === "telegram") {
     return { bot_username: plain.bot_username ?? null };
@@ -177,80 +170,89 @@ export function redactChannelConfig(
 }
 
 // ---------------------------------------------------------------------------
-// In-memory WhatsApp client pool
+// WhatsApp Meta Cloud API — send message
 // ---------------------------------------------------------------------------
 
-interface WhatsAppClientState {
-  status: WhatsAppStatus["status"];
-  qrCode?: string;
-  phoneNumber?: string;
-  client?: unknown; // whatsapp-web.js Client instance
-}
+const META_API_BASE = "https://graph.facebook.com/v21.0";
 
-const whatsappPool = new Map<string, WhatsAppClientState>();
+/**
+ * Sends a WhatsApp text message via the Meta Cloud API.
+ *
+ * @param phoneNumberId - The WhatsApp Business Account phone number ID.
+ * @param accessToken   - The Meta access token with whatsapp_business_messaging permission.
+ * @param to            - Recipient phone number in international format (e.g. "15551234567").
+ * @param message       - The text message body to send.
+ */
+export async function sendWhatsAppMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  message: string,
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const url = `${META_API_BASE}/${phoneNumberId}/messages`;
 
-function getWhatsAppState(agentId: string): WhatsAppClientState {
-  if (!whatsappPool.has(agentId)) {
-    whatsappPool.set(agentId, { status: "disconnected" });
+  const body = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "text",
+    text: { body: message },
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = (await response.json()) as {
+    messages?: Array<{ id?: string }>;
+    error?: { message?: string };
+  };
+
+  if (!response.ok) {
+    return {
+      success: false,
+      error: data.error?.message ?? `HTTP ${response.status}`,
+    };
   }
-  return whatsappPool.get(agentId)!;
-}
 
-export function getWhatsAppStatus(agentId: string): WhatsAppStatus {
-  const state = getWhatsAppState(agentId);
   return {
-    status: state.status,
-    qrCode: state.qrCode,
-    phoneNumber: state.phoneNumber,
+    success: true,
+    messageId: data.messages?.[0]?.id,
   };
 }
 
-export function setWhatsAppQRCode(agentId: string, qrCode: string): void {
-  const state = getWhatsAppState(agentId);
-  state.status = "qr_pending";
-  state.qrCode = qrCode;
+// ---------------------------------------------------------------------------
+// In-memory WhatsApp connection state (lightweight, no Puppeteer)
+// ---------------------------------------------------------------------------
+
+const whatsappState = new Map<string, { phoneNumberId: string }>();
+
+/**
+ * Records that a WhatsApp channel is connected in-memory.
+ * Called by the connect route handler after successfully storing the config.
+ */
+export function markWhatsAppConnected(agentId: string, phoneNumberId: string): void {
+  whatsappState.set(agentId, { phoneNumberId });
 }
 
-export function setWhatsAppConnecting(agentId: string): void {
-  const state = getWhatsAppState(agentId);
-  state.status = "connecting";
-  state.qrCode = undefined;
+/**
+ * Clears the in-memory WhatsApp connection state.
+ * Called by the disconnect route handler.
+ */
+export function markWhatsAppDisconnected(agentId: string): void {
+  whatsappState.delete(agentId);
 }
 
-export function setWhatsAppConnected(agentId: string, phoneNumber: string): void {
-  const state = getWhatsAppState(agentId);
-  state.status = "connected";
-  state.phoneNumber = phoneNumber;
-  state.qrCode = undefined;
-}
-
-export function setWhatsAppDisconnected(agentId: string): void {
-  const state = getWhatsAppState(agentId);
-  state.status = "disconnected";
-  state.qrCode = undefined;
-  state.phoneNumber = undefined;
-}
-
-export function getWhatsAppClient(agentId: string): unknown | undefined {
-  return whatsappPool.get(agentId)?.client;
-}
-
-export function setWhatsAppClient(agentId: string, client: unknown): void {
-  const state = getWhatsAppState(agentId);
-  state.client = client;
-}
-
-export function destroyWhatsAppClient(agentId: string): void {
-  const state = whatsappPool.get(agentId);
-  if (state?.client) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (state.client as any).destroy?.();
-    } catch {
-      // Ignore destroy errors
-    }
-  }
-  whatsappPool.delete(agentId);
+/**
+ * Returns the in-memory phoneNumberId for a connected WhatsApp channel, if any.
+ */
+export function getWhatsAppPhoneNumberId(agentId: string): string | undefined {
+  return whatsappState.get(agentId)?.phoneNumberId;
 }
 
 // ---------------------------------------------------------------------------

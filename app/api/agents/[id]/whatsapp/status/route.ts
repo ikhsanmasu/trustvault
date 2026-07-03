@@ -1,11 +1,15 @@
 // ---------------------------------------------------------------------------
 // TrustVault P16 — GET /api/agents/[id]/whatsapp/status
 // ---------------------------------------------------------------------------
+// Returns the WhatsApp connection status by querying agent_channels.
+// No Puppeteer/QR polling — the source of truth is the database row.
+// ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase/auth";
+import { createServiceClient } from "@/lib/supabase/client";
 import type { WhatsAppStatusResponse, ErrorResponse } from "@/lib/types";
-import { getWhatsAppStatus } from "@/lib/agent-channel";
+import { decryptChannelConfig, type WhatsAppPlainConfig } from "@/lib/agent-channel";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,29 +47,49 @@ export async function GET(
     );
   }
 
-  // -- 4. Fetch WhatsApp channel --------------------------------------------
-  const { data: channelRow } = await supabase
+  // -- 4. Query agent_channels for WhatsApp config --------------------------
+  const supabaseService = createServiceClient();
+
+  const { data: channelRow } = await supabaseService
     .from("agent_channels")
-    .select("id")
+    .select("id, is_active, config")
     .eq("agent_id", agentId)
     .eq("channel_type", "whatsapp")
-    .single();
+    .maybeSingle();
 
   if (!channelRow) {
-    return NextResponse.json(
-      { error: "No WhatsApp channel found", code: "NOT_FOUND" },
-      { status: 404 },
-    );
+    // No WhatsApp channel exists for this agent
+    return NextResponse.json({
+      status: "disconnected",
+      phoneNumberId: null,
+    });
   }
 
-  // -- 5. Return in-memory status -------------------------------------------
-  const status = getWhatsAppStatus(agentId);
   const ch = channelRow as Record<string, unknown>;
+  const isActive = ch.is_active as boolean;
+
+  if (!isActive) {
+    return NextResponse.json({
+      status: "disconnected",
+      phoneNumberId: null,
+    });
+  }
+
+  // Decrypt config to get the phoneNumberId
+  let phoneNumberId: string | null = null;
+  try {
+    const plain = decryptChannelConfig<WhatsAppPlainConfig>(ch.config as Record<string, unknown>);
+    phoneNumberId = plain.phoneNumberId ?? null;
+  } catch {
+    // Config decryption failed — treat as disconnected
+    return NextResponse.json({
+      status: "disconnected",
+      phoneNumberId: null,
+    });
+  }
 
   return NextResponse.json({
-    channel_id: ch.id as string,
-    status: status.status,
-    qr_code: status.qrCode,
-    phone_number: status.phoneNumber,
+    status: "connected",
+    phoneNumberId,
   });
 }

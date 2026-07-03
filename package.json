@@ -13,7 +13,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1079.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
     "class-variance-authority": "^0.7.1",
@@ -22,14 +21,11 @@
     "next": "^15.2.2",
     "node-telegram-bot-api": "^0.66.0",
     "openai": "^4.86.1",
-    "puppeteer": "^24.14.0",
-    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.6.0",
     "unpdf": "^1.6.2",
     "viem": "^2.53.1",
-    "whatsapp-web.js": "^1.26.0",
     "xlsx": "^0.18.5",
     "zod": "^3.24.2"
   },

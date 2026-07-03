@@ -293,8 +293,8 @@ export default function AgentDetailPage() {
         <div className="max-w-2xl">
           <AgentChannels
             channels={agent.channels}
-            onConnectWhatsApp={async () => {
-              const result = await channelsHook.connectWa(agentId);
+            onConnectWhatsApp={async (phoneNumberId: string, accessToken: string) => {
+              const result = await channelsHook.connectWa(agentId, phoneNumberId, accessToken);
               if (result) {
                 refreshAgent();
                 return result;

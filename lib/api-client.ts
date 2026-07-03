@@ -878,17 +878,13 @@ export interface AddChannelRequest {
 }
 
 export interface WhatsAppConnectResponse {
-  channel_id: string;
-  status: "qr_pending" | "connecting" | "connected";
-  qr_code?: string;
-  message: string;
+  status: "connected";
+  phoneNumberId: string;
 }
 
 export interface WhatsAppStatusResponse {
-  channel_id: string;
-  status: "disconnected" | "qr_pending" | "connecting" | "connected";
-  qr_code?: string;
-  phone_number?: string;
+  status: "connected" | "disconnected";
+  phoneNumberId: string | null;
 }
 
 export interface TelegramConnectRequest {
@@ -1026,14 +1022,20 @@ export async function removeAgentChannel(
 }
 
 /**
- * POST /api/agents/[id]/whatsapp/connect — initialize WhatsApp Web connection.
+ * POST /api/agents/[id]/whatsapp/connect — connect via Meta Cloud API.
  */
 export async function connectWhatsApp(
   agentId: string,
+  phoneNumberId: string,
+  accessToken: string,
 ): Promise<WhatsAppConnectResponse> {
   const response = await fetch(
     `/api/agents/${encodeURIComponent(agentId)}/whatsapp/connect`,
-    { method: "POST" },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumberId, accessToken }),
+    },
   );
   return handleResponse<WhatsAppConnectResponse>(response);
 }
@@ -1043,16 +1045,16 @@ export async function connectWhatsApp(
  */
 export async function disconnectWhatsApp(
   agentId: string,
-): Promise<{ disconnected: boolean }> {
+): Promise<{ status: string }> {
   const response = await fetch(
     `/api/agents/${encodeURIComponent(agentId)}/whatsapp/disconnect`,
     { method: "POST" },
   );
-  return handleResponse<{ disconnected: boolean }>(response);
+  return handleResponse<{ status: string }>(response);
 }
 
 /**
- * GET /api/agents/[id]/whatsapp/status — poll WhatsApp connection status.
+ * GET /api/agents/[id]/whatsapp/status — get WhatsApp connection status.
  */
 export async function getWhatsAppStatus(
   agentId: string,

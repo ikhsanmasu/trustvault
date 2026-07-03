@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import type { DeleteChannelResponse, ErrorResponse } from "@/lib/types";
 import {
-  destroyWhatsAppClient,
+  markWhatsAppDisconnected,
   setTelegramDisconnected,
   decryptChannelConfig,
 } from "@/lib/agent-channel";
@@ -81,7 +81,7 @@ export async function DELETE(
   if (ch.is_active) {
     try {
       if (channelType === "whatsapp") {
-        destroyWhatsAppClient(agentId);
+        markWhatsAppDisconnected(agentId);
       } else if (channelType === "telegram") {
         // Attempt to delete webhook
         try {

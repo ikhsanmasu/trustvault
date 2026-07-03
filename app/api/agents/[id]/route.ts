@@ -20,7 +20,7 @@ import type {
 } from "@/lib/types";
 import {
   redactChannelConfig,
-  destroyWhatsAppClient,
+  markWhatsAppDisconnected,
   setTelegramDisconnected,
 } from "@/lib/agent-channel";
 
@@ -419,7 +419,7 @@ export async function DELETE(
 
   // -- 5. Disconnect active channels ----------------------------------------
   try {
-    destroyWhatsAppClient(id);
+    markWhatsAppDisconnected(id);
     setTelegramDisconnected(id);
   } catch {
     // Ignore channel disconnect errors during delete

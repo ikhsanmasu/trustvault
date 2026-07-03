@@ -245,7 +245,7 @@ export interface UseAgentChannelsReturn {
     data: AddChannelRequest,
   ) => Promise<AgentChannel | null>;
   removeChannel: (agentId: string, channelId: string) => Promise<boolean>;
-  connectWa: (agentId: string) => Promise<WhatsAppConnectResponse | null>;
+  connectWa: (agentId: string, phoneNumberId: string, accessToken: string) => Promise<WhatsAppConnectResponse | null>;
   disconnectWa: (agentId: string) => Promise<boolean>;
   getWaStatus: (agentId: string) => Promise<WhatsAppStatusResponse | null>;
   connectTg: (
@@ -307,11 +307,11 @@ export function useAgentChannels(): UseAgentChannelsReturn {
   );
 
   const connectWa = useCallback(
-    async (agentId: string): Promise<WhatsAppConnectResponse | null> => {
+    async (agentId: string, phoneNumberId: string, accessToken: string): Promise<WhatsAppConnectResponse | null> => {
       setIsOperating(true);
       setError(null);
       try {
-        return await connectWhatsApp(agentId);
+        return await connectWhatsApp(agentId, phoneNumberId, accessToken);
       } catch (err) {
         if (err instanceof ApiClientError) {
           setError(err.message);

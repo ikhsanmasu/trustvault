@@ -1,11 +1,18 @@
 // ---------------------------------------------------------------------------
 // TrustVault P16 — POST /api/agents/[id]/whatsapp/disconnect
 // ---------------------------------------------------------------------------
+// Disconnects a WhatsApp channel by setting is_active = false on the
+// agent_channels row. No Puppeteer/QR teardown needed.
+// ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
-import type { WhatsAppDisconnectResponse, ErrorResponse } from "@/lib/types";
-import { destroyWhatsAppClient } from "@/lib/agent-channel";
+import { createServiceClient } from "@/lib/supabase/client";
+import type {
+  WhatsAppDisconnectResponse,
+  ErrorResponse,
+} from "@/lib/types";
+import { markWhatsAppDisconnected } from "@/lib/agent-channel";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,41 +56,26 @@ export async function POST(
   ]);
   if (!roleCheck.ok) return roleCheck.response;
 
-  // -- 5. Fetch WhatsApp channel --------------------------------------------
-  const { data: channelRow } = await supabase
+  // -- 5. Update agent_channels to set is_active = false --------------------
+  const supabaseService = createServiceClient();
+
+  const { error: updateErr } = await supabaseService
     .from("agent_channels")
-    .select("*")
+    .update({ is_active: false })
     .eq("agent_id", agentId)
-    .eq("channel_type", "whatsapp")
-    .single();
+    .eq("channel_type", "whatsapp");
 
-  if (!channelRow) {
+  if (updateErr) {
+    console.error("[whatsapp:disconnect] Failed to update channel:", updateErr);
     return NextResponse.json(
-      { error: "No WhatsApp channel found for this agent", code: "NOT_FOUND" },
-      { status: 404 },
-    );
-  }
-
-  const ch = channelRow as Record<string, unknown>;
-
-  // -- 6. Destroy WhatsApp client -------------------------------------------
-  try {
-    destroyWhatsAppClient(agentId);
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: `Failed to disconnect WhatsApp: ${err instanceof Error ? err.message : "Unknown error"}`,
-        code: "DISCONNECT_ERROR",
-      },
+      { error: "Failed to disconnect WhatsApp channel", code: "DB_ERROR" },
       { status: 500 },
     );
   }
 
-  // -- 7. Update DB ----------------------------------------------------------
-  await supabase
-    .from("agent_channels")
-    .update({ is_active: false })
-    .eq("id", ch.id as string);
+  // -- 6. Mark disconnected in-memory ---------------------------------------
+  markWhatsAppDisconnected(agentId);
 
-  return NextResponse.json({ disconnected: true });
+  // -- 7. Return success ----------------------------------------------------
+  return NextResponse.json({ status: "disconnected" });
 }
