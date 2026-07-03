@@ -1134,3 +1134,30 @@ export async function deleteAgentSession(
   );
   return handleResponse<{ deleted: boolean }>(response);
 }
+
+// ===== P17: Usage Tracking + Billing =====
+
+export type PlanType = "free" | "pro" | "enterprise";
+
+export interface UsageStats {
+  plan: PlanType;
+  documents_used: number;
+  documents_limit: number | null;
+  llm_calls_used: number;
+  llm_calls_limit: number | null;
+  storage_bytes_used: number;
+  storage_bytes_limit: number | null;
+  usage_reset_at: string | null;
+}
+
+export interface GetUsageResponse {
+  usage: UsageStats;
+}
+
+/**
+ * GET /api/usage — get usage stats for the current tenant.
+ */
+export async function getUsage(): Promise<GetUsageResponse> {
+  const response = await fetch("/api/usage");
+  return handleResponse<GetUsageResponse>(response);
+}

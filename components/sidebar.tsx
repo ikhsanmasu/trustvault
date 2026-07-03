@@ -16,6 +16,7 @@ import {
   IconMessageBot,
   IconShare,
   IconBot,
+  IconChart,
 } from "@/components/icons";
 
 // ---- Nav item definition -------------------------------------------------------
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Assistant", href: "/assistant", icon: IconMessageBot },
   { label: "Agents", href: "/agents", icon: IconBot },
   { label: "Shared Links", href: "/shares", icon: IconShare },
+  { label: "Usage", href: "/usage", icon: IconChart },
   { label: "Settings", href: "/settings", icon: IconSettings },
 ];
 

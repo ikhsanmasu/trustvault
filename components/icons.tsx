@@ -1010,6 +1010,30 @@ export function IconDownload({ className }: IconProps) {
   );
 }
 
+// ---- P17: Usage / Chart -------------------------------------------------------
+
+export function IconChart({ className }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("h-5 w-5 shrink-0", className)}
+      role="img"
+      aria-label="Chart"
+    >
+      <title>Chart</title>
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  );
+}
+
 // ---- P16: Agents --------------------------------------------------------------
 
 export function IconBot({ className }: IconProps) {

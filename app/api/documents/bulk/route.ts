@@ -8,6 +8,7 @@ import {
   getFileExtension,
 } from "@/lib/core";
 import { ingestDocument } from "@/lib/ai-assistant";
+import { checkUploadLimit, incrementUsage } from "@/lib/rate-limit";
 import {
   requireAuth,
   requireTenantRole,
@@ -68,7 +69,7 @@ export async function POST(
   ]);
   if (!roleCheck.ok) return roleCheck.response;
 
-  // -- 6. Collect files from form data --------------------------------------
+  // -- 5. Collect files from form data --------------------------------------
   const files: File[] = [];
   for (const [, value] of formData.entries()) {
     if (value instanceof File && value !== null) {
@@ -116,7 +117,31 @@ export async function POST(
     }
   }
 
-  // -- 9. Sequential processing of each file --------------------------------
+  // -- 9. P17: Check plan limits (doc count + per-file size) -----------------
+  const { data: planCheck } = await supabase
+    .from("tenants")
+    .select("plan, usage_documents")
+    .eq("id", tenantId)
+    .single();
+  const usageDocs = Number(planCheck?.usage_documents ?? 0);
+
+  // Individual file size checks are done per-file below (against plan max).
+  // For doc count: check if adding all files would exceed the limit.
+  const docLimitResult = await checkUploadLimit(supabase, tenantId, files[0]?.size ?? 0);
+  if (!docLimitResult.allowed) {
+    return NextResponse.json(
+      { error: docLimitResult.reason ?? "Plan limit reached", code: "PLAN_LIMIT_REACHED" },
+      { status: 403 },
+    );
+  }
+  if (docLimitResult.limit !== null && usageDocs + files.length > docLimitResult.limit) {
+    return NextResponse.json(
+      { error: `Uploading ${files.length} files would exceed plan limit (${usageDocs}/${docLimitResult.limit})`, code: "PLAN_LIMIT_REACHED" },
+      { status: 403 },
+    );
+  }
+
+  // -- 10. Sequential processing of each file --------------------------------
   const results: BulkUploadItem[] = [];
   let succeeded = 0;
   let failed = 0;
@@ -168,6 +193,19 @@ export async function POST(
           status: "error",
           error: "File is empty",
           code: "EMPTY_FILE",
+          name: file.name,
+        });
+        failed++;
+        continue;
+      }
+
+      // ---- P17: Plan-level file size check ----
+      const planFileCheck = await checkUploadLimit(supabase, tenantId, file.size);
+      if (!planFileCheck.allowed) {
+        results.push({
+          status: "error",
+          error: planFileCheck.reason ?? "Plan limit reached",
+          code: "PLAN_LIMIT_REACHED",
           name: file.name,
         });
         failed++;
@@ -254,6 +292,10 @@ export async function POST(
         failed++;
         continue;
       }
+
+      // ---- P17: Increment usage counters ----
+      await incrementUsage(supabase, tenantId, "documents", { amount: 1 });
+      await incrementUsage(supabase, tenantId, "storage_bytes", { amount: buffer.length });
 
       // ---- Auto-ingest: await chunk + embed ----
       const docId = (document as Record<string, unknown>).id as string;

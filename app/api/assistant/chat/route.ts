@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, requireProjectRole } from "@/lib/supabase/auth";
+import { requireAuth, requireProjectRole, getUserTenantId } from "@/lib/supabase/auth";
 import {
   generateEmbedding,
   buildRAGPrompt,
@@ -7,6 +7,7 @@ import {
   extractCitations,
   ChatMessage as ChatMessageInput,
 } from "@/lib/ai-assistant";
+import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
 import type {
   ErrorResponse,
   Citation,
@@ -68,6 +69,18 @@ export async function POST(
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
   const { user, supabase } = auth;
+
+  // -- 1a. P17: Check LLM call limit for the user's tenant ------------------
+  const tenantId = await getUserTenantId(supabase, user.id);
+  if (tenantId) {
+    const llmCheck = await checkLLMLimit(supabase, tenantId);
+    if (!llmCheck.allowed) {
+      return NextResponse.json(
+        { error: llmCheck.reason ?? "LLM call limit reached", code: "PLAN_LIMIT_REACHED" },
+        { status: 403 },
+      );
+    }
+  }
 
   // -- 2. Parse & validate body ---------------------------------------------
   let body: Record<string, unknown>;
@@ -362,6 +375,14 @@ export async function POST(
                 .from("chat_sessions")
                 .update({ updated_at: new Date().toISOString() })
                 .eq("id", capturedSessionId);
+
+              // P17: Increment LLM usage
+              if (tenantId) {
+                await incrementUsage(supabase, tenantId, "llm_calls", {
+                  endpoint: "assistant/chat",
+                  tokens: 0,
+                });
+              }
 
               // Send done event
               send("done", {

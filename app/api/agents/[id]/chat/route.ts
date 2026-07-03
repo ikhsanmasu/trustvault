@@ -7,7 +7,8 @@
 // ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/supabase/auth";
+import { requireAuth, getUserTenantId } from "@/lib/supabase/auth";
+import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
 import type {
   AgentChatRequest,
   ErrorResponse,
@@ -40,6 +41,18 @@ export async function POST(
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
   const { user, supabase } = auth;
+
+  // -- 1a. P17: Check LLM call limit for the user's tenant ------------------
+  const tenantId = await getUserTenantId(supabase, user.id);
+  if (tenantId) {
+    const llmCheck = await checkLLMLimit(supabase, tenantId);
+    if (!llmCheck.allowed) {
+      return NextResponse.json(
+        { error: llmCheck.reason ?? "LLM call limit reached", code: "PLAN_LIMIT_REACHED" },
+        { status: 403 },
+      );
+    }
+  }
 
   // -- 2. Validate agentId --------------------------------------------------
   if (!UUID_RE.test(agentId)) {
@@ -198,6 +211,15 @@ export async function POST(
               send("token", { token });
             },
             onComplete: (_fullResponse: string) => {
+              // P17: Increment LLM usage
+              if (tenantId) {
+                incrementUsage(supabase, tenantId, "llm_calls", {
+                  endpoint: "agents/chat",
+                  tokens: 0,
+                }).catch((err) => {
+                  console.error("[agent-chat] Failed to increment usage:", err);
+                });
+              }
               send("done", {
                 sessionId: capturedSessionId,
                 messageId: null, // Will be populated by streamAgentChat

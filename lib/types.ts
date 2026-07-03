@@ -612,3 +612,34 @@ export interface WebhookResponse {
   ok: boolean;
   error?: string;
 }
+
+// ---------------------------------------------------------------------------
+// P17: Usage Tracking + Billing
+// ---------------------------------------------------------------------------
+
+/** The plan tier assigned to a tenant. */
+export type PlanType = "free" | "pro" | "enterprise";
+
+/** Per-plan limits (mirrors the PLAN_LIMITS config in lib/rate-limit.ts). */
+export interface PlanLimits {
+  maxDocs: number;
+  maxFileSize: number;   // bytes
+  maxLlmCalls: number;
+}
+
+/** Usage statistics for the current billing period. */
+export interface UsageStats {
+  plan: PlanType;
+  documents_used: number;
+  documents_limit: number | null;   // null = unlimited
+  llm_calls_used: number;
+  llm_calls_limit: number | null;   // null = unlimited
+  storage_bytes_used: number;
+  storage_bytes_limit: number | null; // null = unlimited (no per-plan storage cap currently)
+  usage_reset_at: string | null;    // ISO 8601 UTC, null if never reset
+}
+
+/** Response for GET /api/usage. */
+export interface GetUsageResponse {
+  usage: UsageStats;
+}
