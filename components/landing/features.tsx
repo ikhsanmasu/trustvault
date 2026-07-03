@@ -129,34 +129,86 @@ export function Features() {
           </p>
         </div>
 
-        {/* Feature cards grid */}
-        <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="group relative rounded-2xl border border-border bg-card p-8 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-1 hover:border-secondary/25"
-            >
-              {/* Gold accent line on hover */}
-              <div className="absolute top-0 left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-secondary/0 to-transparent transition-all duration-300 group-hover:via-secondary/60" />
+        {/* Feature cards carousel */}
+        <div className="mt-16 carousel-wrapper">
+          <div className="carousel-track">
+            {features.map((feature) => (
+              <div
+                key={feature.title}
+                className="group relative shrink-0 rounded-2xl border border-border bg-card p-8 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-1 hover:border-secondary/25"
+                style={{ minWidth: 280, maxWidth: 380, width: 380 }}
+              >
+                {/* Gold accent line on hover */}
+                <div className="absolute top-0 left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-secondary/0 to-transparent transition-all duration-300 group-hover:via-secondary/60" />
 
-              {/* Icon */}
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/5 text-primary group-hover:bg-secondary/10 group-hover:text-secondary transition-colors duration-300">
-                {feature.icon}
+                {/* Icon */}
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/5 text-primary group-hover:bg-secondary/10 group-hover:text-secondary transition-colors duration-300">
+                  {feature.icon}
+                </div>
+
+                {/* Title */}
+                <h3 className="mt-5 text-lg font-semibold text-foreground">
+                  {feature.title}
+                </h3>
+
+                {/* Description */}
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                  {feature.description}
+                </p>
               </div>
-
-              {/* Title */}
-              <h3 className="mt-5 text-lg font-semibold text-foreground">
-                {feature.title}
-              </h3>
-
-              {/* Description */}
-              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                {feature.description}
-              </p>
-            </div>
-          ))}
+            ))}
+            {/* Duplicate for seamless infinite loop */}
+            {features.map((feature) => (
+              <div
+                key={`dup-${feature.title}`}
+                className="group relative shrink-0 rounded-2xl border border-border bg-card p-8 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-1 hover:border-secondary/25"
+                style={{ minWidth: 280, maxWidth: 380, width: 380 }}
+              >
+                <div className="absolute top-0 left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-secondary/0 to-transparent transition-all duration-300 group-hover:via-secondary/60" />
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/5 text-primary group-hover:bg-secondary/10 group-hover:text-secondary transition-colors duration-300">
+                  {feature.icon}
+                </div>
+                <h3 className="mt-5 text-lg font-semibold text-foreground">
+                  {feature.title}
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes scroll {
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-50%);
+          }
+        }
+        .carousel-track {
+          display: flex;
+          gap: 1.5rem;
+          width: max-content;
+          animation: scroll 30s linear infinite;
+        }
+        .carousel-track:hover {
+          animation-play-state: paused;
+        }
+        .carousel-wrapper {
+          overflow: hidden;
+          mask-image: linear-gradient(
+            to right,
+            transparent,
+            black 5%,
+            black 95%,
+            transparent
+          );
+        }
+      `}</style>
     </section>
   );
 }
