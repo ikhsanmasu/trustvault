@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { acceptInvitation, ApiClientError } from "@/lib/api-client";
@@ -16,6 +16,14 @@ type JoinState =
   | { kind: "error"; message: string };
 
 export default function JoinPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><Skeleton className="h-8 w-48" /></div>}>
+      <JoinContent />
+    </Suspense>
+  );
+}
+
+function JoinContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuthContext();
