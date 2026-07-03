@@ -30,12 +30,12 @@ export function MobileHeader({ onMenuToggle }: MobileHeaderProps) {
       <Link
         href="/dashboard"
         className="flex items-center gap-2.5 font-semibold tracking-tight text-foreground"
-        aria-label="inTrustVault Dashboard"
+        aria-label="InTrustVault Dashboard"
       >
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
           <IconBrand className="h-4 w-4" />
         </div>
-        <span className="text-sm">inTrustVault</span>
+        <span className="text-sm">InTrustVault</span>
       </Link>
 
       {/* Spacer to push anything on the right */}

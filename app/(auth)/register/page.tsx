@@ -17,7 +17,7 @@ export default function RegisterPage() {
         <div className="relative flex flex-col justify-between p-12 xl:p-16 w-full">
           <Link href="/" className="flex items-center gap-3">
             <IconBrand className="h-10 w-10" />
-            <span className="text-2xl font-bold text-primary-foreground tracking-tight">inTrustVault</span>
+            <span className="text-2xl font-bold text-primary-foreground tracking-tight">InTrustVault</span>
           </Link>
 
           <div className="space-y-6">
@@ -40,7 +40,7 @@ export default function RegisterPage() {
           </div>
 
           <p className="text-sm text-primary-foreground/30">
-            &copy; {new Date().getFullYear()} inTrustVault. All rights reserved.
+            &copy; {new Date().getFullYear()} InTrustVault. All rights reserved.
           </p>
         </div>
       </div>
@@ -51,7 +51,7 @@ export default function RegisterPage() {
           <div className="lg:hidden mb-8 text-center">
             <Link href="/" className="inline-flex items-center gap-2">
               <IconBrand className="h-8 w-8" />
-              <span className="text-xl font-bold tracking-tight">inTrustVault</span>
+              <span className="text-xl font-bold tracking-tight">InTrustVault</span>
             </Link>
           </div>
 

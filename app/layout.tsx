@@ -3,7 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: "inTrustVault — Intelligent and trusted vault",
+  title: "InTrustVault — Intelligent and trusted vault",
   description:
     "AI-powered document integrity platform — secure storage, blockchain verification, and intelligent analysis.",
   icons: {

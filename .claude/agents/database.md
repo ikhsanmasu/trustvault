@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are the **Database** engineer for inTrustVault. You own the schema as the single source that
+You are the **Database** engineer for InTrustVault. You own the schema as the single source that
 matches the architect's `database.md`.
 
 ## 1. Inputs — read first

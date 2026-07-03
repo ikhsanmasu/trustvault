@@ -107,7 +107,7 @@ export function Hero() {
             </h1>
 
             <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              Your documents deserve more than just storage. inTrustVault
+              Your documents deserve more than just storage. InTrustVault
               combines secure vault storage, blockchain integrity, and AI
               intelligence to protect, prove, and unlock the value of every
               document.

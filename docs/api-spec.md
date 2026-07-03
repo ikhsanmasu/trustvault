@@ -1,4 +1,4 @@
-# inTrustVault -- API Specification (P5)
+# InTrustVault -- API Specification (P5)
 
 This document is a **contract**. The `backend` agent implements exactly what is written here and the `frontend` agent calls exactly what is written here. Neither agent may silently change paths, field names, or types -- discrepancies must be flagged back to the architect.
 
@@ -618,7 +618,7 @@ type Document = {
 
 ### POST /api/anchor
 
-Anchor a document's fingerprint on the configured blockchain. The document's `binary_hash` and `text_hash` are read from the database and used to compute a keccak256 fingerprint, which is then written to the `inTrustVaultAnchor` smart contract. The resulting transaction hash, chain identifier, and block timestamp are stored back in the `documents` table.
+Anchor a document's fingerprint on the configured blockchain. The document's `binary_hash` and `text_hash` are read from the database and used to compute a keccak256 fingerprint, which is then written to the `InTrustVaultAnchor` smart contract. The resulting transaction hash, chain identifier, and block timestamp are stored back in the `documents` table.
 
 This endpoint **requires a funded signer account** on the target chain. The `ANCHOR_PRIVATE_KEY` env var must reference an account with sufficient native balance for gas.
 
@@ -800,7 +800,7 @@ Example (hash mismatch -- tampering detected):
 |---|---|
 | `ANCHOR_RPC_URL` | `getAnchorService()` -- connects to the EVM RPC endpoint |
 | `ANCHOR_CHAIN_ID` | `getAnchorService()` -- identifies the chain for viem client config |
-| `ANCHOR_CONTRACT_ADDRESS` | `getAnchorService()` -- address of the deployed `inTrustVaultAnchor` |
+| `ANCHOR_CONTRACT_ADDRESS` | `getAnchorService()` -- address of the deployed `InTrustVaultAnchor` |
 | `ANCHOR_PRIVATE_KEY` | `createSigner()` -- signs anchor transactions. **Server-only, never prefixed with `NEXT_PUBLIC_`** |
 
 These are in addition to the P2 environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DEEPSEEK_API_KEY`).
@@ -981,7 +981,7 @@ type ChatRequest = {
    b. Query `document_chunks` where `tenant_id = tenantId`, ordered by `embedding <=> queryEmbedding` (cosine distance), LIMIT 5.
    c. If no chunks found (tenant has no ingested documents): return a plain chat response (no context).
 7. **Build RAG prompt:**
-   - System: "You are inTrustVault AI Assistant. Answer questions based on the provided document excerpts. Cite sources when possible. If the answer cannot be found in the excerpts, say so honestly."
+   - System: "You are InTrustVault AI Assistant. Answer questions based on the provided document excerpts. Cite sources when possible. If the answer cannot be found in the excerpts, say so honestly."
    - User prompt: context chunks + conversation history (last 10 messages) + current question.
 8. **Stream response via SSE:**
    - Call DeepSeek `chat/completions` with `stream: true`.
@@ -2362,7 +2362,7 @@ Disconnect the WhatsApp client and destroy the Puppeteer session. The channel ro
 
 ### POST /api/agents/[id]/telegram/connect
 
-Connect a Telegram bot to the agent. This validates the bot token, retrieves the bot's username, and registers a webhook with Telegram so incoming messages are sent to inTrustVault's webhook endpoint.
+Connect a Telegram bot to the agent. This validates the bot token, retrieves the bot's username, and registers a webhook with Telegram so incoming messages are sent to InTrustVault's webhook endpoint.
 
 #### Precondition
 

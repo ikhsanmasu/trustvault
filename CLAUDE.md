@@ -1,4 +1,4 @@
-# inTrustVault — Agent Briefing (CLAUDE.md)
+# InTrustVault — Agent Briefing (CLAUDE.md)
 
 ## What this is
 Document-integrity tool: upload → layered hashing → store → compare → AI assesses the

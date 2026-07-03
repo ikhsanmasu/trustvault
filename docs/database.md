@@ -1,4 +1,4 @@
-# inTrustVault -- Database Contract (P5)
+# InTrustVault -- Database Contract (P5)
 
 This document is a **contract**. The `database` and `backend` agents must implement exactly what is specified here. Any required deviation must be flagged back to the architect before implementing.
 
@@ -6,7 +6,7 @@ This document is a **contract**. The `database` and `backend` agents must implem
 
 ## 1. Overview
 
-inTrustVault P2 extends the P1 schema with **multi-tenancy, authentication, and RBAC**. All additions are additive -- the `documents` table from P1 is retained and updated with NOT NULL constraints plus foreign keys.
+InTrustVault P2 extends the P1 schema with **multi-tenancy, authentication, and RBAC**. All additions are additive -- the `documents` table from P1 is retained and updated with NOT NULL constraints plus foreign keys.
 
 ### P2 Additions
 
@@ -725,7 +725,7 @@ CREATE POLICY "documents_update_anchor" ON public.documents
 
 ```sql
 -- ============================================================================
--- inTrustVault P5: Blockchain Anchoring Columns
+-- InTrustVault P5: Blockchain Anchoring Columns
 -- Migration: 20260622000000_p5_blockchain_anchor.sql
 -- Prerequisite: 20260621000003_p4_soft_delete.sql (P4 soft delete columns)
 -- ============================================================================
@@ -1043,7 +1043,7 @@ CREATE POLICY "chat_messages_insert_own" ON public.chat_messages
 
 ```sql
 -- ============================================================================
--- inTrustVault P6: AI Vault Assistant (pgvector + chat)
+-- InTrustVault P6: AI Vault Assistant (pgvector + chat)
 -- Migration: 20260701000000_p6_ai_assistant.sql
 -- Prerequisite: 20260622000000_p5_blockchain_anchor.sql
 -- ============================================================================
@@ -1523,7 +1523,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 ```sql
 -- ============================================================================
--- inTrustVault P14: Tenant-Level RBAC + Invitations
+-- InTrustVault P14: Tenant-Level RBAC + Invitations
 -- Migration: 20260703000000_p14_rbac_invitations.sql
 -- Prerequisite: 20260702000000_p13_fix_chat_sessions.sql
 -- ============================================================================
@@ -2150,7 +2150,7 @@ CREATE POLICY "agent_messages_insert_own" ON public.agent_messages
 
 ```sql
 -- ============================================================================
--- inTrustVault P16: Custom AI Agents + Multi-Channel Integration
+-- InTrustVault P16: Custom AI Agents + Multi-Channel Integration
 -- Migration: 20260703000002_p16_agents.sql
 -- Prerequisite: 20260703000000_p14_rbac_invitations.sql
 -- ============================================================================

@@ -73,7 +73,7 @@ export function Stats() {
             Growing Every Day
           </span>
           <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            inTrustVault by the numbers
+            InTrustVault by the numbers
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
             Teams are securing documents, anchoring them on-chain, and sharing

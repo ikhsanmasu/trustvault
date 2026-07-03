@@ -1,4 +1,4 @@
-# inTrustVault -- Deployment & Operations (P5)
+# InTrustVault -- Deployment & Operations (P5)
 
 This document is a **contract** for the `deployment` agent. It specifies the local dev setup, CI configuration, Supabase Auth configuration, Supabase GitHub integration, Vercel deployment process, blockchain node setup (Anvil/Railway), and contract deployment. P1-P4 deployment sections that remain valid are noted as preserved.
 
@@ -26,7 +26,7 @@ This package must be added to `package.json` by the `scaffold` agent before buil
 
 ## 2. Environment Variables
 
-All environment variables required to run inTrustVault. These are **names only** -- never commit values.
+All environment variables required to run InTrustVault. These are **names only** -- never commit values.
 
 | Variable | Scope | Description | P2 Change |
 |---|---|---|---|
@@ -414,7 +414,7 @@ All P1-P3 "No-Go" items remain. P4 adds:
 - Never skip the migration validation step in CI -- broken migration files block deployment.
 - Never manually run `supabase db push` on production if Supabase GitHub auto-deploy is connected (double-application risk).
 - Never deploy the application before running the P5 database migration (anchoring columns).
-- Never deploy the application before deploying the `inTrustVaultAnchor` contract and setting `ANCHOR_CONTRACT_ADDRESS`.
+- Never deploy the application before deploying the `InTrustVaultAnchor` contract and setting `ANCHOR_CONTRACT_ADDRESS`.
 - Never expose `ANCHOR_PRIVATE_KEY` in client-side code or env vars with `NEXT_PUBLIC_` prefix.
 - Never commit `ANCHOR_PRIVATE_KEY` or any real private key to the repository.
 
@@ -439,7 +439,7 @@ All P1-P4 deployment steps remain valid and are incorporated above. The P1 deplo
 | Package | Version | Purpose |
 |---|---|---|
 | `viem` | ^2.x (latest) | EVM interaction, contract calls, transaction signing, keccak256 hashing. Replaces ethers. |
-| `solc` | ^0.8.20 (dev) | Solidity compiler for `inTrustVaultAnchor.sol`. Optional if using Foundry. |
+| `solc` | ^0.8.20 (dev) | Solidity compiler for `InTrustVaultAnchor.sol`. Optional if using Foundry. |
 
 The `viem` dependency must be added to `package.json` by the `scaffold` agent before build agents start.
 
@@ -449,7 +449,7 @@ The `viem` dependency must be added to `package.json` by the `scaffold` agent be
 |---|---|---|---|
 | `ANCHOR_RPC_URL` | Server-only | JSON-RPC endpoint URL | Yes (for anchor/verify to work) |
 | `ANCHOR_CHAIN_ID` | Server-only | EVM chain ID as integer | Yes |
-| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `inTrustVaultAnchor` address (`0x`-prefixed) | Yes |
+| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `InTrustVaultAnchor` address (`0x`-prefixed) | Yes |
 | `ANCHOR_PRIVATE_KEY` | Server-only | Private key for signing anchor transactions | Yes (for anchor to work; verify works without it if using read-only client) |
 
 **Note:** `ANCHOR_PRIVATE_KEY` is only required for `POST /api/anchor`. `POST /api/verify` uses a read-only public client and does not need the private key. If anchoring is not available (no private key configured), the verify endpoint can still check previously anchored documents.
@@ -484,7 +484,7 @@ npx tsx scripts/deploy-anchor.ts
 
 **Expected output:**
 ```
-Deploying inTrustVaultAnchor to chain 31337...
+Deploying InTrustVaultAnchor to chain 31337...
 Transaction hash: 0x...
 Contract deployed at: 0x5FbDB2315678afecb367f032d93F642f64180aa3
 ```
@@ -575,7 +575,7 @@ forge verify-contract \
   --rpc-url https://sepolia.infura.io/v3/YOUR_KEY \
   --etherscan-api-key YOUR_ETHERSCAN_API_KEY \
   <CONTRACT_ADDRESS> \
-  contracts/inTrustVaultAnchor.sol:inTrustVaultAnchor
+  contracts/InTrustVaultAnchor.sol:InTrustVaultAnchor
 ```
 
 A verified contract allows anyone to inspect the source code and independently confirm the anchoring logic.
@@ -592,14 +592,14 @@ The script uses viem to deploy the compiled contract. Key behavior:
 
 1. Reads env vars: `ANCHOR_RPC_URL`, `ANCHOR_CHAIN_ID`, `ANCHOR_PRIVATE_KEY`.
 2. Reads compiled artifacts:
-   - ABI from `contracts/out/inTrustVaultAnchor_sol_inTrustVaultAnchor.abi` (solc output)
-   - Bytecode from `contracts/out/inTrustVaultAnchor_sol_inTrustVaultAnchor.bin`
+   - ABI from `contracts/out/InTrustVaultAnchor_sol_InTrustVaultAnchor.abi` (solc output)
+   - Bytecode from `contracts/out/InTrustVaultAnchor_sol_InTrustVaultAnchor.bin`
 3. Creates a viem wallet client and public client.
 4. Calls `walletClient.deployContract({ abi, bytecode, args: [] })`.
 5. Waits for receipt via `publicClient.waitForTransactionReceipt()`.
 6. Prints the deployed contract address.
 
-**Fallback if solc artifacts not found:** Try Foundry artifacts from `out/inTrustVaultAnchor.sol/inTrustVaultAnchor.json` (Forge output format). The script should detect which artifact format is available.
+**Fallback if solc artifacts not found:** Try Foundry artifacts from `out/InTrustVaultAnchor.sol/InTrustVaultAnchor.json` (Forge output format). The script should detect which artifact format is available.
 
 **Usage:**
 ```bash
@@ -648,7 +648,7 @@ Before deploying P5 to production:
 - [ ] Verify the four new columns (`fingerprint`, `chain`, `tx_hash`, `anchored_at`) exist on the production `documents` table.
 - [ ] Verify the `documents_fingerprint_unique` constraint exists.
 - [ ] Verify the `documents_update_anchor` RLS policy exists and is enabled.
-- [ ] Deploy the `inTrustVaultAnchor` contract to the target chain.
+- [ ] Deploy the `InTrustVaultAnchor` contract to the target chain.
 - [ ] Set `ANCHOR_CONTRACT_ADDRESS` to the deployed contract address.
 - [ ] Set `ANCHOR_PRIVATE_KEY` to a funded account on the target chain.
 - [ ] Test a full anchor + verify cycle on production (upload a document, anchor it, verify it).

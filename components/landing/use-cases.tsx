@@ -84,7 +84,7 @@ export function UseCases() {
             Trusted across every industry
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            From legal contracts to healthcare records, inTrustVault delivers
+            From legal contracts to healthcare records, InTrustVault delivers
             integrity and intelligence wherever documents matter.
           </p>
         </div>

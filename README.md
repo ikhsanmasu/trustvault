@@ -1,4 +1,4 @@
-# inTrustVault
+# InTrustVault
 
 **Cryptographic document integrity vault.** Upload, track, compare, and verify your documents with deterministic hashing and blockchain anchoring.
 

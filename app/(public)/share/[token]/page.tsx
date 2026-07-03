@@ -169,7 +169,7 @@ export default function PublicSharePage() {
               <div className="flex items-center gap-2">
                 <IconBrand className="h-6 w-6" />
                 <span className="text-xs font-semibold text-secondary uppercase tracking-widest">
-                  inTrustVault
+                  InTrustVault
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground text-balance">
@@ -323,7 +323,7 @@ export default function PublicSharePage() {
           <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <IconLock className="h-3 w-3" />
             <span>
-              Powered by inTrustVault — Document Integrity Platform
+              Powered by InTrustVault — Document Integrity Platform
             </span>
           </div>
         </div>

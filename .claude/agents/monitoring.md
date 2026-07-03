@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are **Monitoring** for inTrustVault. You add observability without touching business logic.
+You are **Monitoring** for InTrustVault. You add observability without touching business logic.
 
 ## 1. Inputs — read first
 - `docs/architecture.md` — components and the key events worth tracking.
