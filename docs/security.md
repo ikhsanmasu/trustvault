@@ -6,7 +6,7 @@ This document is a **contract** for the `security` audit agent and a reference f
 
 ## 1. P2 Threat Model
 
-TrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was unauthenticated and single-operator), P2 introduces user identity, tenant scoping, project-based access control, and role-based permissions. The threat model shifts from "trusted local operator" to "authenticated users who must not see each other's data."
+TrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was unauthenticated and single-operator), P2 introduces user identity, tenant scoping, and role-based permissions. The threat model shifts from "trusted local operator" to "authenticated users who must not see each other's data."
 
 ### What P2 protects against
 
@@ -14,9 +14,9 @@ TrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was 
 |---|---|
 | Unauthenticated access to any API endpoint | All API endpoints require a valid Supabase session. 401 returned if missing. |
 | Cross-tenant data access (user A sees tenant B's documents) | RLS policies on all data tables filter by tenant. Even a buggy route handler cannot leak data. |
-| Cross-project data access within a tenant (user A sees project B's documents without membership) | RLS on `documents` checks project membership. |
-| Unauthorised write operations (viewer uploads a document) | Route handler checks role before insert. RLS on `documents` INSERT policy requires `admin` or `editor`. |
-| Privilege escalation (editor makes themselves admin) | RLS on `project_members` UPDATE/DELETE policies require `admin` role. |
+| Cross-tenant data access (user A in tenant X sees tenant Y's documents) | RLS on `documents` checks tenant membership. |
+| Unauthorised write operations (viewer uploads a document) | Route handler checks role before insert via `requireTenantRole()`. RLS on `documents` INSERT policy requires `owner`, `admin`, or `editor`. |
+| Privilege escalation (editor makes themselves admin) | Route handler enforces admin-only role changes. RLS on `profiles` prevents self-role modification. |
 | Session hijacking | HTTP-only cookies prevent JavaScript access to session tokens. `@supabase/ssr` uses `SameSite=Lax` cookies. |
 | AI prompt injection via crafted PDF text | System prompt isolation + Zod schema validation on AI output (preserved from P1). |
 | DeepSeek API key exposure | Key lives only in server-side env vars; never in client bundles. |
@@ -29,7 +29,7 @@ TrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was 
 | Rate limiting on API endpoints | Yes | Left to deployment layer (Vercel WAF or reverse proxy). Not in application scope. |
 | Brute-force login attempts | Partial | Supabase Auth has built-in rate limiting. Additional rate limiting on the Next.js server is a deployment concern. |
 | Admin removes themselves as last admin | No | Blocked at application layer (see api-spec.md, `LAST_ADMIN` error). |
-| Admin deletes project and all documents | Accepted | This is a feature, not a bug -- admins have full control of their projects. A confirmation UI mitigates accidental deletion. |
+| Admin deletes documents | Accepted | This is a feature, not a bug -- admins have full control of their tenant's documents. A confirmation UI mitigates accidental deletion. |
 | OAuth provider attacks | N/A | OAuth is not in P2 scope (email/password only). |
 | Denial of service via bulk upload | Partial | Max 10 files per request, 20 MB per file. Additional rate limiting at deployment layer. |
 | Stored XSS in document names or extracted text | Mitigated | All rendering in React escapes by default. Extracted text is plain text, not HTML. |
@@ -92,7 +92,7 @@ The route handler calls `requireAuth()` as its first operation. If `user` is nul
 
 1. **Defence in depth:** RLS is the last line of defence. Application code checks permissions first (for clear error messages), and RLS catches any application bugs.
 2. **User identity via `auth.uid()`:** All RLS policies use `auth.uid()` to identify the current user. This function returns the UUID of the authenticated user from the JWT. It returns `NULL` for anon requests.
-3. **Helper functions:** `get_user_tenant_id()` and `get_project_role(project_id)` encapsulate the profile and membership lookups so policies are readable and the lookup logic is in one place.
+3. **Helper functions:** `get_user_tenant_id()` returns the current user's tenant_id. Role lookups use `profiles.role` directly.
 4. **Service role bypass:** The `SUPABASE_SERVICE_ROLE_KEY` bypasses all RLS. This is intentional for admin operations (profile creation trigger, migration backfills). Application code must restrict service-role usage to those cases only.
 
 ### 3b. Policy Coverage Matrix
@@ -102,17 +102,10 @@ The route handler calls `requireAuth()` as its first operation. If `user` is nul
 | `tenants` | SELECT | `tenants_select_own` | Users who belong to the tenant |
 | `tenants` | INSERT | `tenants_insert_auth` | Any authenticated user (during sign-up) |
 | `profiles` | SELECT | `profiles_select_own` | The profile owner |
-| `profiles` | UPDATE | `profiles_update_own` | The profile owner |
-| `projects` | SELECT | `projects_select_member` | Project members |
-| `projects` | INSERT | `projects_insert_auth` | Authenticated users (must match own tenant) |
-| `projects` | UPDATE | `projects_update_admin` | Project admins |
-| `projects` | DELETE | `projects_delete_admin` | Project admins |
-| `project_members` | SELECT | `project_members_select_peer` | Members of the same project |
-| `project_members` | INSERT | `project_members_insert_admin` | Project admins |
-| `project_members` | UPDATE | `project_members_update_admin` | Project admins |
-| `project_members` | DELETE | `project_members_delete_admin` | Project admins |
-| `documents` | SELECT | `documents_select_member` | Project members |
-| `documents` | INSERT | `documents_insert_editor` | Project admins or editors, must match `uploaded_by` |
+| `profiles` | UPDATE | `profiles_update_own` | The profile owner (display_name only; role changes via admin endpoint) |
+| `documents` | SELECT | `documents_tenant_access` | Tenant members (viewer+) |
+| `documents` | INSERT | `documents_tenant_insert` | Tenant owner, admin, or editor, must match `uploaded_by` |
+| `documents` | UPDATE | `documents_tenant_update` | Tenant owner, admin, or editor |
 
 ### 3c. RLS Verification (for `security` agent)
 
@@ -121,11 +114,11 @@ The security agent must verify these scenarios:
 | Test | Expected result |
 |---|---|
 | Anon user queries `documents` | Zero rows returned |
-| User A queries their own documents | Returns only A's documents |
-| User A queries with a `project_id` they are NOT a member of | Zero rows (or empty list) |
+| User A queries their own documents | Returns only A's tenant documents |
+| User A queries documents from another tenant | Zero rows (or empty list) |
 | User A (viewer) tries to INSERT into `documents` | Insert rejected by RLS |
-| User A (editor) tries to UPDATE `project_members` | Update rejected by RLS |
-| User A (admin) tries to INSERT into another tenant's project | Insert rejected by RLS (`tenant_id` mismatch) |
+| User A (editor) tries to UPDATE another user's `profiles` row | Update rejected by RLS |
+| User A (admin) tries to INSERT into another tenant's documents | Insert rejected by RLS (`tenant_id` mismatch) |
 | Service-role client queries `documents` with no auth | All rows returned (expected -- service role bypass) |
 
 The security agent should test these using the Supabase JS client with different auth states (anon, user A JWT, user B JWT, service-role key).
@@ -136,45 +129,44 @@ The security agent should test these using the Supabase JS client with different
 
 ### 4a. Role Definitions
 
-| Role | Create docs | View docs | Trigger compare | Manage members | Edit project | Delete project |
+| Role | Create docs | View docs | Trigger compare | Manage members | Manage tenant |
 |---|---|---|---|---|---|---|
-| **admin** | Yes | Yes | Yes | Yes | Yes | Yes |
-| **editor** | Yes | Yes | Yes | No | No | No |
-| **viewer** | No | Yes | Yes | No | No | No |
+| **owner** | Yes | Yes | Yes | Yes | Yes |
+| **admin** | Yes | Yes | Yes | Yes (not owner) | No |
+| **editor** | Yes | Yes | Yes | No | No |
+| **viewer** | No | Yes | Yes | No | No |
 
 ### 4b. Enforcement Layers
 
 1. **UI layer** (frontend): Hides buttons/actions the user cannot perform. Not a security control -- pure UX. A malicious user can craft HTTP requests directly.
-2. **Route handler layer** (backend): Checks the user's role in the target project before performing the operation. Returns 403 with a clear `code` if the role is insufficient.
+2. **Route handler layer** (backend): Checks the user's role via `requireTenantRole(userId, allowedRoles)` before performing the operation. Returns 403 with a clear `code` if the role is insufficient.
 3. **RLS layer** (database): Postgres policies reject INSERT/UPDATE/DELETE operations that do not match the required role. This is the guaranteed enforcement -- even if the route handler is buggy, the database rejects.
 
 ### 4c. Role Check Pattern in Route Handlers
 
 ```ts
 // lib/auth.ts -- pseudocode
-export async function requireProjectRole(
+export async function requireTenantRole(
   supabase: SupabaseClient,
   userId: string,
-  projectId: string,
-  allowedRoles: Role[]
-): Promise<Role | null> {
-  const { data: member } = await supabase
-    .from('project_members')
-    .select('role')
-    .eq('project_id', projectId)
-    .eq('user_id', userId)
+  allowedRoles: TenantRole[]
+): Promise<{ role: TenantRole; tenantId: string }> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, tenant_id')
+    .eq('id', userId)
     .single();
 
-  if (!member || !allowedRoles.includes(member.role as Role)) {
-    return null;
+  if (!profile || !allowedRoles.includes(profile.role as TenantRole)) {
+    throw new ForbiddenError('Insufficient role');
   }
-  return member.role as Role;
+  return { role: profile.role as TenantRole, tenantId: profile.tenant_id };
 }
 ```
 
 ### 4d. Last Admin Protection
 
-When an admin attempts to demote themselves or leave a project, the route handler checks whether other admins exist. If this is the last admin, the operation is blocked with `LAST_ADMIN`. This is enforced at the application layer (not RLS) because it requires a COUNT query across `project_members`.
+When an admin attempts to demote themselves or leave the tenant, the route handler checks whether other admins/owners exist. If this is the last one, the operation is blocked with `LAST_ADMIN`. This is enforced at the application layer (not RLS) because it requires a COUNT query across `profiles`.
 
 ---
 
@@ -188,12 +180,11 @@ Every document is assigned a `tenant_id` at upload time (from the uploading user
 
 | Scenario | Expected outcome |
 |---|---|
-| User in tenant A creates a project | Project has tenant A's `tenant_id` |
-| User in tenant A uploads a document to their project | Document has tenant A's `tenant_id` and the project's `project_id` |
-| User in tenant B queries all documents (no project filter) | Only sees documents in tenant B's projects (because of the project membership join in RLS) |
+| User in tenant A uploads a document | Document has tenant A's `tenant_id` |
+| User in tenant B queries all documents | Only sees documents in tenant B (RLS-enforced by `documents_tenant_access`) |
 | User in tenant B tries to guess a document UUID from tenant A and calls `GET /api/documents/:id` | 404 (RLS filters out the row) |
-| Admin in tenant A adds user from tenant B to their project | Blocked at app layer: `USER_NOT_IN_TENANT` error |
-| A buggy route handler forgets to filter by tenant_id | RLS catches it -- `documents_select_member` policy only returns rows in projects the user belongs to |
+| Admin in tenant A tries to invite user already in tenant B | Blocked at app layer: user already belongs to a tenant |
+| A buggy route handler forgets to filter by tenant_id | RLS catches it -- `documents_tenant_access` policy only returns rows in the user's tenant |
 
 ### 5c. Data at Rest
 
@@ -248,15 +239,9 @@ All P1 validation rules apply (file type magic-byte check, UUID format, size lim
 | Endpoint | Input | Validation | Error |
 |---|---|---|---|
 | All | Session | Must have valid Supabase session | 401 |
-| POST /api/projects | `name` | Non-empty, <= 255 chars | 400 |
-| PATCH /api/projects/[id] | `name` | If provided, non-empty, <= 255 chars | 400 |
-| POST /api/projects/[id]/members | `user_id` | Valid UUID | 400 |
-| POST /api/projects/[id]/members | `role` | Must be `admin`, `editor`, or `viewer` | 400 |
-| POST /api/documents | `project_id` | Valid UUID | 400 |
-| GET /api/documents | `project_id` | Required, valid UUID | 400 |
 | POST /api/documents/bulk | `files` | 1-10 files, each <= 20 MB | 400 |
 | POST /api/documents/bulk | `names` | If provided, valid JSON array of strings | 400 |
-| POST /api/compare | Cross-project | Both docs must have same `project_id` | 400 |
+| POST /api/compare | Cross-tenant | Both docs must belong to same tenant | 400 |
 
 ### SQL Injection Prevention (Unchanged)
 
@@ -321,17 +306,17 @@ The P2 security audit must verify:
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` is only referenced in `createServiceClient()`.
 
 ### RLS & Tenant Isolation
-- [ ] RLS is enabled on all tables: `tenants`, `profiles`, `projects`, `project_members`, `documents`.
+- [ ] RLS is enabled on all tables: `tenants`, `profiles`, `documents`.
 - [ ] Anon queries to any table return zero rows.
-- [ ] User A cannot see user B's documents or projects.
-- [ ] User A cannot insert documents into a project they are not a member of.
+- [ ] User A cannot see user B's tenant documents.
+- [ ] User A cannot insert documents into another tenant.
 - [ ] A viewer cannot upload a document (insert rejected by RLS).
-- [ ] An editor cannot change project members (update rejected by RLS).
+- [ ] An editor cannot change another user's role (update rejected by RLS).
 
 ### RBAC
 - [ ] Viewer can GET documents and compare but cannot POST documents.
-- [ ] Editor can GET and POST documents but cannot PATCH project or manage members.
-- [ ] Admin can perform all project operations.
+- [ ] Editor can GET and POST documents but cannot manage members or tenant settings.
+- [ ] Admin can perform all tenant operations except modifying the owner.
 - [ ] Last admin cannot be removed or demoted.
 
 ### Secret Safety
@@ -431,7 +416,7 @@ The `qa` agent must write an eval test that:
 
 ### 14f. RLS Policy for Anchor Updates
 
-P5 adds a new RLS policy (`documents_update_anchor`) that allows editors and admins to UPDATE the anchoring columns on documents in their projects. The `security` agent must verify:
+P5 adds a new RLS policy (`documents_update_anchor`) that allows editors and admins to UPDATE the anchoring columns on documents in their tenant. The `security` agent must verify:
 
 - [ ] A viewer cannot anchor a document (UPDATE rejected by RLS).
 - [ ] A user outside the project cannot anchor a document.

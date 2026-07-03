@@ -6,16 +6,14 @@ This document is a **contract**. The `database` and `backend` agents must implem
 
 ## 1. Overview
 
-TrustVault P2 extends the P1 schema with **multi-tenancy, authentication, project organisation, and RBAC**. All additions are additive -- the `documents` table from P1 is retained and updated with NOT NULL constraints plus foreign keys.
+TrustVault P2 extends the P1 schema with **multi-tenancy, authentication, and RBAC**. All additions are additive -- the `documents` table from P1 is retained and updated with NOT NULL constraints plus foreign keys.
 
 ### P2 Additions
 
-- **`tenants`** -- organisational units that own projects and documents.
+- **`tenants`** -- organisational units that own documents.
 - **`profiles`** -- links Supabase Auth users to a tenant.
-- **`projects`** -- named workspaces within a tenant; documents are grouped under projects.
-- **`project_members`** -- assigns users to projects with a role (admin / editor / viewer).
-- **RLS policies** on all user-data tables to enforce tenant and project isolation.
-- **Updated `documents`** -- `tenant_id` and `project_id` become NOT NULL with FK constraints.
+- **RLS policies** on all user-data tables to enforce tenant isolation.
+- **Updated `documents`** -- `tenant_id` becomes NOT NULL with FK constraints.
 
 ### P1 Baseline (Preserved)
 
@@ -29,7 +27,7 @@ The `documents` table structure, storage bucket, and all P1 indexes are preserve
 
 #### Purpose
 
-Represents an organisational tenant. Every user belongs to exactly one tenant (via `profiles.tenant_id`). Every project is scoped to one tenant.
+Represents an organisational tenant. Every user belongs to exactly one tenant (via `profiles.tenant_id`). Documents are scoped to one tenant.
 
 #### Columns
 
@@ -82,70 +80,9 @@ Extends the Supabase `auth.users` table with application-specific data. Each row
 
 ---
 
-### 2c. Table: `projects`
+### 2c. RBAC
 
-#### Purpose
-
-A named workspace within a tenant. Documents are grouped under projects. Users are assigned to projects via `project_members`.
-
-#### Columns
-
-| Column | Type | Nullable | Default | Description |
-|---|---|---|---|---|
-| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
-| `tenant_id` | `uuid` | NOT NULL | -- | FK to `tenants.id`. The tenant that owns this project. |
-| `name` | `text` | NOT NULL | -- | Display name of the project |
-| `description` | `text` | NOT NULL | `''` | Optional description of the project's purpose |
-| `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC) |
-
-#### Constraints
-
-- `PRIMARY KEY (id)`
-- `FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)`
-- `name` must not be empty -- enforced at application layer.
-
-#### Indexes
-
-| Index name | Columns | Purpose |
-|---|---|---|
-| `projects_pkey` | `id` | Primary key lookup |
-| `projects_tenant_id_idx` | `tenant_id` | List all projects in a tenant |
-
----
-
-### 2d. Table: `project_members`
-
-#### Purpose
-
-Assigns users to projects with a role. This is the RBAC table. A user who is not in this table for a given project has no access to that project's documents.
-
-#### Columns
-
-| Column | Type | Nullable | Default | Description |
-|---|---|---|---|---|
-| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
-| `project_id` | `uuid` | NOT NULL | -- | FK to `projects.id`. The project. |
-| `user_id` | `uuid` | NOT NULL | -- | FK to `auth.users.id`. The user. |
-| `role` | `text` | NOT NULL | -- | One of: `'admin'`, `'editor'`, `'viewer'` |
-| `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC) |
-
-#### Constraints
-
-- `PRIMARY KEY (id)`
-- `UNIQUE (project_id, user_id)` -- a user can only have one role per project.
-- `FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE` -- deleting a project removes all membership rows.
-- `FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE` -- deleting an auth user removes their memberships.
-- `role` must be one of `'admin'`, `'editor'`, `'viewer'` -- enforced by CHECK constraint: `CHECK (role IN ('admin', 'editor', 'viewer'))`.
-
-#### Indexes
-
-| Index name | Columns | Purpose |
-|---|---|---|
-| `project_members_pkey` | `id` | Primary key lookup |
-| `project_members_project_user_unique` | `project_id`, `user_id` | Unique constraint (auto-indexed) |
-| `project_members_user_id_idx` | `user_id` | List all projects a user belongs to |
-
-**Application-layer rule:** When a project is created, the creating user is automatically inserted as a `project_member` with role `admin`.
+RBAC is tenant-level via `profiles.role`. Four roles are defined: `owner`, `admin`, `editor`, `viewer`. Each user who belongs to a tenant has exactly one role within that tenant. Documents are organised via labels (see Section 13 for labels).
 
 ---
 
@@ -156,9 +93,7 @@ Assigns users to projects with a role. This is the RBAC table. A user who is not
 | Change | Details |
 |---|---|
 | `tenant_id` becomes `NOT NULL` | Previously `NULL` in P1. Now required. |
-| `project_id` becomes `NOT NULL` | Previously `NULL` in P1. Now required. |
 | FK: `tenant_id -> tenants(id)` | Ensures referential integrity. |
-| FK: `project_id -> projects(id)` | Ensures referential integrity. |
 | New column: `uploaded_by` | `uuid NOT NULL` -- references `auth.users.id`. Records who uploaded the document. |
 
 ### Updated Columns (full table for P2)
@@ -173,7 +108,6 @@ Assigns users to projects with a role. This is the RBAC table. A user who is not
 | `extracted_text` | `text` | NOT NULL | `''` | Full text extracted from the PDF |
 | `file_size_bytes` | `bigint` | NOT NULL | -- | Size of the uploaded file in bytes |
 | `tenant_id` | `uuid` | **NOT NULL** | -- | FK to `tenants.id`. The tenant that owns this document. |
-| `project_id` | `uuid` | **NOT NULL** | -- | FK to `projects.id`. The project this document belongs to. |
 | `uploaded_by` | `uuid` | **NOT NULL** | -- | FK to `auth.users.id`. The user who uploaded this document. |
 | `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC) |
 
@@ -181,7 +115,6 @@ Assigns users to projects with a role. This is the RBAC table. A user who is not
 
 - `PRIMARY KEY (id)`
 - `FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)`
-- `FOREIGN KEY (project_id) REFERENCES public.projects(id)`
 - `FOREIGN KEY (uploaded_by) REFERENCES auth.users(id)`
 - `name` must not be empty -- enforced at application layer.
 
@@ -194,7 +127,6 @@ Assigns users to projects with a role. This is the RBAC table. A user who is not
 | `documents_name_idx` | `name` | Text search on name (`ILIKE`) |
 | `documents_binary_hash_idx` | `binary_hash` | Fast duplicate detection by binary hash |
 | `documents_tenant_id_idx` | `tenant_id` | Tenant scoping (RLS + query plans) |
-| `documents_project_id_idx` | `project_id` | Project filtering (NEW for P2) |
 
 ---
 
@@ -214,13 +146,7 @@ RETURNS uuid AS $$
   SELECT tenant_id FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
--- Returns the role of the current user in a given project.
--- Returns NULL if the user is not a member.
-CREATE OR REPLACE FUNCTION public.get_project_role(project_id uuid)
-RETURNS text AS $$
-  SELECT role FROM public.project_members
-  WHERE project_id = $1 AND user_id = auth.uid();
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
+-- P14: Role is stored in profiles.role column. Use auth.uid() to look up the current user's role.
 ```
 
 ### 4b. Table: `tenants`
@@ -264,138 +190,34 @@ CREATE POLICY "profiles_update_own" ON public.profiles
 -- DELETE: no delete policy (profiles deleted via CASCADE from auth.users)
 ```
 
-### 4d. Table: `projects`
-
-```sql
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-
--- SELECT: user can see projects they are a member of
-CREATE POLICY "projects_select_member" ON public.projects
-  FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = projects.id AND user_id = auth.uid()
-    )
-  );
-
--- INSERT: authenticated user can create a project; they become admin via app logic
-CREATE POLICY "projects_insert_auth" ON public.projects
-  FOR INSERT
-  WITH CHECK (
-    auth.uid() IS NOT NULL
-    AND tenant_id = public.get_user_tenant_id()
-  );
-
--- UPDATE: only project admins
-CREATE POLICY "projects_update_admin" ON public.projects
-  FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = projects.id
-        AND user_id = auth.uid()
-        AND role = 'admin'
-    )
-  );
-
--- DELETE: only project admins
-CREATE POLICY "projects_delete_admin" ON public.projects
-  FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = projects.id
-        AND user_id = auth.uid()
-        AND role = 'admin'
-    )
-  );
-```
-
-### 4e. Table: `project_members`
-
-```sql
-ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
-
--- SELECT: user can see members of projects they belong to
-CREATE POLICY "project_members_select_peer" ON public.project_members
-  FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members pm2
-      WHERE pm2.project_id = project_members.project_id
-        AND pm2.user_id = auth.uid()
-    )
-  );
-
--- INSERT: only project admins can add members
-CREATE POLICY "project_members_insert_admin" ON public.project_members
-  FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = project_members.project_id
-        AND user_id = auth.uid()
-        AND role = 'admin'
-    )
-  );
-
--- UPDATE: only project admins can change roles
-CREATE POLICY "project_members_update_admin" ON public.project_members
-  FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = project_members.project_id
-        AND user_id = auth.uid()
-        AND role = 'admin'
-    )
-  );
-
--- DELETE: only project admins can remove members (but cannot remove themselves -- enforced at app layer)
-CREATE POLICY "project_members_delete_admin" ON public.project_members
-  FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = project_members.project_id
-        AND user_id = auth.uid()
-        AND role = 'admin'
-    )
-  );
-```
-
-### 4f. Table: `documents`
+### 4d. Table: `documents`
 
 ```sql
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 
--- SELECT: user can see documents in projects they are a member of
-CREATE POLICY "documents_select_member" ON public.documents
+-- SELECT: user can see documents in their tenant
+CREATE POLICY "documents_tenant_access" ON public.documents
   FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = documents.project_id AND user_id = auth.uid()
-    )
+    tenant_id = public.get_user_tenant_id()
   );
 
--- INSERT: user must be admin or editor of the project
-CREATE POLICY "documents_insert_editor" ON public.documents
+-- INSERT: user must be owner, admin, or editor
+CREATE POLICY "documents_tenant_insert" ON public.documents
   FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.project_members
-      WHERE project_id = documents.project_id
-        AND user_id = auth.uid()
-        AND role IN ('admin', 'editor')
-    )
+    tenant_id = public.get_user_tenant_id()
     AND documents.uploaded_by = auth.uid()
-    AND documents.tenant_id = public.get_user_tenant_id()
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
   );
 
--- UPDATE: no update policy (document updates not in P2 scope)
--- DELETE: no delete policy (document deletion not in P2 scope)
+-- UPDATE: owner, admin, or editor only (soft-delete, anchoring)
+CREATE POLICY "documents_tenant_update" ON public.documents
+  FOR UPDATE
+  USING (
+    tenant_id = public.get_user_tenant_id()
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
 ```
 
 ---
@@ -413,32 +235,20 @@ CREATE POLICY "documents_insert_editor" ON public.documents
 
 ### 5b. Storage RLS Policies (NEW for P2)
 
-Storage access must also be scoped to tenants. Documents uploaded by a user must only be readable by members of the same project.
+Storage access is scoped to tenants. Documents uploaded by a user must only be readable by members of the same tenant.
 
-```sql
--- Restrict uploads: user must be editor or admin of the target project
--- The storage path convention embeds project_id: uploads/{year}/{project_id}/{uuid}.pdf
--- (Updated from P1 to include project_id in the path for RLS enforcement)
+Storage access is **server-side only** via route handlers. The route handler enforces tenant membership before serving any file. Direct storage URL access is not exposed to the browser.
 
--- Allow read access to storage objects if the user is a member of the
--- project that owns the document. The project_id is extracted from the path.
--- Simplified approach for P2: storage is accessed only via server-side route handlers
--- which already enforce access. No direct browser access to storage.
--- The RLS below ensures even direct API calls are scoped.
-```
-
-For P2, storage access remains **server-side only** via route handlers. The route handler checks project membership before serving any file. Direct storage URL access is not exposed to the browser. This is simpler and more secure than path-based storage RLS policies for the current scope.
-
-### 5c. Updated File Path Convention (P2)
+### 5c. File Path Convention (P2)
 
 ```
-uploads/{year}/{project_id}/{uuid}.pdf
+uploads/{year}/{tenant_id}/{uuid}.pdf
 ```
 
 Example: `uploads/2026/550e8400-e29b-41d4-a716-446655440000/3f2504e0-4f89-11d3-9a0c-0305e82c3301.pdf`
 
 - `{year}` -- UTC year at upload time.
-- `{project_id}` -- the UUID of the project the document belongs to (allows easy bucket organisation and future RLS).
+- `{tenant_id}` -- the UUID of the tenant the document belongs to.
 - `{uuid}` -- freshly generated UUID for uniqueness.
 
 ---
@@ -491,17 +301,24 @@ Production rollback is not anticipated -- P2 is additive.
 
 ---
 
-## 7. Complete P2 SQL Migration
+## 7. P2 Migration (Superseded)
 
-This is the full migration file content for `supabase/migrations/20260621000001_p2_auth_rbac.sql`. Copy-paste into the file.
+The original P2 migration created `projects` and `project_members` tables which were removed in P12. Current state is tenant-level RBAC via `profiles.role`. See Section 13 (P14) for the current schema.
 
 ```sql
--- ============================================================================
--- TrustVault P2: Authentication, Multi-tenancy, Projects, RBAC, RLS
--- Migration: 20260621000001_p2_auth_rbac.sql
--- Prerequisite: 20260621000000_init.sql (P1 documents table + pdf-uploads bucket)
--- ============================================================================
+-- The original P2 migration has been superseded by P14.
+-- Projects and project_members tables were removed in P12.
+-- See supabase/migrations/ for the current migration files.
+-- The original P2 SQL is preserved in the git history.
+```
 
+---
+
+## 8. Entity Relationship Summary (P2 Backfill Reference)
+
+The following is a historical reference for the P2 backfill logic that migrated P1 data:
+
+```sql
 -- --------------------------------------------------------------------------
 -- 1. TENANTS TABLE
 -- --------------------------------------------------------------------------
@@ -791,19 +608,11 @@ auth.users (Supabase built-in)
     v
 profiles ──────> tenants
   |   tenant_id     |
-  |                 | 1:N
+  |   role          | 1:N
   |                 v
-  |              projects
+  |              documents
   |                 |
-  |                 | N:M (via project_members)
-  |                 |
-  |        ┌────────┴────────┐
-  |        v                 v
-  |  project_members    documents
-  |    (user_id)          |
-  |    (project_id)       | 1:N (via documents.project_id)
-  |    (role)             |
-  └───────────────────────┘
+  └─────────────────┘
     (documents.uploaded_by -> auth.users.id)
     (documents.tenant_id -> tenants.id)
 ```
@@ -816,9 +625,7 @@ The `database` agent may update `supabase/seed.sql` with P2 demo data. If provid
 
 1. A demo tenant.
 2. A demo user profile (note: this requires an auth.users entry, which is hard to seed in SQL alone -- use `supabase/seed.sql` for table data only and document manual auth user creation for demo).
-3. A demo project.
-4. A project_members entry for the demo user with role `admin`.
-5. A few sample documents scoped to the project.
+3. A few sample documents scoped to the tenant.
 
 Seed data is optional. The migration alone is sufficient.
 
@@ -875,7 +682,6 @@ P5 adds four columns to the `documents` table for blockchain anchoring metadata.
 | `file_size_bytes` | `bigint` | NOT NULL | -- | P1 |
 | `file_type` | `text` | NOT NULL | `'application/pdf'` | P3 |
 | `tenant_id` | `uuid` | NOT NULL | -- | P2 |
-| `project_id` | `uuid` | NOT NULL | -- | P2 |
 | `uploaded_by` | `uuid` | NOT NULL | -- | P2 |
 | `deleted_at` | `timestamptz` | NULL | `NULL` | P4 |
 | `deleted_by` | `uuid` | NULL | `NULL` | P4 |

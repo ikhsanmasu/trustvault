@@ -40,7 +40,7 @@ type ErrorResponse = {
 | Status | Meaning |
 |---|---|
 | 200 | Success (GET, POST compare, PATCH) |
-| 201 | Created (POST documents, POST projects) |
+| 201 | Created (POST documents) |
 | 400 | Bad request (validation failure) |
 | 401 | Unauthenticated -- no valid session |
 | 403 | Forbidden -- authenticated but insufficient role/permission |
@@ -60,28 +60,13 @@ type Profile = {
   id: string;           // UUID, equals auth.users.id
   tenant_id: string;    // UUID
   display_name: string | null;
+  role: TenantRole;     // P14: tenant-level role
   created_at: string;   // ISO 8601 UTC
 };
 
-// ===== Projects =====
+type TenantRole = 'owner' | 'admin' | 'editor' | 'viewer';
 
-type Project = {
-  id: string;           // UUID
-  tenant_id: string;    // UUID
-  name: string;
-  description: string;
-  created_at: string;   // ISO 8601 UTC
-};
-
-type ProjectMember = {
-  id: string;           // UUID
-  project_id: string;   // UUID
-  user_id: string;      // UUID (references auth.users)
-  role: 'admin' | 'editor' | 'viewer';
-  created_at: string;   // ISO 8601 UTC
-};
-
-// ===== Documents (updated from P1) =====
+// ===== Documents =====
 
 type Document = {
   id: string;             // UUID
@@ -91,9 +76,8 @@ type Document = {
   text_hash: string;      // SHA-256 hex of extracted text (64 chars)
   extracted_text: string; // full extracted text (may be empty string)
   file_size_bytes: number;
-  tenant_id: string;      // UUID (was null in P1, now always set)
-  project_id: string;     // UUID (was null in P1, now always set)
-  uploaded_by: string;    // UUID of auth.users (NEW in P2)
+  tenant_id: string;      // UUID
+  uploaded_by: string;    // UUID of auth.users
   created_at: string;     // ISO 8601 UTC
 };
 
@@ -119,7 +103,7 @@ type BulkUploadItem = {
 };
 
 type BulkUploadResult = {
-  project_id: string;
+  tenant_id: string;
   results: BulkUploadItem[];
   succeeded: number;
   failed: number;
@@ -128,25 +112,16 @@ type BulkUploadResult = {
 
 ---
 
-## P2 Endpoint Index
+## Endpoint Index
 
 | Method | Path | Auth | Role Required | Description |
 |---|---|---|---|---|
 | `GET` | `/api/profile` | Yes | -- | Get current user's profile |
-| `POST` | `/api/projects` | Yes | -- | Create a new project |
-| `GET` | `/api/projects` | Yes | -- | List user's projects |
-| `GET` | `/api/projects/[id]` | Yes | member | Get project details |
-| `PATCH` | `/api/projects/[id]` | Yes | admin | Update project name/description |
-| `DELETE` | `/api/projects/[id]` | Yes | admin | Delete project |
-| `GET` | `/api/projects/[id]/members` | Yes | member | List project members |
-| `POST` | `/api/projects/[id]/members` | Yes | admin | Add a member to project |
-| `PATCH` | `/api/projects/[id]/members/[userId]` | Yes | admin | Update a member's role |
-| `DELETE` | `/api/projects/[id]/members/[userId]` | Yes | admin | Remove a member from project |
-| `POST` | `/api/documents` | Yes | editor/admin | Upload a single document |
-| `GET` | `/api/documents` | Yes | member | List documents (filtered by project) |
-| `POST` | `/api/documents/bulk` | Yes | editor/admin | Upload multiple documents |
-| `GET` | `/api/documents/[id]` | Yes | member | Get single document |
-| `POST` | `/api/compare` | Yes | member | Compare two documents |
+| `POST` | `/api/documents` | Yes | editor/admin/owner | Upload a single document |
+| `GET` | `/api/documents` | Yes | viewer+ | List documents |
+| `POST` | `/api/documents/bulk` | Yes | editor/admin/owner | Upload multiple documents |
+| `GET` | `/api/documents/[id]` | Yes | viewer+ | Get single document |
+| `POST` | `/api/compare` | Yes | viewer+ | Compare two documents |
 
 ---
 
@@ -199,386 +174,9 @@ Example:
 
 ---
 
-### POST /api/projects
-
-Create a new project. The creating user is automatically added as a project member with role `admin`.
-
-#### Request
-
-`Content-Type: application/json`
-
-```ts
-type CreateProjectRequest = {
-  name: string;           // required, 1-255 characters
-  description?: string;   // optional, default ""
-};
-```
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Get user's `tenant_id` from `profiles`.
-3. Validate `name` is non-empty, max 255 characters.
-4. Insert row into `projects` with the user's `tenant_id`.
-5. Insert row into `project_members` with `user_id = user.id`, `role = 'admin'`.
-6. Return 201 with the created project.
-
-#### Response -- 201 Created
-
-```ts
-type CreateProjectResponse = {
-  project: Project;
-};
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `MISSING_NAME` | `name` field missing or empty |
-| 400 | `NAME_TOO_LONG` | `name` exceeds 255 characters |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 500 | `DB_ERROR` | Postgres insert failed |
-
----
-
-### GET /api/projects
-
-List projects the authenticated user is a member of, ordered by `created_at` descending (newest first).
-
-#### Request
-
-`Content-Type: none` (GET)
-
-| Query param | Type | Required | Description |
-|---|---|---|---|
-| `search` | string | No | Case-insensitive substring match against `projects.name`. If omitted, all user's projects returned. |
-| `limit` | number | No | Max results. Default: 50. Max: 200. |
-| `offset` | number | No | Rows to skip. Default: 0. |
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Query `projects` joined with `project_members` where `user_id = user.id`.
-3. Apply `search` filter on `name` if provided (ILIKE).
-4. Order by `created_at DESC`.
-5. Apply `LIMIT` and `OFFSET`.
-6. Return the list.
-
-#### Response -- 200 OK
-
-```ts
-type ListProjectsResponse = {
-  projects: Project[];
-  total: number;
-};
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_LIMIT` | `limit` not a positive integer or exceeds 200 |
-| 400 | `INVALID_OFFSET` | `offset` not a non-negative integer |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 500 | `DB_ERROR` | Postgres query failed |
-
----
-
-### GET /api/projects/[id]
-
-Get a single project by ID. User must be a member of the project.
-
-#### Request
-
-`Content-Type: none` (GET with path parameter)
-
-| Path param | Type | Required | Description |
-|---|---|---|---|
-| `id` | string (UUID) | Yes | The project UUID |
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Validate `id` is a valid UUID. Return 400 if not.
-3. Query `projects` where `id = :id`. RLS ensures the user is a member.
-4. Return 404 if no row found.
-5. Return 200 with the project.
-
-#### Response -- 200 OK
-
-```ts
-type GetProjectResponse = {
-  project: Project;
-};
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_ID` | `id` is not a valid UUID |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 404 | `NOT_FOUND` | Project does not exist or user is not a member |
-| 500 | `DB_ERROR` | Postgres query failed |
-
----
-
-### PATCH /api/projects/[id]
-
-Update a project's `name` and/or `description`. User must be an `admin` of the project.
-
-#### Request
-
-`Content-Type: application/json`
-
-```ts
-type UpdateProjectRequest = {
-  name?: string;           // if provided, 1-255 characters
-  description?: string;    // if provided, any string (can be empty)
-};
-```
-
-At least one field must be provided.
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Validate `id` is a valid UUID.
-3. Check user's role in the project via `project_members`. Return 403 if not `admin`.
-4. Validate input: if `name` provided, must be non-empty and <= 255 chars.
-5. Update the project row. RLS policy ensures only admins can update.
-6. Return 200 with the updated project.
-
-#### Response -- 200 OK
-
-```ts
-type UpdateProjectResponse = {
-  project: Project;
-};
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_ID` | `id` is not a valid UUID |
-| 400 | `NO_FIELDS` | Neither `name` nor `description` provided |
-| 400 | `NAME_TOO_LONG` | `name` exceeds 255 characters |
-| 400 | `NAME_EMPTY` | `name` is an empty string |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User is not an admin of this project |
-| 404 | `NOT_FOUND` | Project not found |
-| 500 | `DB_ERROR` | Postgres update failed |
-
----
-
-### DELETE /api/projects/[id]
-
-Delete a project. Cascades to delete all `project_members` rows and all `documents` (via FK cascade). User must be an `admin`.
-
-#### Request
-
-`Content-Type: none` (DELETE, no body)
-
-| Path param | Type | Required | Description |
-|---|---|---|---|
-| `id` | string (UUID) | Yes | The project UUID |
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Validate `id` is a valid UUID.
-3. Check user's role is `admin`. Return 403 if not.
-4. Delete the project. RLS + application check.
-5. Return 200 with a confirmation.
-
-#### Response -- 200 OK
-
-```json
-{
-  "deleted": true
-}
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_ID` | `id` is not a valid UUID |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User is not an admin of this project |
-| 404 | `NOT_FOUND` | Project not found |
-| 500 | `DB_ERROR` | Postgres delete failed |
-
----
-
-### GET /api/projects/[id]/members
-
-List members of a project. User must be a member of the project.
-
-#### Request
-
-`Content-Type: none` (GET with path parameter)
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Validate project `id` is a valid UUID.
-3. Verify user is a project member (RLS handles this; app layer also checks for clear 403).
-4. Query `project_members` where `project_id = :id`. RLS ensures user can see members.
-5. Return the list.
-
-#### Response -- 200 OK
-
-```ts
-type ListMembersResponse = {
-  members: ProjectMember[];
-};
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_ID` | Project `id` is not a valid UUID |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User is not a member of this project |
-| 404 | `NOT_FOUND` | Project not found |
-| 500 | `DB_ERROR` | Postgres query failed |
-
----
-
-### POST /api/projects/[id]/members
-
-Add a new member to the project. User must be an `admin` of the project. The target user must exist and belong to the same tenant.
-
-#### Request
-
-`Content-Type: application/json`
-
-```ts
-type AddMemberRequest = {
-  user_id: string;    // UUID of the auth user to add
-  role: 'admin' | 'editor' | 'viewer';
-};
-```
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Validate project `id` is a valid UUID.
-3. Verify the calling user is an `admin` of the project. Return 403 if not.
-4. Validate `user_id` is a valid UUID and `role` is one of the three allowed values.
-5. Verify the target user exists and is in the same tenant as the project. Return 400 with `USER_NOT_IN_TENANT` if they are not.
-6. Insert into `project_members`. Handle unique violation (user already a member) with 409.
-7. Return 201 with the member row.
-
-#### Response -- 201 Created
-
-```ts
-type AddMemberResponse = {
-  member: ProjectMember;
-};
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_ID` | Project `id` not a valid UUID |
-| 400 | `INVALID_USER_ID` | `user_id` not a valid UUID |
-| 400 | `INVALID_ROLE` | `role` is not one of `admin`, `editor`, `viewer` |
-| 400 | `USER_NOT_IN_TENANT` | Target user does not belong to the same tenant as the project |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | Calling user is not an admin of this project |
-| 404 | `NOT_FOUND` | Project not found |
-| 409 | `ALREADY_MEMBER` | Target user is already a member of this project |
-| 500 | `DB_ERROR` | Postgres insert failed |
-
----
-
-### PATCH /api/projects/[id]/members/[userId]
-
-Update a member's role. User must be an `admin` of the project. An admin cannot demote themselves (must be the last admin or transfer ownership -- enforced at app layer).
-
-#### Request
-
-`Content-Type: application/json`
-
-```ts
-type UpdateMemberRoleRequest = {
-  role: 'admin' | 'editor' | 'viewer';
-};
-```
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Validate both UUIDs.
-3. Verify calling user is an `admin`. Return 403 if not.
-4. Validate `role` is one of the allowed values.
-5. **Self-demotion check:** If `userId === callingUser.id` and `role !== 'admin'`, check that at least one other admin exists. Return 400 with `LAST_ADMIN` if not.
-6. Update the `project_members` row. Return 200.
-
-#### Response -- 200 OK
-
-```ts
-type UpdateMemberRoleResponse = {
-  member: ProjectMember;
-};
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_ID` | Project or user ID not a valid UUID |
-| 400 | `INVALID_ROLE` | `role` is not one of `admin`, `editor`, `viewer` |
-| 400 | `LAST_ADMIN` | Cannot remove the last admin (self-demotion blocked) |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | Calling user is not an admin |
-| 404 | `NOT_FOUND` | Member row not found |
-| 500 | `DB_ERROR` | Postgres update failed |
-
----
-
-### DELETE /api/projects/[id]/members/[userId]
-
-Remove a member from the project. User must be an `admin`. An admin cannot remove themselves if they are the last admin.
-
-#### Processing
-
-1. `requireAuth()` -- return 401 if no session.
-2. Validate both UUIDs.
-3. Verify calling user is an `admin`. Return 403 if not.
-4. **Last admin check:** If `userId === callingUser.id`, count remaining admins. Block if this is the last one.
-5. Delete the `project_members` row. Return 200.
-
-#### Response -- 200 OK
-
-```json
-{
-  "removed": true
-}
-```
-
-#### Errors
-
-| Status | `code` | Condition |
-|---|---|---|
-| 400 | `INVALID_ID` | Project or user ID not a valid UUID |
-| 400 | `LAST_ADMIN` | Cannot remove the last admin |
-| 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | Calling user is not an admin |
-| 404 | `NOT_FOUND` | Member row not found |
-| 500 | `DB_ERROR` | Postgres delete failed |
-
----
-
 ### POST /api/documents
 
-Upload a single PDF document. **Updated from P1:** Requires auth, project scoping, and role check.
+Upload a single PDF document. Requires auth and tenant-level role check.
 
 #### Request
 
@@ -588,7 +186,6 @@ Upload a single PDF document. **Updated from P1:** Requires auth, project scopin
 |---|---|---|---|
 | `file` | File (PDF) | Yes | The PDF file. Max 20 MB. Must be `application/pdf`. |
 | `name` | string | Yes | Display name (1-255 characters). |
-| `project_id` | string (UUID) | Yes | **New in P2.** The project this document belongs to. |
 
 #### Processing (in order)
 
@@ -596,17 +193,16 @@ Upload a single PDF document. **Updated from P1:** Requires auth, project scopin
 2. Validate that `file` is present and `Content-Type` is `application/pdf`.
 3. Validate file size <= 20 MB. Return 413 if exceeded.
 4. Validate `name` is non-empty, max 255 characters.
-5. Validate `project_id` is a valid UUID.
-6. **Role check:** query `project_members` for the user's role in the project. Return 403 if role is not `admin` or `editor`.
-7. Get user's `tenant_id` from `profiles`.
-8. Read the file into a `Buffer`.
-9. `computeBinaryHash(buffer)` -> `binaryHash`.
-10. `extractPdfText(buffer)` -> `extractedText`.
-11. `computeTextHash(extractedText)` -> `textHash`.
-12. Generate storage path: `uploads/{UTC_year}/{project_id}/{uuid}.pdf`.
-13. Upload buffer to Supabase Storage bucket `pdf-uploads` using the **user-scoped** client.
-14. INSERT into `documents` with `tenant_id`, `project_id`, and `uploaded_by = user.id`.
-15. Return 201.
+5. **Role check:** `requireTenantRole(user.id, ['owner', 'admin', 'editor'])`. Return 403 if insufficient.
+6. Get user's `tenant_id` from `profiles`.
+7. Read the file into a `Buffer`.
+8. `computeBinaryHash(buffer)` -> `binaryHash`.
+9. `extractPdfText(buffer)` -> `extractedText`.
+10. `computeTextHash(extractedText)` -> `textHash`.
+11. Generate storage path: `uploads/{UTC_year}/{tenant_id}/{uuid}.pdf`.
+12. Upload buffer to Supabase Storage bucket `pdf-uploads` using the **user-scoped** client.
+13. INSERT into `documents` with `tenant_id` and `uploaded_by = user.id`.
+14. Return 201.
 
 #### Response -- 201 Created
 
@@ -622,11 +218,9 @@ type UploadResponse = {
 |---|---|---|
 | 400 | `MISSING_FILE` | No `file` field in form data |
 | 400 | `MISSING_NAME` | `name` missing or empty |
-| 400 | `MISSING_PROJECT_ID` | `project_id` missing or empty (NEW in P2) |
 | 400 | `NAME_TOO_LONG` | `name` > 255 characters |
-| 400 | `INVALID_PROJECT_ID` | `project_id` not a valid UUID (NEW in P2) |
 | 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User does not have editor/admin role in this project |
+| 403 | `FORBIDDEN` | User does not have editor/admin/owner role |
 | 413 | `FILE_TOO_LARGE` | File > 20 MB |
 | 415 | `INVALID_FILE_TYPE` | File is not `application/pdf` |
 | 500 | `STORAGE_ERROR` | Supabase Storage upload failed |
@@ -636,7 +230,7 @@ type UploadResponse = {
 
 ### GET /api/documents
 
-List documents. **Updated from P2:** Requires auth and `project_id` filter.
+List documents. Requires auth. Scoped to user's tenant via RLS.
 
 #### Request
 
@@ -644,7 +238,6 @@ List documents. **Updated from P2:** Requires auth and `project_id` filter.
 
 | Query param | Type | Required | Description |
 |---|---|---|---|
-| `project_id` | string (UUID) | **Yes (P2)** | Filter documents by project. |
 | `search` | string | No | Case-insensitive substring match against `documents.name`. |
 | `limit` | number | No | Max results. Default: 50. Max: 200. |
 | `offset` | number | No | Rows to skip. Default: 0. |
@@ -652,13 +245,12 @@ List documents. **Updated from P2:** Requires auth and `project_id` filter.
 #### Processing
 
 1. `requireAuth()` -- return 401 if no session.
-2. Validate `project_id` is a valid UUID. Return 400 if not.
-3. Verify user is a member of the project (app-level check for clear 403; RLS also enforces).
-4. Query `documents` where `project_id = :project_id`.
-5. Apply `search` filter on `name` if provided (ILIKE).
-6. Order by `created_at DESC`.
-7. Apply `LIMIT` and `OFFSET`.
-8. Return the list.
+2. Get user's `tenant_id` from `profiles`.
+3. Query `documents` where `tenant_id = :tenantId`.
+4. Apply `search` filter on `name` if provided (ILIKE).
+5. Order by `created_at DESC`.
+6. Apply `LIMIT` and `OFFSET`.
+7. Return the list.
 
 #### Response -- 200 OK
 
@@ -673,19 +265,16 @@ type ListDocumentsResponse = {
 
 | Status | `code` | Condition |
 |---|---|---|
-| 400 | `MISSING_PROJECT_ID` | `project_id` query param missing |
-| 400 | `INVALID_PROJECT_ID` | `project_id` not a valid UUID |
 | 400 | `INVALID_LIMIT` | `limit` not a positive integer or exceeds 200 |
 | 400 | `INVALID_OFFSET` | `offset` not a non-negative integer |
 | 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User is not a member of this project |
 | 500 | `DB_ERROR` | Postgres query failed |
 
 ---
 
 ### GET /api/documents/[id]
 
-Fetch a single document by UUID. **Updated from P1:** Requires auth. RLS enforces access.
+Fetch a single document by UUID. Requires auth. RLS enforces access.
 
 #### Request
 
@@ -699,7 +288,7 @@ Fetch a single document by UUID. **Updated from P1:** Requires auth. RLS enforce
 
 1. `requireAuth()` -- return 401 if no session.
 2. Validate `id` is a valid UUID.
-3. Query `documents` where `id = :id`. RLS restricts to documents in projects the user belongs to.
+3. Query `documents` where `id = :id`. RLS restricts to documents in the user's tenant.
 4. Return 404 if no row found (either doesn't exist or user has no access).
 5. Return 200.
 
@@ -724,7 +313,7 @@ type GetDocumentResponse = {
 
 ### POST /api/documents/bulk
 
-Upload multiple PDF documents to a project in a single request.
+Upload multiple PDF documents in a single request.
 
 #### Request
 
@@ -734,7 +323,6 @@ Upload multiple PDF documents to a project in a single request.
 |---|---|---|---|
 | `files` | File[] (PDF) | Yes | One or more PDF files. Each must be `application/pdf`, max 20 MB. |
 | `names` | string (JSON array) | No | JSON array of display names, one per file. If omitted or shorter than files, the original filename is used. |
-| `project_id` | string (UUID) | Yes | The project to upload into. |
 
 The `names` field should be a JSON-encoded string array: `["Contract v1", "Amendment A", "Invoice 42"]`.
 
@@ -743,9 +331,8 @@ If `names` is not provided, the `file.name` from each `File` object in the brows
 #### Processing
 
 1. `requireAuth()` -- return 401 if no session.
-2. Validate `project_id` is a valid UUID.
-3. **Role check:** user must be `admin` or `editor`. Return 403 if not.
-4. Validate at least one file is provided. Max 10 files per bulk request. Return 400 if exceeded.
+2. **Role check:** `requireTenantRole(user.id, ['owner', 'admin', 'editor'])`. Return 403 if not.
+3. Validate at least one file is provided. Max 10 files per bulk request. Return 400 if exceeded.
 5. For each file, **sequential processing**:
    a. Validate file type and size.
    b. `computeBinaryHash(buffer)`.
@@ -774,7 +361,7 @@ type BulkUploadResponse = BulkUploadResult;
 Example:
 ```json
 {
-  "project_id": "550e8400-...",
+  "tenant_id": "550e8400-...",
   "results": [
     {
       "status": "ok",
@@ -804,11 +391,9 @@ Example:
 |---|---|---|
 | 400 | `NO_FILES` | No files provided in the request |
 | 400 | `TOO_MANY_FILES` | More than 10 files in the request |
-| 400 | `MISSING_PROJECT_ID` | `project_id` missing |
-| 400 | `INVALID_PROJECT_ID` | `project_id` not a valid UUID |
 | 400 | `INVALID_NAMES` | `names` field is not valid JSON or not an array |
 | 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User does not have editor/admin role |
+| 403 | `FORBIDDEN` | User does not have editor/admin/owner role |
 | 500 | `DB_ERROR` | Postgres operation failed |
 
 Per-file error codes (inside `results[]`): `INVALID_FILE_TYPE`, `FILE_TOO_LARGE`, `STORAGE_ERROR`, `DB_ERROR`.
@@ -817,7 +402,7 @@ Per-file error codes (inside `results[]`): `INVALID_FILE_TYPE`, `FILE_TOO_LARGE`
 
 ### POST /api/compare
 
-Compare two documents. **Updated from P1:** Requires auth. Both documents must belong to the same project and the user must have access.
+Compare two documents. Requires auth. Both documents must belong to the same tenant and the user must have access.
 
 #### Request
 
@@ -836,7 +421,7 @@ type CompareRequest = {
 2. Validate both UUIDs. Return 400 `SAME_DOCUMENT` if equal.
 3. Fetch both document records. RLS ensures user has access to both.
 4. Return 404 if either is not found (includes "not accessible" cases).
-5. **Cross-project check (app layer):** Verify `docA.project_id === docB.project_id`. Return 400 `CROSS_PROJECT_COMPARE` if they differ. Cross-project comparison is not supported in P2.
+5. **Same-tenant check (app layer):** Verify `docA.tenant_id === docB.tenant_id`. Return 400 `CROSS_TENANT_COMPARE` if they differ.
 6. Run the three-step pipeline (identical to P1):
    - **Step 1:** Binary hash check.
    - **Step 2:** Text hash check.
@@ -878,7 +463,7 @@ Example (unchanged from P1):
 | 400 | `INVALID_DOC_A_ID` | `docAId` not a valid UUID |
 | 400 | `INVALID_DOC_B_ID` | `docBId` not a valid UUID |
 | 400 | `SAME_DOCUMENT` | `docAId` and `docBId` are identical |
-| 400 | `CROSS_PROJECT_COMPARE` | Documents belong to different projects (NEW in P2) |
+| 400 | `CROSS_TENANT_COMPARE` | Documents belong to different tenants |
 | 401 | `UNAUTHORIZED` | No valid session |
 | 404 | `DOC_A_NOT_FOUND` | Document A not found or not accessible |
 | 404 | `DOC_B_NOT_FOUND` | Document B not found or not accessible |
@@ -927,9 +512,9 @@ This trigger is included in the P2 migration (`20260621000001_p2_auth_rbac.sql`)
 
 - Files are uploaded using the **user-scoped** client (user's JWT, not the service-role key).
 - The bucket name is `pdf-uploads` (private).
-- The path format is `uploads/{UTC_year}/{project_id}/{uuid}.pdf`.
+- The path format is `uploads/{UTC_year}/{tenant_id}/{uuid}.pdf`.
 - Storage access remains server-side only. No signed URLs or public access.
-- The route handler enforces project membership before upload (as a gate before the RLS check).
+- The route handler enforces tenant membership before upload (as a gate before the RLS check).
 
 ---
 
@@ -948,12 +533,12 @@ No new environment variables are required for P2. The existing variables cover a
 
 ## P1 Baseline (Preserved)
 
-All P1 endpoint shapes and the core compare pipeline are preserved. The only P1 endpoints that change behaviour are:
+All P1 endpoint shapes and the core compare pipeline are preserved. The P1 endpoints that changed behaviour:
 
-- `POST /api/documents` -- adds `project_id` form field and auth.
-- `GET /api/documents` -- `project_id` becomes a required query parameter.
+- `POST /api/documents` -- adds auth and tenant-level role check.
+- `GET /api/documents` -- adds auth (RLS enforces access via tenant scoping).
 - `GET /api/documents/[id]` -- adds auth (RLS enforces access).
-- `POST /api/compare` -- adds auth and cross-project validation.
+- `POST /api/compare` -- adds auth and same-tenant validation.
 
 All other P1 error codes, the CompareResult shape, and the AI prompt contract remain identical.
 
@@ -1055,7 +640,7 @@ type AnchorRequest = {
 4. Return 404 `NOT_FOUND` if the document does not exist or the user cannot access it.
 5. Return 410 `DOCUMENT_DELETED` if `deleted_at IS NOT NULL` (soft-deleted documents cannot be anchored).
 6. Return 409 `ALREADY_ANCHORED` if `document.fingerprint IS NOT NULL`. A document can only be anchored once.
-7. **Role check:** Query `project_members` for the user's role in the document's project. Return 403 `FORBIDDEN` if the role is not `admin` or `editor`.
+7. **Role check:** `requireTenantRole(user.id, ['owner', 'admin', 'editor'])`. Return 403 `FORBIDDEN` if insufficient.
 8. Call `computeFingerprint(document.binary_hash, document.text_hash)` from `lib/anchor.ts` to produce the fingerprint.
 9. Call `getAnchorService()` to obtain the configured `AnchorService` instance.
 10. Call `anchorService.anchor(fingerprint)` to send the on-chain transaction.
@@ -1112,7 +697,7 @@ Example:
 |---|---|---|
 | 400 | `INVALID_DOCUMENT_ID` | `documentId` is not a valid UUID |
 | 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User is not an admin or editor of the document's project |
+| 403 | `FORBIDDEN` | User does not have editor/admin/owner role |
 | 404 | `NOT_FOUND` | Document does not exist or user cannot access it |
 | 409 | `ALREADY_ANCHORED` | Document has already been anchored (`fingerprint IS NOT NULL`) |
 | 410 | `DOCUMENT_DELETED` | Document has been soft-deleted (`deleted_at IS NOT NULL`) |
@@ -1205,7 +790,7 @@ Example (hash mismatch -- tampering detected):
 | 500 | `DB_ERROR` | Postgres query failed |
 | 500 | `ANCHOR_RPC_ERROR` | Anchor RPC is unreachable (verify call failed) |
 
-**Note:** Verify never returns 403 for viewers. All project members (including viewers) can verify document integrity. Verification is a read-only operation that poses no risk.
+**Note:** Verify never returns 403 for viewers. All tenant members (including viewers) can verify document integrity. Verification is a read-only operation that poses no risk.
 
 ---
 
@@ -1228,10 +813,10 @@ These are in addition to the P2 environment variables (`NEXT_PUBLIC_SUPABASE_URL
 |---|---|---|---|---|
 | `POST` | `/api/assistant/ingest` | Yes | editor/admin | Ingest document(s) into vector store |
 | `POST` | `/api/assistant/chat` | Yes | member | Send a chat message (streaming SSE response) |
-| `GET` | `/api/assistant/sessions` | Yes | member | List chat sessions for a project |
-| `GET` | `/api/assistant/sessions/[id]` | Yes | owner | Get chat session with messages |
-| `DELETE` | `/api/assistant/sessions/[id]` | Yes | owner | Delete a chat session |
-| `GET` | `/api/assistant/sessions/[id]/messages` | Yes | owner | Get messages for a session |
+| `GET` | `/api/assistant/sessions` | Yes | viewer+ | List chat sessions for the user's tenant |
+| `GET` | `/api/assistant/sessions/[id]` | Yes | viewer+ | Get chat session with messages |
+| `DELETE` | `/api/assistant/sessions/[id]` | Yes | viewer+ | Delete a chat session (own session only) |
+| `GET` | `/api/assistant/sessions/[id]/messages` | Yes | viewer+ | Get messages for a session |
 
 ---
 
@@ -1243,7 +828,7 @@ These are in addition to the P2 environment variables (`NEXT_PUBLIC_SUPABASE_URL
 type DocumentChunk = {
   id: string;            // UUID
   document_id: string;   // UUID of source document
-  project_id: string;    // UUID of project
+  tenant_id: string;     // UUID of tenant
   chunk_index: number;   // 0-based position in document
   content: string;       // chunk text
   token_count: number;   // approximate token count
@@ -1254,7 +839,7 @@ type DocumentChunk = {
 
 type ChatSession = {
   id: string;            // UUID
-  project_id: string;    // UUID
+  tenant_id: string;     // UUID
   user_id: string;       // UUID of auth.users
   title: string;         // display title
   created_at: string;    // ISO 8601 UTC
@@ -1296,7 +881,7 @@ type IngestResponse = {
 
 type ChatRequest = {
   sessionId?: string;      // existing session UUID, or omit to create new
-  projectId: string;       // project context for RAG
+  tenantId: string;        // tenant context for RAG
   message: string;         // user's question
 };
 
@@ -1335,7 +920,7 @@ type IngestRequest = {
    a. Fetch the document from `documents`. RLS ensures user has access.
    b. Return per-document error if not found/accessible.
    c. Check if chunks already exist for this document. If yes, skip (idempotent).
-   d. **Role check:** user must be `admin` or `editor` of the document's project.
+   d. **Role check:** `requireTenantRole(user.id, ['owner', 'admin', 'editor'])`. Return 403 if insufficient.
    e. Call `chunkDocument(document)` to split `extracted_text` into overlapping chunks.
    f. For each chunk, call `generateEmbedding(chunk)` via OpenAI API.
    g. Insert chunks into `document_chunks` (user-scoped client, RLS-enforced).
@@ -1377,7 +962,7 @@ Send a chat message and receive a streaming SSE response. This is the core RAG e
 ```ts
 type ChatRequest = {
   sessionId?: string;    // existing session UUID; omit to create a new session
-  projectId: string;     // project context for RAG (required)
+  tenantId: string;      // tenant context for RAG (required)
   message: string;       // user's question (1-4000 characters)
 };
 ```
@@ -1385,16 +970,16 @@ type ChatRequest = {
 #### Processing
 
 1. `requireAuth()` — return 401 if no session.
-2. Validate `projectId` is a valid UUID. Validate `message` is non-empty, <= 4000 chars.
-3. Verify user is a member of the project. Return 403 if not.
+2. Validate `tenantId` is a valid UUID. Validate `message` is non-empty, <= 4000 chars.
+3. Verify user belongs to the tenant. Return 403 if not.
 4. **Session resolution:**
    - If `sessionId` provided: fetch session, verify it belongs to the user. Return 404 if not found.
    - If no `sessionId`: create a new `chat_sessions` row with `title = message.slice(0, 100)`.
 5. Insert the user message into `chat_messages`.
 6. **RAG pipeline:**
    a. Generate embedding for the user's message via OpenAI.
-   b. Query `document_chunks` where `project_id = projectId`, ordered by `embedding <=> queryEmbedding` (cosine distance), LIMIT 5.
-   c. If no chunks found (project has no ingested documents): return a plain chat response (no context).
+   b. Query `document_chunks` where `tenant_id = tenantId`, ordered by `embedding <=> queryEmbedding` (cosine distance), LIMIT 5.
+   c. If no chunks found (tenant has no ingested documents): return a plain chat response (no context).
 7. **Build RAG prompt:**
    - System: "You are TrustVault AI Assistant. Answer questions based on the provided document excerpts. Cite sources when possible. If the answer cannot be found in the excerpts, say so honestly."
    - User prompt: context chunks + conversation history (last 10 messages) + current question.
@@ -1437,11 +1022,11 @@ data: {"sessionId":"...","messageId":"..."}
 
 | Status | `code` | Condition |
 |---|---|---|
-| 400 | `MISSING_PROJECT_ID` | `projectId` missing or not a valid UUID |
+| 400 | `MISSING_TENANT_ID` | `tenantId` missing or not a valid UUID |
 | 400 | `MISSING_MESSAGE` | `message` missing or empty |
 | 400 | `MESSAGE_TOO_LONG` | `message` > 4000 characters |
 | 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User is not a member of the project |
+| 403 | `FORBIDDEN` | User does not belong to the tenant |
 | 404 | `SESSION_NOT_FOUND` | `sessionId` provided but not found or not owned by user |
 | 500 | `EMBEDDING_ERROR` | OpenAI embedding API call failed |
 | 500 | `AI_API_ERROR` | DeepSeek API call failed |
@@ -1451,23 +1036,18 @@ data: {"sessionId":"...","messageId":"..."}
 
 ### GET /api/assistant/sessions
 
-List chat sessions for a project. Returns sessions ordered by `updated_at` descending (most recent first). Only returns sessions owned by the current user.
+List chat sessions for the current user's tenant. Returns sessions ordered by `updated_at` descending (most recent first). Only returns sessions owned by the current user.
 
 #### Request
 
-`Content-Type: none` (GET with query parameters)
-
-| Query param | Type | Required | Description |
-|---|---|---|---|
-| `project_id` | string (UUID) | Yes | Project to list sessions for |
+`Content-Type: none` (GET)
 
 #### Processing
 
 1. `requireAuth()` — return 401 if no session.
-2. Validate `project_id` is a valid UUID.
-3. Verify user is a member of the project. Return 403 if not.
-4. Query `chat_sessions` where `project_id = :project_id AND user_id = :userId`, ordered by `updated_at DESC`.
-5. Return the list.
+2. Get user's `tenant_id` from `profiles`.
+3. Query `chat_sessions` where `tenant_id = :tenantId AND user_id = :userId`, ordered by `updated_at DESC`.
+4. Return the list.
 
 #### Response -- 200 OK
 
@@ -1481,9 +1061,7 @@ type ListSessionsResponse = {
 
 | Status | `code` | Condition |
 |---|---|---|
-| 400 | `MISSING_PROJECT_ID` | `project_id` missing or not a valid UUID |
 | 401 | `UNAUTHORIZED` | No valid session |
-| 403 | `FORBIDDEN` | User is not a member of the project |
 | 500 | `DB_ERROR` | Postgres query failed |
 
 ---

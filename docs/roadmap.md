@@ -21,10 +21,10 @@
 - Supabase Auth (email/password) + `@supabase/ssr` cookie-based sessions.
 - `middleware.ts` refreshes sessions; `requireAuth()` gates all API routes.
 - Row Level Security enabled on all tables (permissive policies — app layer enforces isolation).
-- Roles: admin / editor / viewer via `project_members` table.
-- Projects/workspaces: organize documents into projects; create/list/manage members.
+- Roles: owner / admin / editor / viewer via `profiles.role` column.
+- Label organisation: tag and filter documents using labels instead of project folders.
 - Bulk upload: multi-file sequential processing, independent per-file error reporting.
-- Tenant isolation: `tenant_id` scoping, cross-project compare blocked.
+- Tenant isolation: `tenant_id` scoping, RLS enforced.
 - Storage bucket: private, service_role access for uploads.
 - **Tests:** 174. **Files:** ~60. **Migrations:** 2.
 
@@ -35,7 +35,7 @@
 - Multi-format text extraction: `unpdf` (PDF), `mammoth` (DOCX), `xlsx` (XLSX), direct decode (text),
   structural extraction (RTF/ODT/DOC).
 - Dashboard with sidebar layout: Dashboard (stats + recent documents), My Vault (searchable/filterable),
-  Projects (workspace management), Settings (profile/password/tenant/members).
+  Labels (document organisation), Settings (profile/password/tenant/members).
 - Compare flow overhaul: modal-based compare with drag-and-drop ephemeral file upload.
   Uploaded file never persisted — in-memory only.
 - Document preview modal: full-screen iframe renderer for PDF/images, extracted text for others.
@@ -50,10 +50,10 @@
 - Soft delete: PATCH /api/documents/:id — removes file from storage, preserves hashes and metadata.
   Row appears grayed out with "Deleted" badge. Delete button disabled. Can restore (but file must be re-uploaded).
 - Audit trail: `uploaded_by` and `deleted_by` columns track who uploaded and who deleted each document.
-- File preview endpoint: GET /api/documents/:id/file — serves raw file with auth + project membership check.
+- File preview endpoint: GET /api/documents/:id/file — serves raw file with auth + tenant membership check.
   Returns 410 Gone for soft-deleted documents.
 - Show/Hide deleted toggle in vault filter bar.
-- UI polish: consistent deleted-document styling across vault grid, vault table, and project detail.
+- UI polish: consistent deleted-document styling across vault grid and vault table.
   Line-through name, muted background, "Deleted" badge.
 - Confirm dialog (modal) for delete/restore actions. Toast notifications for success.
 - Sortable table headers in vault and dashboard pages (Name, Type, Size, Date).
@@ -86,7 +86,7 @@ Generation).
 - RAG architecture: query → retrieve relevant chunks → prompt LLM with context → response.
 - Source citations: every answer links back to the specific documents and chunks used.
 - Streaming responses: real-time token-by-token output.
-- Session history: persist chat history per project.
+- Session history: persist chat history per tenant.
 - Access control: only search documents the user has permission to view.
 - Degraded mode: fallback to basic search if embedding/vector store is unavailable.
 

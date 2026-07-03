@@ -12,7 +12,7 @@ Upload new version → Compare Hashes → AI Analysis → MATERIAL / NOT MATERIA
 Anchor fingerprint on-chain → Verify integrity anytime
 ```
 
-- **14 file formats** · **3-step hashing pipeline** · **Blockchain anchoring** · **Soft delete with audit trail** · **Multi-tenant RBAC** · **Dark mode** · **481 tests**
+- **14 file formats** · **3-step hashing pipeline** · **Blockchain anchoring** · **Soft delete with audit trail** · **Tenant-level RBAC** · **Dark mode** · **481 tests**
 
 ## Prerequisites
 

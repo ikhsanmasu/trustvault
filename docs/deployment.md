@@ -81,7 +81,7 @@ supabase db reset
 
 This applies all SQL files in `supabase/migrations/` in order:
 1. `20260621000000_init.sql` (P1: documents table + storage bucket)
-2. `20260621000001_p2_auth_rbac.sql` (P2: tenants, profiles, projects, project_members, RLS policies, trigger)
+2. `20260621000001_p2_auth_rbac.sql` (P2: tenants, profiles, RLS policies, trigger)
 3. `20260621000002_p3_multiformat.sql` (P3: multi-format file_type column, storage RLS)
 4. `20260621000003_p4_soft_delete.sql` (P4: soft delete, deleted_at/deleted_by columns)
 
@@ -121,7 +121,7 @@ supabase db reset   # wipes and replays all migrations
 supabase/
   migrations/
     20260621000000_init.sql            ← P1: create documents table + bucket (DO NOT EDIT)
-    20260621000001_p2_auth_rbac.sql    ← P2: tenants, profiles, projects, project_members,
+    20260621000001_p2_auth_rbac.sql    ← P2: tenants, profiles,
                                           update documents, RLS policies, auth trigger
     20260621000002_p3_multiformat.sql  ← P3: multi-format support, file_type column,
                                           storage RLS policy update
@@ -146,10 +146,10 @@ supabase/
 - [ ] Run `supabase db push` with the production connection string, or verify Supabase GitHub auto-deploy applied migrations (Settings → Integrations → GitHub → Run History).
 - [ ] Verify new P4 columns exist on `documents` table: `deleted_at timestamptz NULL`, `deleted_by uuid NULL`.
 - [ ] Verify the `documents_deleted_at_idx` index exists.
-- [ ] Verify existing tables still intact: `tenants`, `profiles`, `projects`, `project_members`.
+- [ ] Verify existing tables still intact: `tenants`, `profiles`.
 - [ ] Verify RLS is enabled on all tables (check Supabase Dashboard > Authentication > Policies).
 - [ ] Verify the `on_auth_user_created` trigger exists in the Database > Triggers section.
-- [ ] Verify existing `documents` rows (if any) were backfilled with NOT NULL tenant_id and project_id.
+- [ ] Verify existing `documents` rows (if any) were backfilled with NOT NULL tenant_id.
 
 ---
 
@@ -276,7 +276,7 @@ On every `push` and `pull_request` to `main` or `dev`:
 P4 has 408 tests across 5 test files. P5 adds a sixth test file:
 - `lib/core.test.ts` (160 tests): Pure functions for hashing, text extraction, schema.
 - `tests/eval/eval.test.ts` (11 tests): AI materiality eval contracts.
-- `tests/eval/p2-eval.test.ts` (64 tests): P2 RBAC, auth, profiles, projects contracts.
+- `tests/eval/p2-eval.test.ts` (64 tests): P2 RBAC, auth, profiles contracts.
 - `tests/eval/p3-eval.test.ts` (109 tests): P3 multi-format, dashboard, profile, tenant contracts.
 - `tests/eval/p4-eval.test.ts` (64 tests): P4 soft delete, restore, RLS, storage cleanup contracts.
 - `tests/eval/p5-eval.test.ts` (P5): Blockchain anchoring, fingerprint computation, anchor/verify flows.
@@ -372,7 +372,7 @@ This applies all P1-P4 migrations.
 3. **Configure Supabase Auth** (Section 5): Set Site URL and Redirect URLs in the Supabase Dashboard.
 4. **Set Vercel environment variables** (Section 8).
 5. **Push to main** to trigger Vercel deploy (CI validates migrations, then Vercel deploys).
-6. **Verify:** Sign up a test user, create a project, upload a document, trigger a compare, soft-delete and restore a document.
+6. **Verify:** Sign up a test user, upload a document, trigger a compare, soft-delete and restore a document.
 
 **Never deploy the application before migrating the database** -- the P4 application expects `documents.deleted_at` and `documents.deleted_by` columns to exist, and the soft-delete/restore endpoints will fail without them.
 
@@ -389,10 +389,10 @@ Performed once when creating the production environment. Not repeated per deploy
 
 - [ ] Create Supabase project at supabase.com.
 - [ ] Set up Supabase GitHub auto-deploy (Section 4a) and verify migrations apply, or run `supabase db push` with the production connection string (applies all P1-P4 migrations).
-- [ ] **Verify RLS is enabled** on all tables: `tenants`, `profiles`, `projects`, `project_members`, `documents`. Check **Authentication > Policies** in the Supabase Dashboard.
+- [ ] **Verify RLS is enabled** on all tables: `tenants`, `profiles`, `documents`. Check **Authentication > Policies** in the Supabase Dashboard.
 - [ ] **Verify the `on_auth_user_created` trigger** exists (Database > Triggers).
 - [ ] **Configure Auth settings:** Site URL and Redirect URLs (Section 5).
-- [ ] Verify the `documents` table has P2-P4 columns: `tenant_id` NOT NULL, `project_id` NOT NULL, `uploaded_by` NOT NULL, `file_type`, `deleted_at`, `deleted_by`.
+- [ ] Verify the `documents` table has P2-P4 columns: `tenant_id` NOT NULL, `uploaded_by` NOT NULL, `file_type`, `deleted_at`, `deleted_by`.
 - [ ] Verify the `documents_deleted_at_idx` index exists.
 - [ ] Verify the `pdf-uploads` storage bucket is created with `public = false`.
 - [ ] Copy the production Supabase URL, anon key, and service-role key into Vercel environment variables.

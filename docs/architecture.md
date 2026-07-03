@@ -8,7 +8,7 @@ None for P5. All interfaces are fully specified below.
 
 ## 1. System Overview
 
-TrustVault is a multi-tenant document-integrity platform. In P2 it adds **Supabase Auth for authentication**, **Row Level Security (RLS) for tenant isolation**, **project-based document organisation**, and **role-based access control (admin/editor/viewer)** at the project level. The deployment is still a **Next.js monolith** -- the same application serves both the React UI and all API route handlers.
+TrustVault is a multi-tenant document-integrity platform. It adds **Supabase Auth for authentication**, **Row Level Security (RLS) for tenant isolation**, and **tenant-level role-based access control (owner/admin/editor/viewer)** via `profiles.role`. The deployment is a **Next.js monolith** -- the same application serves both the React UI and all API route handlers.
 
 ```
                               ┌─────────────────────┐
@@ -19,11 +19,11 @@ TrustVault is a multi-tenant document-integrity platform. In P2 it adds **Supaba
                                          ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           Browser (React)                               │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌─────────────┐ │
-│  │ Auth     │ │ Projects │ │ Upload   │ │ Doc List  │ │ Compare     │ │
-│  │ (login/  │ │ CRUD     │ │ (single/ │ │ (search/  │ │ View        │ │
-│  │  signup) │ │          │ │  bulk)   │ │  paginate)│ │             │ │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────┬──────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌─────────────┐ │
+│  │ Auth     │ │ Upload   │ │ Doc List  │ │ Compare     │ │
+│  │ (login/  │ │ (single/ │ │ (search/  │ │ View        │ │
+│  │  signup) │ │  bulk)   │ │  paginate)│ │             │ │
+│  └────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────┬──────┘ │
 └───────┼────────────┼────────────┼───────────┼──────────────┼──────────┘
         │            │            │           │              │
         │     Supabase JS client (browser)     │              │
@@ -39,21 +39,16 @@ TrustVault is a multi-tenant document-integrity platform. In P2 it adds **Supaba
 │  lib/supabase/client.ts ──── client factory (user-scoped + service-role)│
 │                                                                         │
 │  app/api/profile/route.ts          GET   /api/profile                  │
-│  app/api/projects/route.ts         POST  /api/projects                 │
-│                                    GET   /api/projects                 │
-│  app/api/projects/[id]/route.ts    GET   /api/projects/:id             │
-│                                    PATCH /api/projects/:id             │
-│                                    DELETE /api/projects/:id            │
-│  app/api/projects/[id]/members/route.ts  GET    /api/projects/:id/members │
-│                                          POST   /api/projects/:id/members │
-│  app/api/projects/[id]/members/[userId]/route.ts                        │
-│                                    PATCH  /api/projects/:id/members/:uid│
-│                                    DELETE /api/projects/:id/members/:uid│
+│  app/api/tenant/members/route.ts   GET   /api/tenant/members           │
+│  app/api/tenant/invite/route.ts    POST  /api/tenant/invite            │
+│  app/api/tenant/join/route.ts      GET   /api/tenant/join              │
 │  app/api/documents/route.ts       POST  /api/documents                 │
 │                                   GET   /api/documents                 │
 │  app/api/documents/bulk/route.ts  POST  /api/documents/bulk            │
 │  app/api/documents/[id]/route.ts  GET   /api/documents/:id             │
 │  app/api/compare/route.ts         POST  /api/compare                   │
+│  app/api/anchor/route.ts          POST  /api/anchor                    │
+│  app/api/verify/route.ts          POST  /api/verify                    │
 └──────────────────┬──────────────────────┬──────────────────────────────┘
                    │                      │
           ┌────────▼────────┐    ┌────────▼────────────┐
@@ -118,7 +113,7 @@ If no user -> 401. If user -> continue with user-scoped Supabase client.
   |
   v
 All DB queries go through the user-scoped client.
-RLS policies on Postgres use auth.uid() to enforce tenant/project access.
+RLS policies on Postgres use auth.uid() to enforce tenant access.
 ```
 
 **Key architectural rules:**
@@ -174,45 +169,42 @@ The middleware does **NOT**:
 
 ### 3d. Tenant Isolation Architecture
 
-**Hierarchy:** Tenant -> Project -> Document
+**Hierarchy:** Tenant -> Document
 
 ```
 tenants
-  └── projects
-       └── project_members (RBAC: user + role)
-       └── documents
+  └── documents
 ```
 
 - A user belongs to exactly one tenant (stored in `profiles.tenant_id`).
-- A project belongs to exactly one tenant.
-- A document belongs to exactly one project (and carries `tenant_id` as a denormalised column for RLS efficiency).
-- A user's access to a project is governed by their `project_members` row, which includes a role.
+- A document belongs to exactly one tenant (via `documents.tenant_id`).
+- A user's access to documents is governed by their tenant membership and `profiles.role`.
 - RLS policies on `documents` filter by tenant_id: a user can only see documents in their tenant.
-- RLS policies on `projects` filter by project membership.
-- RLS policies on `project_members` filter by the user's own membership.
+- Documents are organised via labels (see P14 label management).
 
-**Why `tenant_id` on documents when it is derivable from project_id:** RLS policies are evaluated per-row. Joining through `projects` on every document query adds a runtime cost. Denormalising `tenant_id` onto `documents` allows a single-column RLS check: `tenant_id = (current_user_tenant_id)`. This is set at insert time and never changes.
+**Why `tenant_id` on documents:** RLS policies are evaluated per-row. The `tenant_id` column allows a single-column RLS check: `tenant_id = (current_user_tenant_id)`. This is set at insert time and never changes.
 
-**Isolation guarantee:** Even if a route handler has a bug that forgets to filter by project, RLS at the Postgres level prevents any cross-tenant data leakage. Defence in depth: application-level checks + database-level RLS.
+**Isolation guarantee:** Even if a route handler has a bug that forgets to filter by tenant, RLS at the Postgres level prevents any cross-tenant data leakage. Defence in depth: application-level checks + database-level RLS.
 
 ### 3e. RBAC Architecture
 
-Three roles defined at the project level (via `project_members.role`):
+Four roles defined at the tenant level (via `profiles.role`):
 
 | Role | Permissions |
 |---|---|
-| **admin** | Full CRUD on the project. Add/remove members. Delete the project. Upload documents. Trigger compare. |
-| **editor** | Upload documents to the project. Trigger compare on documents in the project. Cannot manage members or delete the project. |
-| **viewer** | View project details and document list. View document metadata and extracted text. Trigger compare on documents (read-only operation). Cannot upload. |
+| **owner** | Full CRUD on the tenant. Manage members (invite, remove, change roles). Delete the tenant. Upload documents. Trigger compare. Anchor documents. |
+| **admin** | Full CRUD on tenant resources. Manage members except owner. Cannot delete the tenant. |
+| **editor** | Upload documents, soft-delete, trigger compare, anchor documents, manage labels. Cannot manage members. |
+| **viewer** | View documents, trigger compare, verify documents. Read-only access. |
 
 **Enforcement layers:**
-1. **Route handler** checks the user's role before write operations (returns 403 for unauthorised).
+1. **Route handler** checks the user's role via `requireTenantRole(userId, allowedRoles)` before write operations (returns 403 for unauthorised).
 2. **RLS policies** on Postgres enforce role checks at the database layer as a second line of defence.
 3. **UI** hides actions the user cannot perform (UX, not security).
 
 **Role resolution** in a route handler:
 1. Get the user's session (JWT -> `auth.uid()`).
-2. Query `project_members` for the user's role in the target project.
+2. Query `profiles` for the user's `role` and `tenant_id`.
 3. Check the required role for the operation.
 4. If insufficient, return 403.
 
@@ -222,17 +214,18 @@ Three roles defined at the project level (via `project_members.role`):
 
 ### 4a. P2 Upload Flow (single document)
 
-Adds auth check and project scoping. Otherwise identical to P1.
+Adds auth check and tenant scoping. Otherwise identical to P1.
 
 ```
 Browser (authenticated)    API: POST /api/documents       lib/core.ts        Supabase
   |                                |                          |                 |
   |-- multipart/form-data -------->|                          |                 |
-  |   (file, name, project_id)     |                          |                 |
+  |   (file, name)                 |                          |                 |
   |                                |-- requireAuth() -------->| (cookie)        |
   |                                |<-- user (or 401)  -------|                 |
-  |                                |-- check project role ---->| (project_members)|
-  |                                |<-- editor/admin (or 403)- |                 |
+  |                                |-- requireTenantRole ----->| (profiles)      |
+  |                                |<-- owner/admin/editor     |                 |
+  |                                |   (or 403)               |                 |
   |                                |-- computeBinaryHash() --->|                 |
   |                                |<-- binaryHash ------------|                 |
   |                                |-- extractPdfText() ------>|                 |
@@ -242,7 +235,7 @@ Browser (authenticated)    API: POST /api/documents       lib/core.ts        Sup
   |                                |-- Storage.upload(file) ---------------->|  (user-scoped)
   |                                |<-- storagePath --------------------------|
   |                                |-- INSERT documents --------------------->|  (user-scoped + RLS)
-  |                                |   (tenant_id from user, project_id from req)|
+  |                                |   (tenant_id from user)                  |
   |                                |<-- document record -----------------------|
   |<-- 201 { document } -----------|                          |                 |
 ```
@@ -253,9 +246,8 @@ Browser (authenticated)    API: POST /api/documents       lib/core.ts        Sup
 Browser (authenticated)    API: POST /api/documents/bulk   lib/core.ts        Supabase
   |                                |                          |                 |
   |-- multipart/form-data -------->|                          |                 |
-  |   (files[], names[],           |                          |                 |
-  |    project_id)                 |                          |                 |
-  |                                |-- requireAuth() + role check               |
+  |   (files[], names[])           |                          |                 |
+  |                                |-- requireAuth() + requireTenantRole()      |
   |                                |                          |                 |
   |    For each file (sequential): |                          |                 |
   |      -- computeBinaryHash ----->|                          |                 |
@@ -273,7 +265,7 @@ Browser (authenticated)    API: POST /api/documents/bulk   lib/core.ts        Su
 
 ### 4c. Compare Flow
 
-Identical pipeline to P1 with one addition: both document IDs are checked for user access before comparison. RLS on the documents query automatically excludes inaccessible documents. The route handler additionally checks that both documents belong to the same project as a business rule (cross-project comparison is not supported in P2).
+Identical pipeline to P1 with one addition: both document IDs are checked for user access before comparison. RLS on the documents query automatically excludes inaccessible documents. The route handler additionally checks that both documents belong to the same tenant (cross-tenant comparison is not supported).
 
 ---
 
@@ -285,14 +277,14 @@ Identical pipeline to P1 with one addition: both document IDs are checked for us
 **Unchanged.** Pure functions. P2 adds no logic here.
 
 #### `app/api/documents/route.ts`
-- `POST` -- **Updated:** Requires auth. Accepts `project_id` in form data. Checks user has editor/admin role in project. Sets `tenant_id` from user's profile and `project_id` from request before insert. Uses user-scoped Supabase client.
-- `GET` -- **Updated:** Requires auth. Filters by `project_id` query parameter (required). Returns only documents the user is authorised to see (RLS-enforced).
+- `POST` -- **Updated:** Requires auth. Checks user has editor/admin/owner role via `requireTenantRole()`. Sets `tenant_id` from user's profile before insert. Uses user-scoped Supabase client.
+- `GET` -- **Updated:** Requires auth. Filters by user's `tenant_id`. Returns only documents the user is authorised to see (RLS-enforced).
 
 #### `app/api/documents/[id]/route.ts`
 - `GET` -- **Updated:** Requires auth. RLS enforces access.
 
 #### `app/api/compare/route.ts`
-- `POST` -- **Updated:** Requires auth. Verifies user has access to both documents (RLS-enforced). Additionally checks both documents belong to the same project.
+- `POST` -- **Updated:** Requires auth. Verifies user has access to both documents (RLS-enforced). Additionally checks both documents belong to the same tenant.
 
 ### New (P2)
 
@@ -307,35 +299,27 @@ Exports two factory functions:
 #### `lib/auth.ts`
 Auth utility functions:
 - `requireAuth(request)` -- wraps `createRouteHandlerClient`, returns user or sends 401 response.
-- `requireProjectRole(userId, projectId, minRole)` -- checks `project_members` for the user's role in the project, returns the role or sends 403.
+- `requireTenantRole(userId, allowedRoles)` -- checks `profiles.role` for the user's tenant-level role, returns the role and tenant_id or sends 403.
 - `getUserTenantId(userId)` -- returns the user's `tenant_id` from `profiles`.
 
 #### `lib/types.ts`
 TypeScript type definitions shared across the backend:
-- `Document` (updated with non-nullable tenant_id, project_id).
-- `Project`, `ProjectMember`, `Profile`, `CompareResult` (unchanged).
+- `Document` (with non-nullable tenant_id).
+- `Profile`, `CompareResult` (unchanged).
 - `BulkUploadResult`
-- `Role = 'admin' | 'editor' | 'viewer'`
+- `TenantRole = 'owner' | 'admin' | 'editor' | 'viewer'`
 
 #### `app/api/profile/route.ts`
-- `GET` -- returns the current user's profile (`id`, `display_name`, `tenant_id`, `created_at`).
+- `GET` -- returns the current user's profile (`id`, `display_name`, `tenant_id`, `role`, `created_at`).
 
-#### `app/api/projects/route.ts`
-- `POST` -- create a project. User automatically becomes an admin member.
-- `GET` -- list projects the user is a member of.
+#### `app/api/tenant/members/route.ts`
+- `GET` -- list members of the tenant (admin/owner only).
 
-#### `app/api/projects/[id]/route.ts`
-- `GET` -- get project details.
-- `PATCH` -- update project name/description (admin only).
-- `DELETE` -- delete project (admin only).
+#### `app/api/tenant/invite/route.ts`
+- `POST` -- invite a new member to the tenant (admin/owner only).
 
-#### `app/api/projects/[id]/members/route.ts`
-- `GET` -- list members of the project.
-- `POST` -- add a member to the project (admin only).
-
-#### `app/api/projects/[id]/members/[userId]/route.ts`
-- `PATCH` -- update a member's role (admin only).
-- `DELETE` -- remove a member from the project (admin only).
+#### `app/api/tenant/join/route.ts`
+- `GET` -- accept an invitation to join a tenant (any authenticated user).
 
 #### `app/api/documents/bulk/route.ts`
 - `POST` -- bulk upload (see Section 4b).
@@ -344,10 +328,10 @@ TypeScript type definitions shared across the backend:
 
 The frontend adds:
 - Auth pages (login, signup) -- use Supabase browser client directly.
-- Project list page and project detail page.
-- Document list scoped to a project.
-- Per-document "Compare" button that opens a document selector within the same project.
+- Document list scoped to the user's tenant.
+- Per-document "Compare" button that opens a document selector within the same tenant.
 - Bulk upload UI (multi-file input).
+- Tenant members management screen with role badges, invite form, and pending invitations.
 - Auth guard: if no session, redirect to login.
 
 ---
@@ -357,7 +341,7 @@ The frontend adds:
 | Choice | Rationale |
 |---|---|
 | `@supabase/ssr` | Official Supabase package for Next.js App Router. Manages auth cookies server-side and client-side. Required for P2 auth. |
-| Supabase Auth (email/password) | Built into Supabase. No separate auth service to manage. Users and sessions live in the same project as data. |
+| Supabase Auth (email/password) | Built into Supabase. No separate auth service to manage. Users and sessions live in the same platform as data. |
 | RLS (Postgres) | Defence-in-depth for tenant isolation. Even if application code has a filtering bug, Postgres rejects cross-tenant reads. |
 | Cookie-based sessions | HTTP-only, Secure, SameSite=Lax cookies managed by `@supabase/ssr`. No access tokens exposed to JavaScript. |
 | All other P1 choices | Unchanged. |
@@ -366,7 +350,7 @@ The frontend adds:
 
 ## 7. P1 Baseline (Preserved)
 
-All P1 architecture described in the original document remains valid. The core pipeline, module layout for `lib/core.ts`, technology stack (Next.js, TypeScript, Supabase, DeepSeek, Zod, Vitest), and deployment model (Vercel) are unchanged. P2 adds authentication, tenant isolation, projects, and bulk upload on top of this baseline.
+All P1 architecture described in the original document remains valid. The core pipeline, module layout for `lib/core.ts`, technology stack (Next.js, TypeScript, Supabase, DeepSeek, Zod, Vitest), and deployment model (Vercel) are unchanged. P2 adds authentication, tenant isolation, and bulk upload on top of this baseline.
 
 ---
 
@@ -381,9 +365,9 @@ All P1 architecture described in the original document remains valid. The core p
 ## 9. Out of Scope for P2
 
 - OAuth providers (email/password only)
-- Per-document RBAC (roles are at project level only)
-- Cross-project document comparison
-- Document deletion (P1 had none, P2 adds project deletion but not document deletion)
+- Per-document RBAC (roles are at tenant level)
+- Cross-tenant document comparison
+- Document deletion (P1 had none, P2 adds soft delete in P4)
 - Rate limiting on API routes (left to deployment layer)
 - Audit logging of user actions
 - OCR / scanned document support (beyond P1 scope)
@@ -399,7 +383,7 @@ Build sequence for P2 -- must run in this order:
 | 0 | `scaffold` | `docs/architecture.md` (Section 5 for module map, note `@supabase/ssr` dependency), `CLAUDE.md` (stack) | **Sequential, alone.** Updates the shared project skeleton: adds `@supabase/ssr` dependency, creates/updates `middleware.ts`, ensures auth-related env vars are in `.env.local` template. |
 | 1 | `database` | `docs/database.md` -> create `supabase/migrations/` for P2 tables, RLS policies | **Parallel** with backend + frontend (after scaffold done) |
 | 1 | `backend` | `docs/api-spec.md` + `docs/database.md` + `docs/architecture.md` -> implement `lib/auth.ts`, `lib/supabase/client.ts`, `lib/types.ts` updates, all P2 route handlers, update P1 handlers for auth | **Parallel** with database + frontend |
-| 1 | `frontend` | `docs/api-spec.md` + `docs/architecture.md` -> build auth pages, project CRUD UI, project-scoped document list, bulk upload UI, per-document compare | **Parallel** with database + backend |
+| 1 | `frontend` | `docs/api-spec.md` + `docs/architecture.md` -> build auth pages, tenant-scoped document list, bulk upload UI, per-document compare, tenant members management | **Parallel** with database + backend |
 | 2 | `qa` | `docs/roadmap.md` P2 acceptance criteria -> verify, write tests, evaluate auth flows | **Sequential** after build (gate) |
 | 2 | `security` | `docs/security.md` -> audit auth, RLS, tenant isolation | **Sequential** after build (gate, read-only) |
 | 3 | `deployment` | `docs/deployment.md` -> update CI config, Vercel env vars, Supabase Auth configuration | **Last**, after gates pass |
@@ -564,14 +548,14 @@ Browser (authenticated)    API: POST /api/verify       lib/anchor.ts       Smart
 - `createSigner(privateKey)` -- wraps `privateKeyToAccount` from viem. **TODO (prod): replace with KMS.**
 
 **`app/api/anchor/route.ts`** -- `POST /api/anchor`:
-- Requires auth + project membership (same pattern as existing endpoints).
+- Requires auth + tenant membership (same pattern as existing endpoints).
 - Fetches document by ID.
 - Returns 409 if already anchored.
 - Computes fingerprint, calls `anchorService.anchor()`, updates DB.
 - Returns 201 with `AnchorResponse`.
 
 **`app/api/verify/route.ts`** -- `POST /api/verify`:
-- Requires auth + project membership.
+- Requires auth + tenant membership.
 - Fetches document, recomputes fingerprint, checks against stored + on-chain.
 - Returns 200 with `VerifyResponse`.
 

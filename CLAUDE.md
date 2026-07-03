@@ -76,9 +76,9 @@ needs a new dependency in `package.json`), it flags the need to the conductor �
 edit that file directly.
 
 ## Forward-compatible (so P2 is not a rewrite)
-P2 adds multi-tenancy and **projects** (documents grouped by use case). The hierarchy will be
-tenant → project → document. Avoid single-user / flat-list assumptions; nullable `tenant_id` and
-`project_id` may be added early. Isolation will use Supabase RLS, so design tables with that in mind.
+P2 adds multi-tenancy and document organisation via labels. The hierarchy is
+tenant → document. Avoid single-user / flat-list assumptions; nullable `tenant_id`
+may be added early. Isolation will use Supabase RLS, so design tables with that in mind.
 
 ## Do NOT build yet (gate)
 - Auth, multi-tenant, RBAC (P2) — unless told to move phases.
