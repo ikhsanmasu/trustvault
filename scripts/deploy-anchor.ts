@@ -32,16 +32,20 @@ loadEnv(resolve(process.cwd(), ".env.local"));
 
 const RPC = process.env.ANCHOR_RPC_URL;
 const PK = process.env.ANCHOR_PRIVATE_KEY;
+const CHAIN_ID = parseInt(process.env.ANCHOR_CHAIN_ID || "31337", 10);
 
 if (!RPC || !PK) {
   console.error("ANCHOR_RPC_URL and ANCHOR_PRIVATE_KEY must be set in .env.local");
   process.exit(1);
 }
 
-// Read compiled ABI and bytecode from Foundry/Hardhat artifacts.
-// If you compiled with `forge build`, the artifact is at:
-//   out/TrustVaultAnchor.sol/TrustVaultAnchor.json
-// For now, we inline the ABI and creation bytecode of the minimal contract.
+const CHAIN_NAMES: Record<number, string> = {
+  31337: "Anvil",
+  84532: "Base Sepolia",
+  8453: "Base",
+  11155111: "Sepolia",
+};
+
 const ABI = [
   { type: "function", name: "verify", inputs: [{ name: "fingerprint", type: "bytes32" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "anchoredAt", inputs: [{ name: "", type: "bytes32" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
@@ -57,11 +61,13 @@ const BYTECODE = "0x608060405234801561000f575f80fd5b506102e68061001d5f395ff3fe60
 
 async function main() {
   const account = privateKeyToAccount(PK as `0x${string}`);
+  const chainName = CHAIN_NAMES[CHAIN_ID] || `Chain ${CHAIN_ID}`;
   console.log(`Deploying from: ${account.address}`);
   console.log(`RPC: ${RPC}`);
+  console.log(`Chain: ${chainName} (${CHAIN_ID})`);
 
   const rpc = RPC!;
-  const chain = defineChain({ id: 31337, name: "Anvil", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
+  const chain = defineChain({ id: CHAIN_ID, name: chainName, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
   const publicClient = createPublicClient({ transport: http(rpc) });
   const walletClient = createWalletClient({ account, chain, transport: http(rpc) });
 
