@@ -210,7 +210,8 @@ export async function requireTenantRole(
     };
   }
 
-  const role = profile.role as TenantRole;
+  // P14 migration may not have run yet — default NULL to owner
+  const role: TenantRole = profile.role ?? "owner";
 
   // 2. Check the user's role against the allowed roles
   if (!allowedRoles.includes(role)) {
