@@ -74,7 +74,7 @@ export default function RegisterForm() {
       <CardHeader>
         <CardTitle>Create Account</CardTitle>
         <CardDescription>
-          Sign up for TrustVault to manage document integrity across groups.
+          Sign up for InTrustVault to manage document integrity across groups.
         </CardDescription>
       </CardHeader>
       <CardContent>

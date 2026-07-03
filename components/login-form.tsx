@@ -60,7 +60,7 @@ export default function LoginForm() {
       <CardHeader>
         <CardTitle>Sign In</CardTitle>
         <CardDescription>
-          Enter your email and password to access your TrustVault account.
+          Enter your email and password to access your InTrustVault account.
         </CardDescription>
       </CardHeader>
       <CardContent>

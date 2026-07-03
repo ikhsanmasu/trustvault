@@ -10,6 +10,7 @@ import {
   isAllowedMimeType,
 } from "@/lib/core";
 import { requireAuth } from "@/lib/supabase/auth";
+import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
 import type {
   CompareRequest,
   CompareResponse,
@@ -238,6 +239,20 @@ export async function POST(
     }
 
     // -- Step 3: AI compare -------------------------------------------------
+    // P17: Check LLM limit for the tenant
+    if (docA.tenant_id) {
+      const llmCheck = await checkLLMLimit(supabase, docA.tenant_id);
+      if (!llmCheck.allowed) {
+        return NextResponse.json(
+          { error: llmCheck.reason ?? "LLM call limit reached", code: "PLAN_LIMIT_REACHED" },
+          { status: 403 },
+        );
+      }
+      await incrementUsage(supabase, docA.tenant_id, "llm_calls", {
+        endpoint: "compare",
+        tokens: 0,
+      });
+    }
     return callAICompare(
       docAId,
       docBId,
@@ -360,6 +375,20 @@ export async function POST(
     }
 
     // -- Step 3: AI compare -------------------------------------------------
+    // P17: Check LLM limit for the tenant
+    if (storedDoc.tenant_id) {
+      const llmCheckB = await checkLLMLimit(supabase, storedDoc.tenant_id);
+      if (!llmCheckB.allowed) {
+        return NextResponse.json(
+          { error: llmCheckB.reason ?? "LLM call limit reached", code: "PLAN_LIMIT_REACHED" },
+          { status: 403 },
+        );
+      }
+      await incrementUsage(supabase, storedDoc.tenant_id, "llm_calls", {
+        endpoint: "compare",
+        tokens: 0,
+      });
+    }
     return callAICompare(
       docId,
       ephemeralId,

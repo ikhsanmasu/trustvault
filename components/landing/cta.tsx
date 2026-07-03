@@ -35,11 +35,12 @@ export function CTA() {
 
           <div className="relative text-center max-w-2xl mx-auto">
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-primary-foreground leading-[1.15]">
-              Ready to trust your documents?
+              AI-powered integrity. Blockchain trust.
             </h2>
             <p className="mt-5 text-lg text-primary-foreground/65 leading-relaxed max-w-lg mx-auto">
-              Start uploading documents, tracking versions, and getting
-              intelligent change analysis in minutes. No credit card required.
+              Your documents deserve more than just storage. Get intelligent
+              insights, cryptographic verification, and AI agents that work
+              where your team does. Start free — no credit card required.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center">
               <Link
@@ -64,8 +65,7 @@ export function CTA() {
 
             {/* Trust note */}
             <p className="mt-8 text-sm text-primary-foreground/40">
-              Free during public beta. No setup fees. Enterprise plans coming
-              soon.
+              Built on blockchain. Powered by AI. Trusted by teams.
             </p>
           </div>
         </div>

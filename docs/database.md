@@ -1,4 +1,4 @@
-# TrustVault -- Database Contract (P5)
+# InTrustVault -- Database Contract (P5)
 
 This document is a **contract**. The `database` and `backend` agents must implement exactly what is specified here. Any required deviation must be flagged back to the architect before implementing.
 
@@ -6,7 +6,7 @@ This document is a **contract**. The `database` and `backend` agents must implem
 
 ## 1. Overview
 
-TrustVault P2 extends the P1 schema with **multi-tenancy, authentication, and RBAC**. All additions are additive -- the `documents` table from P1 is retained and updated with NOT NULL constraints plus foreign keys.
+InTrustVault P2 extends the P1 schema with **multi-tenancy, authentication, and RBAC**. All additions are additive -- the `documents` table from P1 is retained and updated with NOT NULL constraints plus foreign keys.
 
 ### P2 Additions
 
@@ -725,7 +725,7 @@ CREATE POLICY "documents_update_anchor" ON public.documents
 
 ```sql
 -- ============================================================================
--- TrustVault P5: Blockchain Anchoring Columns
+-- InTrustVault P5: Blockchain Anchoring Columns
 -- Migration: 20260622000000_p5_blockchain_anchor.sql
 -- Prerequisite: 20260621000003_p4_soft_delete.sql (P4 soft delete columns)
 -- ============================================================================
@@ -1043,7 +1043,7 @@ CREATE POLICY "chat_messages_insert_own" ON public.chat_messages
 
 ```sql
 -- ============================================================================
--- TrustVault P6: AI Vault Assistant (pgvector + chat)
+-- InTrustVault P6: AI Vault Assistant (pgvector + chat)
 -- Migration: 20260701000000_p6_ai_assistant.sql
 -- Prerequisite: 20260622000000_p5_blockchain_anchor.sql
 -- ============================================================================
@@ -1523,7 +1523,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 ```sql
 -- ============================================================================
--- TrustVault P14: Tenant-Level RBAC + Invitations
+-- InTrustVault P14: Tenant-Level RBAC + Invitations
 -- Migration: 20260703000000_p14_rbac_invitations.sql
 -- Prerequisite: 20260702000000_p13_fix_chat_sessions.sql
 -- ============================================================================
@@ -1763,3 +1763,693 @@ CREATE POLICY "document_chunks_tenant_delete" ON public.document_chunks
 - The `on_auth_user_created` trigger remains; its behavior is enhanced to set `role`.
 - Tightened RLS policies are backwards-compatible for existing users with `owner` or `viewer` roles -- no existing user loses access they previously had (the previous policies allowed ALL authenticated users in the tenant to write; after P14, viewers lose write access, which is the intended behavior of RBAC).
 - The `Document` and `Profile` types in `lib/types.ts` must be updated with the `role` field.
+
+---
+
+## 14. P16 Additions: Custom AI Agents + Multi-Channel Integration
+
+### 14a. Overview
+
+P16 adds a **custom AI agent** system. Users (editors and above) can create named AI agents, each with a configurable system prompt/persona and a selected set of documents that forms the agent's knowledge base. Agents can be connected to external messaging channels (WhatsApp via QR scan, Telegram via bot token) and have their own playground chat for testing.
+
+The agent chat pipeline reuses the existing RAG infrastructure from P6 (document chunks, embeddings, DeepSeek chat) but scopes retrieval to the agent's selected documents instead of the whole tenant.
+
+### 14b. New Table: `agents`
+
+#### Purpose
+
+Represents a custom AI agent created by a tenant member. Each agent has a name, a system prompt that defines its persona, and is owned by a tenant. Agents can be active or inactive; inactive agents do not respond to channel messages.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `tenant_id` | `uuid` | NOT NULL | -- | FK to `tenants.id`. The tenant that owns this agent. ON DELETE CASCADE. |
+| `name` | `text` | NOT NULL | -- | Display name for the agent (1-255 characters). |
+| `system_prompt` | `text` | NOT NULL | -- | The system prompt that defines the agent's persona and behaviour. Sent as the system message in the LLM chat completion. |
+| `created_by` | `uuid` | NOT NULL | -- | FK to `auth.users.id`. The user who created this agent. |
+| `is_active` | `boolean` | NOT NULL | `true` | Whether the agent is active. Inactive agents do not respond to channel messages. Playground chat still works. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC). |
+| `updated_at` | `timestamptz` | NOT NULL | `now()` | Row last-updated timestamp (UTC). |
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE`
+- `FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE CASCADE`
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `agents_pkey` | `id` | Primary key lookup |
+| `agents_tenant_id_idx` | `tenant_id` | List agents in a tenant |
+| `agents_created_by_idx` | `created_by` | List agents created by a user |
+
+### 14c. New Table: `agent_documents`
+
+#### Purpose
+
+Junction table linking an agent to its knowledge-base documents. An agent only retrieves from these selected documents when answering questions. This is what makes each agent's knowledge base unique.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `agent_id` | `uuid` | NOT NULL | -- | FK to `agents.id`. ON DELETE CASCADE. |
+| `document_id` | `uuid` | NOT NULL | -- | FK to `documents.id`. ON DELETE CASCADE. |
+
+#### Constraints
+
+- `PRIMARY KEY (agent_id, document_id)` -- composite key prevents duplicates.
+- `FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE`
+- `FOREIGN KEY (document_id) REFERENCES public.documents(id) ON DELETE CASCADE`
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `agent_documents_pkey` | `agent_id`, `document_id` | Primary key (auto-created) |
+| `agent_documents_document_id_idx` | `document_id` | Find agents that use a document |
+
+### 14d. New Table: `agent_channels`
+
+#### Purpose
+
+Stores the external messaging channel connections for an agent. Each row represents one connected channel (WhatsApp or Telegram). The `config` column is a JSONB blob storing channel-specific credentials and configuration, encrypted at rest by the application layer.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `agent_id` | `uuid` | NOT NULL | -- | FK to `agents.id`. ON DELETE CASCADE. |
+| `channel_type` | `text` | NOT NULL | -- | One of `'whatsapp'` or `'telegram'`. CHECK constraint enforced. |
+| `config` | `jsonb` | NOT NULL | `'{}'::jsonb` | Channel-specific configuration. Encrypted at the application layer before storage. See Section 14d-ii for shape. |
+| `is_active` | `boolean` | NOT NULL | `true` | Whether this channel connection is currently active. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Row creation timestamp (UTC). |
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE`
+- `CHECK (channel_type IN ('whatsapp', 'telegram'))`
+- Application-layer rule: at most one channel per `(agent_id, channel_type)` pair. This is enforced by the route handler (DELETE old channel of same type before INSERT), not a DB unique constraint (because the config is encrypted and duplicates would have different ciphertext).
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `agent_channels_pkey` | `id` | Primary key lookup |
+| `agent_channels_agent_id_idx` | `agent_id` | List channels for an agent |
+
+#### 14d-ii. `config` JSONB Shape
+
+The exact shape stored in `config` depends on `channel_type`. Values are encrypted before storage. The shapes below describe the decrypted (plaintext) structure.
+
+**WhatsApp config (plaintext):**
+
+```ts
+type WhatsAppConfig = {
+  phone_number: string;          // The WhatsApp phone number the client connected as
+  client_state?: object;         // whatsapp-web.js session state (serializable)
+  qr_code?: string;              // Last generated QR code string (cleared after scan)
+};
+```
+
+**Telegram config (plaintext):**
+
+```ts
+type TelegramConfig = {
+  bot_token: string;             // The Telegram Bot API token
+  bot_username?: string;         // The bot's username (resolved after connection)
+  webhook_url?: string;          // The registered webhook URL (set after connection)
+};
+```
+
+**Encryption:** All values in `config` are encrypted using AES-256-GCM with a server-side key (`AGENT_CHANNEL_ENCRYPTION_KEY`). The entire JSONB value is encrypted as a single blob; the database never sees plaintext credentials. See `security.md` Section 16 for details.
+
+### 14e. New Table: `agent_sessions`
+
+#### Purpose
+
+Stores chat sessions for the agent playground. Each session belongs to a specific agent and is owned by a user. This is separate from the P6 `chat_sessions` table because agent sessions are scoped to an agent (not a tenant) and messages can originate from channels.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `agent_id` | `uuid` | NOT NULL | -- | FK to `agents.id`. ON DELETE CASCADE. |
+| `user_id` | `uuid` | NOT NULL | -- | FK to `auth.users.id`. The user who owns this session. |
+| `title` | `text` | NOT NULL | `'New Chat'` | Display title for the session. Updated from the first user message. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Session creation timestamp (UTC). |
+| `updated_at` | `timestamptz` | NOT NULL | `now()` | Last message timestamp (UTC). |
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE`
+- `FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE`
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `agent_sessions_pkey` | `id` | Primary key lookup |
+| `agent_sessions_agent_user_idx` | `agent_id`, `user_id` | List user's sessions for an agent |
+| `agent_sessions_updated_at_idx` | `updated_at DESC` | Order by most recently active |
+
+### 14f. New Table: `agent_messages`
+
+#### Purpose
+
+Stores individual messages within an agent session. Messages can originate from the playground chat or from external channels (WhatsApp, Telegram). The `channel` column distinguishes the source; `external_user_id` identifies the external user for channel messages.
+
+#### Columns
+
+| Column | Type | Nullable | Default | Description |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL | `gen_random_uuid()` | Primary key |
+| `agent_id` | `uuid` | NOT NULL | -- | FK to `agents.id`. Denormalised for efficient RLS and channel message lookup. ON DELETE CASCADE. |
+| `session_id` | `uuid` | NOT NULL | -- | FK to `agent_sessions.id`. ON DELETE CASCADE. |
+| `role` | `text` | NOT NULL | -- | `'user'` or `'assistant'`. CHECK constraint enforced. |
+| `content` | `text` | NOT NULL | -- | The message text content. |
+| `channel` | `text` | NULL | `NULL` | Source channel. `NULL` for playground, `'whatsapp'` for WhatsApp, `'telegram'` for Telegram. |
+| `external_user_id` | `text` | NULL | `NULL` | Identifier of the external user. For WhatsApp: phone number. For Telegram: Telegram user ID. NULL for playground. |
+| `citations` | `jsonb` | NULL | `NULL` | Array of citation objects (same shape as P6 `chat_messages.citations`). Only for assistant messages. |
+| `created_at` | `timestamptz` | NOT NULL | `now()` | Message creation timestamp (UTC). |
+
+#### Constraints
+
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE`
+- `FOREIGN KEY (session_id) REFERENCES public.agent_sessions(id) ON DELETE CASCADE`
+- `CHECK (role IN ('user', 'assistant'))`
+- `CHECK (channel IS NULL OR channel IN ('whatsapp', 'telegram'))`
+
+#### Indexes
+
+| Index name | Columns | Purpose |
+|---|---|---|
+| `agent_messages_pkey` | `id` | Primary key lookup |
+| `agent_messages_session_id_idx` | `session_id`, `created_at` | Fetch messages in a session, ordered by time |
+| `agent_messages_agent_channel_idx` | `agent_id`, `channel`, `external_user_id` | Look up channel conversation history for an external user |
+
+### 14g. RLS Policies (P16)
+
+#### Table: `agents`
+
+```sql
+ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: any tenant member can view agents in their tenant
+CREATE POLICY "agents_select_tenant" ON public.agents
+  FOR SELECT
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+  );
+
+-- INSERT: editor, admin, or owner can create agents
+CREATE POLICY "agents_insert_editor" ON public.agents
+  FOR INSERT
+  WITH CHECK (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND created_by = auth.uid()
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- UPDATE: editor, admin, or owner can update agents in their tenant
+CREATE POLICY "agents_update_editor" ON public.agents
+  FOR UPDATE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  )
+  WITH CHECK (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+  );
+
+-- DELETE: editor, admin, or owner can delete agents in their tenant
+CREATE POLICY "agents_delete_editor" ON public.agents
+  FOR DELETE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+```
+
+#### Table: `agent_documents`
+
+```sql
+ALTER TABLE public.agent_documents ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: tenant members can see document-agent links
+CREATE POLICY "agent_documents_select_tenant" ON public.agent_documents
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_documents.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+-- INSERT: editor, admin, or owner can link documents to agents
+CREATE POLICY "agent_documents_insert_editor" ON public.agent_documents
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_documents.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- DELETE: editor, admin, or owner can unlink documents from agents
+CREATE POLICY "agent_documents_delete_editor" ON public.agent_documents
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_documents.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+```
+
+#### Table: `agent_channels`
+
+```sql
+ALTER TABLE public.agent_channels ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: tenant members can see channels (config is encrypted, so viewing is safe)
+CREATE POLICY "agent_channels_select_tenant" ON public.agent_channels
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_channels.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+-- INSERT: editor, admin, or owner can add channels
+CREATE POLICY "agent_channels_insert_editor" ON public.agent_channels
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_channels.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- DELETE: editor, admin, or owner can remove channels
+CREATE POLICY "agent_channels_delete_editor" ON public.agent_channels
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_channels.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+```
+
+#### Table: `agent_sessions`
+
+```sql
+ALTER TABLE public.agent_sessions ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: user can see their own sessions
+CREATE POLICY "agent_sessions_select_own" ON public.agent_sessions
+  FOR SELECT
+  USING (user_id = auth.uid());
+
+-- INSERT: user can create sessions for agents in their tenant
+CREATE POLICY "agent_sessions_insert_tenant" ON public.agent_sessions
+  FOR INSERT
+  WITH CHECK (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_sessions.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+-- UPDATE: user can update their own sessions (title, updated_at)
+CREATE POLICY "agent_sessions_update_own" ON public.agent_sessions
+  FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- DELETE: user can delete their own sessions
+CREATE POLICY "agent_sessions_delete_own" ON public.agent_sessions
+  FOR DELETE
+  USING (user_id = auth.uid());
+```
+
+#### Table: `agent_messages`
+
+```sql
+ALTER TABLE public.agent_messages ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: user can see messages from their own sessions
+CREATE POLICY "agent_messages_select_own" ON public.agent_messages
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agent_sessions s
+      WHERE s.id = agent_messages.session_id AND s.user_id = auth.uid()
+    )
+  );
+
+-- INSERT: user can insert messages into their own sessions
+CREATE POLICY "agent_messages_insert_own" ON public.agent_messages
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.agent_sessions s
+      WHERE s.id = agent_messages.session_id AND s.user_id = auth.uid()
+    )
+  );
+```
+
+**Note on channel messages:** Channel messages (WhatsApp, Telegram) are inserted by the server-side channel handlers using a service-role client, because there is no authenticated browser session for an incoming WhatsApp or Telegram message. The channel handler must verify the agent exists and is active before inserting. RLS policies on `agent_messages` do not apply to service-role inserts.
+
+### 14h. Migration File
+
+**File:** `supabase/migrations/20260703000002_p16_agents.sql`
+
+```sql
+-- ============================================================================
+-- InTrustVault P16: Custom AI Agents + Multi-Channel Integration
+-- Migration: 20260703000002_p16_agents.sql
+-- Prerequisite: 20260703000000_p14_rbac_invitations.sql
+-- ============================================================================
+
+-- --------------------------------------------------------------------------
+-- 1. CREATE agents TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.agents (
+  id              uuid          NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id       uuid          NOT NULL,
+  name            text          NOT NULL,
+  system_prompt   text          NOT NULL,
+  created_by      uuid          NOT NULL,
+  is_active       boolean       NOT NULL DEFAULT true,
+  created_at      timestamptz   NOT NULL DEFAULT now(),
+  updated_at      timestamptz   NOT NULL DEFAULT now(),
+
+  CONSTRAINT agents_pkey PRIMARY KEY (id),
+  CONSTRAINT agents_tenant_id_fkey FOREIGN KEY (tenant_id)
+    REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT agents_created_by_fkey FOREIGN KEY (created_by)
+    REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS agents_tenant_id_idx ON public.agents (tenant_id);
+CREATE INDEX IF NOT EXISTS agents_created_by_idx ON public.agents (created_by);
+
+-- --------------------------------------------------------------------------
+-- 2. CREATE agent_documents JUNCTION TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.agent_documents (
+  agent_id      uuid  NOT NULL,
+  document_id   uuid  NOT NULL,
+
+  CONSTRAINT agent_documents_pkey PRIMARY KEY (agent_id, document_id),
+  CONSTRAINT agent_documents_agent_id_fkey FOREIGN KEY (agent_id)
+    REFERENCES public.agents(id) ON DELETE CASCADE,
+  CONSTRAINT agent_documents_document_id_fkey FOREIGN KEY (document_id)
+    REFERENCES public.documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS agent_documents_document_id_idx
+  ON public.agent_documents (document_id);
+
+-- --------------------------------------------------------------------------
+-- 3. CREATE agent_channels TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.agent_channels (
+  id            uuid          NOT NULL DEFAULT gen_random_uuid(),
+  agent_id      uuid          NOT NULL,
+  channel_type  text          NOT NULL CHECK (channel_type IN ('whatsapp', 'telegram')),
+  config        jsonb         NOT NULL DEFAULT '{}'::jsonb,
+  is_active     boolean       NOT NULL DEFAULT true,
+  created_at    timestamptz   NOT NULL DEFAULT now(),
+
+  CONSTRAINT agent_channels_pkey PRIMARY KEY (id),
+  CONSTRAINT agent_channels_agent_id_fkey FOREIGN KEY (agent_id)
+    REFERENCES public.agents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS agent_channels_agent_id_idx
+  ON public.agent_channels (agent_id);
+
+-- --------------------------------------------------------------------------
+-- 4. CREATE agent_sessions TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.agent_sessions (
+  id            uuid          NOT NULL DEFAULT gen_random_uuid(),
+  agent_id      uuid          NOT NULL,
+  user_id       uuid          NOT NULL,
+  title         text          NOT NULL DEFAULT 'New Chat',
+  created_at    timestamptz   NOT NULL DEFAULT now(),
+  updated_at    timestamptz   NOT NULL DEFAULT now(),
+
+  CONSTRAINT agent_sessions_pkey PRIMARY KEY (id),
+  CONSTRAINT agent_sessions_agent_id_fkey FOREIGN KEY (agent_id)
+    REFERENCES public.agents(id) ON DELETE CASCADE,
+  CONSTRAINT agent_sessions_user_id_fkey FOREIGN KEY (user_id)
+    REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS agent_sessions_agent_user_idx
+  ON public.agent_sessions (agent_id, user_id);
+
+CREATE INDEX IF NOT EXISTS agent_sessions_updated_at_idx
+  ON public.agent_sessions (updated_at DESC);
+
+-- --------------------------------------------------------------------------
+-- 5. CREATE agent_messages TABLE
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.agent_messages (
+  id                uuid          NOT NULL DEFAULT gen_random_uuid(),
+  agent_id          uuid          NOT NULL,
+  session_id        uuid          NOT NULL,
+  role              text          NOT NULL CHECK (role IN ('user', 'assistant')),
+  content           text          NOT NULL,
+  channel           text          NULL DEFAULT NULL
+                      CHECK (channel IS NULL OR channel IN ('whatsapp', 'telegram')),
+  external_user_id  text          NULL DEFAULT NULL,
+  citations         jsonb         NULL DEFAULT NULL,
+  created_at        timestamptz   NOT NULL DEFAULT now(),
+
+  CONSTRAINT agent_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT agent_messages_agent_id_fkey FOREIGN KEY (agent_id)
+    REFERENCES public.agents(id) ON DELETE CASCADE,
+  CONSTRAINT agent_messages_session_id_fkey FOREIGN KEY (session_id)
+    REFERENCES public.agent_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS agent_messages_session_id_idx
+  ON public.agent_messages (session_id, created_at);
+
+CREATE INDEX IF NOT EXISTS agent_messages_agent_channel_idx
+  ON public.agent_messages (agent_id, channel, external_user_id);
+
+-- --------------------------------------------------------------------------
+-- 6. RLS POLICIES
+-- --------------------------------------------------------------------------
+
+-- --- agents ---
+ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "agents_select_tenant" ON public.agents
+  FOR SELECT
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+  );
+
+CREATE POLICY "agents_insert_editor" ON public.agents
+  FOR INSERT
+  WITH CHECK (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND created_by = auth.uid()
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+CREATE POLICY "agents_update_editor" ON public.agents
+  FOR UPDATE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  )
+  WITH CHECK (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+  );
+
+CREATE POLICY "agents_delete_editor" ON public.agents
+  FOR DELETE
+  USING (
+    tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- --- agent_documents ---
+ALTER TABLE public.agent_documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "agent_documents_select_tenant" ON public.agent_documents
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_documents.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+CREATE POLICY "agent_documents_insert_editor" ON public.agent_documents
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_documents.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+CREATE POLICY "agent_documents_delete_editor" ON public.agent_documents
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_documents.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- --- agent_channels ---
+ALTER TABLE public.agent_channels ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "agent_channels_select_tenant" ON public.agent_channels
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_channels.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+CREATE POLICY "agent_channels_insert_editor" ON public.agent_channels
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_channels.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+CREATE POLICY "agent_channels_delete_editor" ON public.agent_channels
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_channels.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('owner', 'admin', 'editor')
+  );
+
+-- --- agent_sessions ---
+ALTER TABLE public.agent_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "agent_sessions_select_own" ON public.agent_sessions
+  FOR SELECT
+  USING (user_id = auth.uid());
+
+CREATE POLICY "agent_sessions_insert_tenant" ON public.agent_sessions
+  FOR INSERT
+  WITH CHECK (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_sessions.agent_id
+        AND a.tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid())
+    )
+  );
+
+CREATE POLICY "agent_sessions_update_own" ON public.agent_sessions
+  FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "agent_sessions_delete_own" ON public.agent_sessions
+  FOR DELETE
+  USING (user_id = auth.uid());
+
+-- --- agent_messages ---
+ALTER TABLE public.agent_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "agent_messages_select_own" ON public.agent_messages
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.agent_sessions s
+      WHERE s.id = agent_messages.session_id AND s.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "agent_messages_insert_own" ON public.agent_messages
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.agent_sessions s
+      WHERE s.id = agent_messages.session_id AND s.user_id = auth.uid()
+    )
+  );
+```
+
+### 14i. Migration Strategy
+
+- **Additive only:** The migration creates five new tables, their indexes, and RLS policies. No existing tables or data are modified.
+- **Existing rows:** All new tables start empty. Agents must be explicitly created by users.
+- **Rollback:** Drop all RLS policies, drop all five tables (CASCADE). Purely additive migration with a clean reverse path.
+- **Migration file placement:** `supabase/migrations/20260703000002_p16_agents.sql` -- timestamp places it after P14 migration.
+- **Supabase GitHub auto-deploy:** The new migration is applied automatically on push to the linked branch.
+
+### 14j. Updated Entity Relationship Diagram
+
+```
+tenants ──< agents ──< agent_documents >── documents
+  │          │                                    │
+  │          │──< agent_channels                  │──< document_chunks
+  │          │                                    │
+  │          │──< agent_sessions ──< agent_messages
+  │          │       │
+  └──────────┘       │
+  (via tenant_id)    │
+                     │
+  auth.users ────────┘
+  (via created_by on agents, user_id on agent_sessions)
+```
+
+### 14k. No Breaking Changes
+
+- All existing tables, columns, constraints, indexes, and RLS policies from P1-P14 are preserved.
+- Existing queries and API endpoints continue to work without modification.
+- The new tables are only accessed by new P16 API endpoints and library code.
+- The agent RAG pipeline reads from `document_chunks` (P6) and `documents` (P1) but does not modify either.

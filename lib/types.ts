@@ -340,6 +340,8 @@ export interface CreateShareRequest {
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;
+  allowAnchor?: boolean;
+  allowCompare?: boolean;
   title?: string;
 }
 
@@ -427,4 +429,217 @@ export interface ListMembersResponse {
 export interface JoinResponse {
   tenant_id: string; // UUID of the tenant the user joined
   role: string; // the role assigned
+}
+
+// ---------------------------------------------------------------------------
+// P16: Custom AI Agents + Multi-Channel Integration
+// ---------------------------------------------------------------------------
+
+/** An AI agent created by a tenant member. */
+export interface Agent {
+  id: string;              // UUID
+  tenant_id: string;       // UUID
+  name: string;            // display name (1-255 chars)
+  system_prompt: string;   // persona-defining system prompt
+  created_by: string;      // UUID of auth.users
+  is_active: boolean;      // whether the agent is active
+  created_at: string;      // ISO 8601 UTC
+  updated_at: string;      // ISO 8601 UTC
+}
+
+/** Agent with its knowledge-base documents and connected channels. */
+export interface AgentWithDetails extends Agent {
+  documents: Document[];
+  channels: AgentChannel[];
+}
+
+/** A messaging channel connected to an agent. */
+export interface AgentChannel {
+  id: string;                   // UUID
+  agent_id: string;             // UUID
+  channel_type: "whatsapp" | "telegram";
+  config: Record<string, unknown>;  // channel-specific config (secrets redacted)
+  is_active: boolean;
+  created_at: string;           // ISO 8601 UTC
+}
+
+/** A chat session for the agent playground. */
+export interface AgentSession {
+  id: string;              // UUID
+  agent_id: string;        // UUID
+  user_id: string;         // UUID of auth.users
+  title: string;           // session display title
+  created_at: string;      // ISO 8601 UTC
+  updated_at: string;      // ISO 8601 UTC
+}
+
+/** A message within an agent session. */
+export interface AgentMessage {
+  id: string;                       // UUID
+  agent_id: string;                 // UUID
+  session_id: string;               // UUID
+  role: "user" | "assistant";
+  content: string;
+  channel: string | null;           // null for playground, 'whatsapp', 'telegram'
+  external_user_id: string | null;  // WhatsApp number or Telegram user ID
+  citations: Citation[] | null;     // same shape as P6 Citation
+  created_at: string;               // ISO 8601 UTC
+}
+
+/** Request body for POST /api/agents. */
+export interface CreateAgentRequest {
+  name: string;                // 1-255 chars
+  system_prompt: string;       // 1-10000 chars
+  document_ids: string[];      // UUIDs of knowledge-base documents (0-100)
+}
+
+/** Request body for PATCH /api/agents/[id]. */
+export interface UpdateAgentRequest {
+  name?: string;
+  system_prompt?: string;
+  document_ids?: string[];     // replaces entire knowledge base
+  is_active?: boolean;
+}
+
+/** Request body for POST /api/agents/[id]/channels. */
+export interface AddChannelRequest {
+  channel_type: "whatsapp" | "telegram";
+  config: Record<string, unknown>;
+}
+
+/** Request body for POST /api/agents/[id]/telegram/connect. */
+export interface TelegramConnectRequest {
+  bot_token: string;
+}
+
+/** Request body for POST /api/agents/[id]/chat. */
+export interface AgentChatRequest {
+  session_id?: string;     // existing session UUID; omit to create new
+  message: string;         // user's question (1-4000 characters)
+}
+
+// ---- P16 Response Types ----
+
+/** Response for POST /api/agents. */
+export interface CreateAgentResponse {
+  agent: AgentWithDetails;
+}
+
+/** Response for GET /api/agents. */
+export interface ListAgentsResponse {
+  agents: Agent[];
+  total: number;
+}
+
+/** Response for GET /api/agents/[id]. */
+export interface GetAgentResponse {
+  agent: AgentWithDetails;
+}
+
+/** Response for PATCH /api/agents/[id]. */
+export interface UpdateAgentResponse {
+  agent: AgentWithDetails;
+}
+
+/** Response for DELETE /api/agents/[id]. */
+export interface DeleteAgentResponse {
+  deleted: true;
+}
+
+/** Response for POST /api/agents/[id]/channels. */
+export interface AddChannelResponse {
+  channel: AgentChannel;
+}
+
+/** Response for DELETE /api/agents/[id]/channels/[channelId]. */
+export interface DeleteChannelResponse {
+  deleted: true;
+}
+
+/** Request body for POST /api/agents/[id]/whatsapp/connect (Meta Cloud API). */
+export interface WhatsAppConnectRequest {
+  phoneNumberId: string;
+  accessToken: string;
+}
+
+/** Response for POST /api/agents/[id]/whatsapp/connect. */
+export interface WhatsAppConnectResponse {
+  status: "connected";
+  phoneNumberId: string;
+}
+
+/** Response for GET /api/agents/[id]/whatsapp/status. */
+export interface WhatsAppStatusResponse {
+  status: "connected" | "disconnected";
+  phoneNumberId: string | null;
+}
+
+/** Response for POST /api/agents/[id]/whatsapp/disconnect. */
+export interface WhatsAppDisconnectResponse {
+  status: "disconnected";
+}
+
+/** Response for POST /api/agents/[id]/telegram/connect. */
+export interface TelegramConnectResponse {
+  channel_id: string;
+  bot_username: string;        // from getMe()
+  webhook_url: string;         // registered webhook URL
+}
+
+/** Response for POST /api/agents/[id]/telegram/disconnect. */
+export interface TelegramDisconnectResponse {
+  disconnected: true;
+}
+
+/** Response for GET /api/agents/[id]/chat/sessions. */
+export interface ListAgentSessionsResponse {
+  sessions: AgentSession[];
+}
+
+/** Response for GET /api/agents/[id]/chat/sessions/[sessionId]. */
+export interface GetAgentSessionResponse {
+  session: AgentSession;
+  messages: AgentMessage[];
+}
+
+/** Response for DELETE /api/agents/[id]/chat/sessions/[sessionId]. */
+export interface DeleteAgentSessionResponse {
+  deleted: true;
+}
+
+/** Response for POST /api/webhook/telegram/[agentId]. */
+export interface WebhookResponse {
+  ok: boolean;
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// P17: Usage Tracking + Billing
+// ---------------------------------------------------------------------------
+
+/** The plan tier assigned to a tenant. */
+export type PlanType = "free" | "pro" | "enterprise";
+
+/** Per-plan limits (mirrors the PLAN_LIMITS config in lib/rate-limit.ts). */
+export interface PlanLimits {
+  maxDocs: number;
+  maxFileSize: number;   // bytes
+  maxLlmCalls: number;
+}
+
+/** Usage statistics for the current billing period. */
+export interface UsageStats {
+  plan: PlanType;
+  documents_used: number;
+  documents_limit: number | null;   // null = unlimited
+  llm_calls_used: number;
+  llm_calls_limit: number | null;   // null = unlimited
+  storage_bytes_used: number;
+  storage_bytes_limit: number | null; // null = unlimited (no per-plan storage cap currently)
+  usage_reset_at: string | null;    // ISO 8601 UTC, null if never reset
+}
+
+/** Response for GET /api/usage. */
+export interface GetUsageResponse {
+  usage: UsageStats;
 }

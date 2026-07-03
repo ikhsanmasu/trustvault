@@ -13,6 +13,7 @@ import {
   getUserTenantId,
 } from "@/lib/supabase/auth";
 import { ingestDocument } from "@/lib/ai-assistant";
+import { checkUploadLimit, incrementUsage } from "@/lib/rate-limit";
 import type {
   UploadResponse,
   ListDocumentsResponse,
@@ -126,6 +127,15 @@ export async function POST(
   ]);
   if (!roleCheck.ok) return roleCheck.response;
 
+  // -- 9. P17: Check plan upload limits ---------------------------------------
+  const uploadLimit = await checkUploadLimit(supabase, tenantId, file.size);
+  if (!uploadLimit.allowed) {
+    return NextResponse.json(
+      { error: uploadLimit.reason ?? "Upload limit reached", code: "PLAN_LIMIT_REACHED" },
+      { status: 403 },
+    );
+  }
+
   // -- 10. Read file into buffer (two copies: one for extraction, one for upload) --
   const raw = await file.arrayBuffer();
   const fileCopy1 = raw.slice(0);
@@ -197,7 +207,11 @@ export async function POST(
     );
   }
 
-  // -- 15. Auto-ingest: await chunk + embed
+  // -- 15. P17: Increment usage counters ------------------------------------
+  await incrementUsage(supabase, tenantId, "documents", { amount: 1 });
+  await incrementUsage(supabase, tenantId, "storage_bytes", { amount: buffer.length });
+
+  // -- 16. Auto-ingest: await chunk + embed
   const doc = document as Record<string, unknown>;
   const docId = doc.id as string;
   const docText = (extractedText ?? "") as string;

@@ -1,4 +1,4 @@
-# TrustVault -- Security Model (P5)
+# InTrustVault -- Security Model (P5)
 
 This document is a **contract** for the `security` audit agent and a reference for `backend` and `deployment`. It defines the accepted threat model for P5 and the controls in place. P1-P4 sections that remain valid are noted as preserved.
 
@@ -6,7 +6,7 @@ This document is a **contract** for the `security` audit agent and a reference f
 
 ## 1. P2 Threat Model
 
-TrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was unauthenticated and single-operator), P2 introduces user identity, tenant scoping, and role-based permissions. The threat model shifts from "trusted local operator" to "authenticated users who must not see each other's data."
+InTrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was unauthenticated and single-operator), P2 introduces user identity, tenant scoping, and role-based permissions. The threat model shifts from "trusted local operator" to "authenticated users who must not see each other's data."
 
 ### What P2 protects against
 
@@ -348,7 +348,7 @@ P5 introduces blockchain interaction, private key management, and an on-chain sm
 | Replay attacks (double-anchor of the same fingerprint) | Smart contract enforces `require(anchoredAt[fingerprint] == 0, "Already anchored")`. Once set, the fingerprint mapping is immutable. The database also enforces `UNIQUE (fingerprint)`. |
 | RPC man-in-the-middle | The RPC URL is configured via env var. For production, always use HTTPS endpoints (Infura, Alchemy, QuickNode). The viem `http` transport uses HTTPS. For Anvil (local dev), the RPC is on `localhost` -- not exposed to the network. |
 | Smart contract re-entrancy | Not applicable. The `anchor()` function has no external calls before state change. The single SSTORE happens after the require check, which is a read-only check on the same mapping. |
-| Smart contract upgrade/replacement | `TrustVaultAnchor` has no upgrade mechanism (no proxy, no `selfdestruct`, no owner). The contract is immutable once deployed. If a new contract is needed, deploy a new instance and update `ANCHOR_CONTRACT_ADDRESS`. Documents anchored to the old contract remain verifiable against the old contract address. |
+| Smart contract upgrade/replacement | `InTrustVaultAnchor` has no upgrade mechanism (no proxy, no `selfdestruct`, no owner). The contract is immutable once deployed. If a new contract is needed, deploy a new instance and update `ANCHOR_CONTRACT_ADDRESS`. Documents anchored to the old contract remain verifiable against the old contract address. |
 | Chain reorg removes an anchor transaction | Accepted risk for P5. On Anvil (single node, no reorgs) this is impossible. On public testnets/mainnets, wait for sufficient block confirmations. The frontend can poll `POST /api/verify` after anchoring to confirm. For production, the `waitForTransactionReceipt` with a configurable number of confirmations provides reasonable assurance. |
 | Fingerprint collision (two different (binary_hash, text_hash) pairs produce the same keccak256 output) | Relies on keccak256's collision resistance. The probability of a random collision in a 256-bit space is negligible (~1 in 2^128 with birthday bound). Not a practical threat. |
 | Signer account drained (gas theft) | The signer account holds only enough ETH for gas. It is not used for any other purpose. Use a dedicated account with a minimal balance. On Anvil, prefunded accounts have 10,000 test ETH -- acceptable for dev. For production testnet/mainnet, fund only enough for expected anchor volume (estimate 22,000 gas per anchor at current gas price). |
@@ -365,7 +365,7 @@ The `ANCHOR_PRIVATE_KEY` environment variable is the most sensitive secret in P5
 1. **Never prefix with `NEXT_PUBLIC_`.** Next.js inlines all `NEXT_PUBLIC_*` env vars into the client bundle at build time. `ANCHOR_PRIVATE_KEY` must be a plain server-side env var.
 2. **Never log the key.** Do not `console.log(process.env.ANCHOR_PRIVATE_KEY)` anywhere. Do not include it in error messages.
 3. **Never expose in API responses.** The `AnchorResponse` returns `fingerprint`, `chain`, `txHash`, `anchoredAt`, and `verified`. It does NOT return the private key or any derivative.
-4. **Use a dedicated account.** The private key should control an account used exclusively for TrustVault anchoring. It should not hold significant funds beyond gas requirements.
+4. **Use a dedicated account.** The private key should control an account used exclusively for InTrustVault anchoring. It should not hold significant funds beyond gas requirements.
 5. **Rotate periodically (future).** When KMS is implemented, key rotation becomes trivial. For the raw private key approach in P5, rotation requires deploying a new signer account, funding it, and updating `ANCHOR_PRIVATE_KEY`.
 
 ### 14c. Server-Side Execution Guarantee
@@ -438,7 +438,7 @@ P5 adds a new RLS policy (`documents_update_anchor`) that allows editors and adm
 - [ ] The signer account (from `ANCHOR_PRIVATE_KEY`) has a balance sufficient for expected anchor volume.
 
 #### Smart Contract Safety
-- [ ] `TrustVaultAnchor.sol` uses Solidity ^0.8.20 (built-in overflow protection).
+- [ ] `InTrustVaultAnchor.sol` uses Solidity ^0.8.20 (built-in overflow protection).
 - [ ] `anchor()` has no external calls before state change (re-entrancy safe).
 - [ ] `require(anchoredAt[fingerprint] == 0)` prevents overwrites.
 - [ ] No `selfdestruct`, no proxy/upgrade mechanism, no owner role.
@@ -633,3 +633,249 @@ The service-role client (`SUPABASE_SERVICE_ROLE_KEY`) is used in two specific P1
 24. **Never return the invitation token in any API response.** The token is delivered via email only.
 25. **Never use the service-role client without completing all authorization checks first.**
 26. **Never allow a user to belong to more than one tenant.**
+
+---
+
+## 16. P16 Agent Security
+
+### 16a. Threat Model (P16 Additions)
+
+P16 introduces custom AI agents, external messaging channels, and encrypted credential storage. The threat surface expands to include: channel credential theft, unauthorised agent access, webhook spoofing, message injection via external channels, and Puppeteer/WhatsApp session hijacking.
+
+| Threat | Control |
+|---|---|
+| Bot token exfiltration from database | All channel credentials are encrypted at rest using AES-256-GCM with a server-side key (`AGENT_CHANNEL_ENCRYPTION_KEY`). The database never sees plaintext tokens. |
+| Bot token exfiltration via API response | Channel configs returned by `GET /api/agents/[id]` and list endpoints are redacted. `bot_token`, `client_state`, and `qr_code` are stripped before serialization. Only `phone_number` (WhatsApp) and `bot_username` (Telegram) are returned. |
+| Unauthorised agent creation (viewer creates agent) | `POST /api/agents` requires `editor` role or above. RLS policy `agents_insert_editor` enforces this at the database layer. |
+| Cross-tenant agent access (user in tenant A accesses agent in tenant B) | RLS on `agents` filters by `tenant_id`. Route handler also validates tenant membership. |
+| Unauthorised channel connection (viewer connects WhatsApp) | All channel connect/disconnect endpoints require `editor` role. RLS policies on `agent_channels` enforce this. |
+| Agent uses documents from another tenant as knowledge base | `POST /api/agents` and `PATCH /api/agents/[id]` validate that every `document_id` belongs to the user's tenant before linking. |
+| Agent knowledge base access bypass (agent answers about documents it should not have) | The RAG retrieval query (`lib/agents/rag.ts`) filters `document_chunks` by the agent's `agent_documents` links, which are constrained to the agent's tenant. Even if the query is manipulated, only the agent's selected documents are searched. |
+| Telegram webhook spoofing (attacker sends fake Telegram updates) | If `TELEGRAM_WEBHOOK_SECRET` is configured, the webhook endpoint verifies the `X-Telegram-Bot-Api-Secret-Token` header. Additionally, Telegram's IP ranges can be validated. In P16, the primary defence is the secret token. |
+| WhatsApp message injection (attacker sends forged messages to webhook) | The unofficial `whatsapp-web.js` client receives messages through its authenticated Puppeteer session, not webhooks. The `POST /api/webhook/whatsapp/[agentId]` endpoint is an unused placeholder; if used in future with the WhatsApp Business API, it requires `WHATSAPP_WEBHOOK_SECRET` validation. |
+| WhatsApp session hijacking (attacker steals the serialized client_state) | `client_state` is stored encrypted in `agent_channels.config`. Decryption requires `AGENT_CHANNEL_ENCRYPTION_KEY`. Even if the database is compromised, session state is unreadable without the key. |
+| Denial of service via agent chat (excessive playground requests) | Rate limiting per agent is recommended at the deployment layer. Each chat request may trigger paid API calls (OpenAI embeddings + DeepSeek chat). |
+| Denial of service via channel messages (flood of WhatsApp/Telegram messages) | Channel messages trigger the full RAG pipeline per message. Rate limiting at the application layer is not in P16 scope -- this is an accepted risk. A future phase should add per-channel rate limiting (max N messages per minute per channel). |
+| Prompt injection via channel messages | The agent's `system_prompt` is prepended to every LLM call. User content (from WhatsApp or Telegram) goes in the user message. The same P1/P6 prompt injection mitigations apply: fixed system prompt isolation, no system prompt modification from user input, and Zod schema validation on structured outputs (if used). |
+| The agent's own `system_prompt` contains malicious instructions | The `system_prompt` is set by the tenant's editor/admin/owner. This is a trusted user within the tenant. If an editor sets a harmful prompt, it only affects their own tenant's agent. The AI response still undergoes standard output processing (never executed as code). |
+| Encryption key exfiltration | `AGENT_CHANNEL_ENCRYPTION_KEY` is server-only, never prefixed with `NEXT_PUBLIC_`, never logged, never returned in API responses. If the key is compromised, all stored channel credentials must be considered compromised. Key rotation requires re-encrypting all `agent_channels.config` rows. |
+| Agent deletion leaves orphaned channel clients | `DELETE /api/agents/[id]` disconnects active channels (destroys WhatsApp client, removes Telegram webhook) before deleting the agent row. CASCADE handles database cleanup. The in-memory client maps in `ChannelManager` are also cleared. |
+| Inactive agent still responds to channel messages | The channel message handlers check `agent.is_active` before processing. If the agent is deactivated, channel messages are acknowledged but not processed (WhatsApp) or returned with a polite "agent is offline" message (Telegram). |
+| Server restart loses WhatsApp sessions | WhatsApp `client_state` is persisted to the encrypted `config` on every `ready` and `authenticated` event. On server restart, the `ChannelManager.initWhatsApp()` attempts to restore from `config.client_state` before requiring a new QR scan. |
+
+### 16b. Channel Credential Encryption
+
+All sensitive channel configuration (bot tokens, WhatsApp session state) is encrypted before storage in the `agent_channels.config` JSONB column.
+
+**Algorithm:** AES-256-GCM (authenticated encryption with associated data).
+
+**Key:** `AGENT_CHANNEL_ENCRYPTION_KEY` -- a 32-byte base64-encoded string, generated once per environment.
+
+**Encryption format:**
+
+```
+IV (12 bytes, random) || ciphertext (variable) || authTag (16 bytes)
+```
+
+All three components are base64-encoded and concatenated with a `:` separator for storage:
+
+```
+base64(iv):base64(ciphertext):base64(authTag)
+```
+
+**Encryption process (pseudocode):**
+
+```ts
+function encryptConfig(plaintext: object): string {
+  const key = Buffer.from(process.env.AGENT_CHANNEL_ENCRYPTION_KEY, 'base64');
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const json = JSON.stringify(plaintext);
+  const encrypted = Buffer.concat([cipher.update(json, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('base64')}:${encrypted.toString('base64')}:${authTag.toString('base64')}`;
+}
+```
+
+**Decryption process (pseudocode):**
+
+```ts
+function decryptConfig(ciphertext: string): object {
+  const key = Buffer.from(process.env.AGENT_CHANNEL_ENCRYPTION_KEY, 'base64');
+  const [ivB64, encB64, tagB64] = ciphertext.split(':');
+  const iv = Buffer.from(ivB64, 'base64');
+  const encrypted = Buffer.from(encB64, 'base64');
+  const authTag = Buffer.from(tagB64, 'base64');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+  return JSON.parse(decrypted.toString('utf8'));
+}
+```
+
+**Storage:** The encrypted string is stored directly in the `config` JSONB column as a string value wrapped in a JSON object:
+
+```json
+{ "encrypted": "base64(iv):base64(ciphertext):base64(authTag)" }
+```
+
+This wrapper makes it clear at the database level that the config is encrypted (the `encrypted` key signals this), preventing accidental plaintext storage.
+
+**Key generation:**
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Example output: `dGhpcyBpcyBhIDMyIGJ5dGUgZW5jcnlwdGlvbiBrZXk=` (44 characters, base64-encoded 32 bytes).
+
+**Dev fallback:** If `AGENT_CHANNEL_ENCRYPTION_KEY` is not set in development, the `channel-encryption.ts` module logs a warning and uses a hardcoded dev key. This dev key is documented in the code with a comment: `// DEV ONLY -- NEVER USE IN PRODUCTION`. The warning is emitted once at module load time. Production deployment MUST set this env var.
+
+### 16c. Webhook Security
+
+#### Telegram Webhook
+
+**Verification methods (in order of preference):**
+
+1. **Secret token (primary):** The `secret_token` parameter is passed to `setWebhook`. Telegram includes this token in the `X-Telegram-Bot-Api-Secret-Token` header on every webhook request. The webhook endpoint compares this header to `TELEGRAM_WEBHOOK_SECRET` env var. Return 401 if mismatch. This is the recommended approach by Telegram.
+
+2. **IP whitelisting (secondary, optional):** Telegram publishes its webhook IP ranges. The webhook endpoint can optionally validate the request's source IP against these ranges. This prevents non-Telegram sources from hitting the webhook. Not implemented in P16 (added complexity for marginal gain when secret token is used).
+
+**Webhook URL format:** `{APP_URL}/api/webhook/telegram/{agentId}`
+
+The `agentId` in the URL is a UUID. An attacker who discovers the webhook URL and bypasses the secret token could only affect that specific agent. The UUID is not a secret -- it is discoverable by any tenant member. The real protection is the secret token.
+
+**Webhook cleanup on disconnect:**
+- `POST /api/agents/[id]/telegram/disconnect` calls `deleteWebhook` before updating the channel.
+- `DELETE /api/agents/[id]` also calls `deleteWebhook` before cascading the delete.
+- This prevents orphaned webhooks that would continue sending updates to a non-existent endpoint.
+
+#### WhatsApp Webhook (Future)
+
+The `POST /api/webhook/whatsapp/[agentId]` endpoint is **not used in P16** (WhatsApp uses the unofficial `whatsapp-web.js` client with direct Puppeteer connection). When WhatsApp Business API is adopted:
+
+1. WhatsApp signs webhook payloads with HMAC-SHA256 using the app secret.
+2. The `X-Hub-Signature-256` header contains the signature.
+3. The webhook endpoint verifies the signature using `WHATSAPP_WEBHOOK_SECRET`.
+4. This is fully documented for forward compatibility.
+
+### 16d. Rate Limiting Per Agent
+
+P16 does not implement application-level rate limiting, but the architecture supports it. Recommendations for the `deployment` agent:
+
+| Resource | Suggested Limit | Rationale |
+|---|---|---|
+| `POST /api/agents/[id]/chat` | 20 req/min per user per agent | Each chat triggers embedding + LLM calls |
+| Channel messages (WhatsApp/Telegram) | 30 msg/min per agent | Free-form influx from external users; each triggers full RAG pipeline |
+| `GET /api/agents/[id]/whatsapp/status` | 30 req/min per user | Polling during QR flow; 2s intervals = 30/min |
+| `POST /api/agents` | 10 req/min per tenant | Agent creation is infrequent |
+| Telegram webhook | Telegram's own rate limits apply (~30 msg/sec per bot) | Not controlled by InTrustVault |
+
+For the Telegram webhook specifically, Telegram itself rate-limits updates to ~30 messages per second per bot. This provides a natural ceiling. For WhatsApp (unofficial), rate limiting must be applied at the `whatsapp-handler.ts` level to prevent abuse of the AI pipeline.
+
+### 16e. Knowledge Base Access Control
+
+The knowledge base for an agent is defined by the `agent_documents` junction table. The access control chain:
+
+```
+User uploading document
+  -> document has tenant_id
+  -> agent has tenant_id (same tenant)
+  -> agent_documents links agent to document
+  -> RAG retrieval filters document_chunks to agent's document_ids
+```
+
+**Validation during agent creation/update:**
+
+1. **Route handler** validates each `document_id`:
+   ```ts
+   const { data: docs } = await supabase
+     .from('documents')
+     .select('id')
+     .in('id', documentIds)
+     .eq('tenant_id', tenantId);
+   // If docs.length !== documentIds.length, some docs are not in the tenant.
+   ```
+2. Only documents verified to belong to the tenant are linked.
+3. RLS on `agent_documents` further restricts INSERT to the agent's tenant.
+
+**Validation during RAG retrieval:**
+
+1. The RAG query (`lib/agents/rag.ts`) retrieves chunks only from documents linked to the agent:
+   ```sql
+   SELECT dc.* 
+   FROM document_chunks dc
+   JOIN agent_documents ad ON dc.document_id = ad.document_id
+   WHERE ad.agent_id = :agentId
+   ORDER BY dc.embedding <=> :queryEmbedding
+   LIMIT 5
+   ```
+2. The `agent_documents` table is immutable from the perspective of non-editors (RLS prevents unauthorized INSERT/DELETE).
+3. Even if the query parameters are manipulated, the JOIN ensures only the agent's selected documents are searched.
+
+**What happens if a document is deleted?**
+- Soft-deleted documents (`deleted_at IS NOT NULL`) are excluded from the knowledge base at retrieval time.
+- Hard-deleted documents cascade through `agent_documents` (FK ON DELETE CASCADE), removing the link.
+- If a document is deleted but its chunks remain, the RAG query should check `documents.deleted_at IS NULL` in the JOIN to exclude deleted documents.
+
+### 16f. WhatsApp Client Security
+
+The `whatsapp-web.js` library launches a Chromium instance via Puppeteer. This introduces unique security considerations.
+
+| Concern | Mitigation |
+|---|---|
+| Chromium process exposes server to browser vulnerabilities | Run Chromium with sandboxing enabled (Puppeteer default). In Docker/containerized environments, use `--no-sandbox` only when necessary and with additional isolation. |
+| WhatsApp session cookie accessible via filesystem | Puppeteer's user data directory is stored in a non-web-accessible location (e.g., `/tmp/whatsapp-sessions/{agentId}`). Not served by Next.js. |
+| Memory consumption per agent | Each WhatsApp client runs a full Chromium instance. In P16, the number of concurrent agents is expected to be small (1-5 per tenant). For larger scale, a separate WhatsApp service with a shared browser pool is recommended. |
+| Puppeteer downloads Chromium at install time | The `whatsapp-web.js` package depends on `puppeteer`. In Docker/Vercel, use `@sparticuz/chromium` for a serverless-compatible Chromium binary. |
+| CLI arguments for Chromium | `--no-sandbox`, `--disable-setuid-sandbox`, `--disable-dev-shm-usage` may be needed in containerized environments. These reduce security isolation; use only when required by the deployment environment. |
+
+### 16g. Security Audit Checklist Additions (P16)
+
+#### Channel Credential Encryption
+- [ ] `AGENT_CHANNEL_ENCRYPTION_KEY` is set in production Vercel env vars, marked as **Sensitive**.
+- [ ] `git grep "AGENT_CHANNEL_ENCRYPTION_KEY" -- "*.tsx"` returns zero results (no usage in client components).
+- [ ] `git grep "NEXT_PUBLIC_AGENT_CHANNEL"` returns zero results.
+- [ ] `GET /api/agents/[id]` does not return `bot_token` or `client_state` in channel configs.
+- [ ] `GET /api/agents` (list) does not return sensitive channel config fields.
+- [ ] Channel configs stored in the database contain only the `{ encrypted: "..." }` wrapper (never plaintext).
+- [ ] AES-256-GCM implementation uses `crypto.randomBytes` for IV generation (not Math.random).
+- [ ] Encryption module works round-trip: encrypt -> store -> retrieve -> decrypt -> same plaintext.
+
+#### Webhook Verification
+- [ ] `POST /api/webhook/telegram/[agentId]` verifies `X-Telegram-Bot-Api-Secret-Token` header when `TELEGRAM_WEBHOOK_SECRET` is configured.
+- [ ] Webhook endpoint returns 401 if secret token header is missing/mismatched.
+- [ ] `POST /api/agents/[id]/telegram/disconnect` calls `deleteWebhook` on the Telegram API.
+- [ ] `DELETE /api/agents/[id]` disconnects all channels before deleting the agent.
+- [ ] Webhook URL is constructed from `APP_URL` env var, not a hardcoded value.
+
+#### Agent Access Control
+- [ ] Viewer cannot create an agent (POST /api/agents returns 403).
+- [ ] Viewer cannot update an agent (PATCH /api/agents/[id] returns 403).
+- [ ] Viewer cannot delete an agent (DELETE /api/agents/[id] returns 403).
+- [ ] Viewer cannot add/remove channels (POST/DELETE channel endpoints return 403).
+- [ ] Viewer cannot connect/disconnect WhatsApp or Telegram (returns 403).
+- [ ] User in tenant A cannot see agents in tenant B (RLS test).
+- [ ] User in tenant A cannot add documents from tenant B to their agent (route handler rejects).
+- [ ] Agent RAG retrieval only searches documents linked via `agent_documents`.
+
+#### Rate Limiting
+- [ ] Rate limit recommendations are documented for the deployment agent.
+- [ ] Channel message handler does not process messages for inactive agents (`is_active = false`).
+
+#### WhatsApp Client Safety
+- [ ] WhatsApp `client_state` is encrypted before storage and never logged.
+- [ ] WhatsApp client instances are destroyed on disconnect and on agent deletion.
+- [ ] Puppeteer user data directory is outside the Next.js public directory.
+- [ ] `chrome-aws-lambda` or `@sparticuz/chromium` is configured for production (serverless Chromium).
+
+#### Never-Do Additions (P16)
+27. **Never return `bot_token`, `client_state`, or `qr_code` in any API response.** Channel configs are always redacted.
+28. **Never log `AGENT_CHANNEL_ENCRYPTION_KEY` or decrypted channel credentials.**
+29. **Never store channel credentials as plaintext in the database.** Always encrypt via `channel-encryption.ts` before storage.
+30. **Never create an `AGENT_CHANNEL_ENCRYPTION_KEY` env var with the `NEXT_PUBLIC_` prefix.**
+31. **Never allow a viewer to create, update, delete, or manage channels for any agent.**
+32. **Never include documents from another tenant in an agent's knowledge base.**
+33. **Never process channel messages for an inactive agent (`is_active = false`).**
+34. **Never leave a Telegram webhook registered after disconnecting the bot or deleting the agent.**
+35. **Never run Puppeteer/Chromium with `--no-sandbox` in a production environment unless unavoidable and with additional container isolation.**

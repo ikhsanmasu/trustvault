@@ -46,7 +46,7 @@ export async function POST(
     );
   }
 
-  const { projectId, documentIds, allowDownload, allowChat, title } = body;
+  const { projectId, documentIds, allowDownload, allowChat, allowAnchor, allowCompare, title } = body;
 
   // Validate projectId (P11: optional, allow null)
   const resolvedProjectId: string | null =
@@ -143,8 +143,10 @@ export async function POST(
       document_ids: documentIds,
       token,
       created_by: user.id,
-      allow_download: allowDownload,
-      allow_chat: allowChat,
+      allow_download: allowDownload ?? true,
+      allow_chat: allowChat ?? true,
+      allow_anchor: allowAnchor ?? false,
+      allow_compare: allowCompare ?? false,
       title: shareTitle,
     })
     .select("*")

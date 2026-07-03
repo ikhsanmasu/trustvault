@@ -11,10 +11,10 @@ interface SiteStats {
 }
 
 const STATS_CONFIG = [
-  { key: "users" as const, label: "Teams", desc: "Active users" },
-  { key: "documents" as const, label: "Documents", desc: "Verified files" },
-  { key: "anchored" as const, label: "On-Chain", desc: "Blockchain anchored" },
-  { key: "active_shares" as const, label: "Shared", desc: "Active links" },
+  { key: "users" as const, label: "Teams", desc: "Trusted by professionals" },
+  { key: "documents" as const, label: "Documents", desc: "Securely stored" },
+  { key: "anchored" as const, label: "On-Chain", desc: "Blockchain verified" },
+  { key: "active_shares" as const, label: "Shared", desc: "Active secure links" },
 ];
 
 function AnimatedCounter({
@@ -67,17 +67,17 @@ export function Stats() {
       />
 
       <div className="mx-auto max-w-6xl px-6">
-        {/* Section header — matches Features/HowItWorks/UseCases style */}
+        {/* Section header */}
         <div className="text-center max-w-2xl mx-auto">
           <span className="text-base font-bold text-secondary uppercase tracking-widest">
-            Current Usage
+            Growing Every Day
           </span>
           <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            TrustVault by the numbers
+            InTrustVault by the numbers
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Real-time stats from the platform — every document, every
-            blockchain anchor, every shared link.
+            Teams are securing documents, anchoring them on-chain, and sharing
+            with confidence -- right now.
           </p>
         </div>
 

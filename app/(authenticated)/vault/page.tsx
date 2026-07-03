@@ -16,11 +16,13 @@ import { AnchorModal } from "@/components/anchor-modal";
 import { ShareModal } from "@/components/share/share-modal";
 import { UploadModal } from "@/components/upload-modal";
 import { EditDocumentModal } from "@/components/edit-document-modal";
+import { AgentCreateModal } from "@/components/agent-create-modal";
+import { useCreateAgent } from "@/hooks/use-agents";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
 import type { Document } from "@/lib/api-client";
-import { deleteDocument, restoreDocument, editDocument } from "@/lib/api-client";
+import { deleteDocument, restoreDocument } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -61,6 +63,7 @@ export default function VaultPage() {
   const { user, isLoading: isAuthLoading } = useAuthContext();
   const { role: currentRole } = useProfile();
   const canEdit = isEditorOrAbove(currentRole);
+  const { create: createAgent, isCreating: creatingAgent } = useCreateAgent();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
@@ -95,6 +98,8 @@ export default function VaultPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
+  const [moveDocId, setMoveDocId] = useState<string | null>(null);
+  const [actionDropdownDocId, setActionDropdownDocId] = useState<string | null>(null);
   const [editDocId, setEditDocId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
@@ -102,7 +107,9 @@ export default function VaultPage() {
   const [selectedLabelId, setSelectedLabelId] = useState("");
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [docLabels, setDocLabels] = useState<Map<string, string[]>>(new Map());
-  const [deleteLabelId, setDeleteLabelId] = useState<string | null>(null); // docId → labelIds
+  const [deleteLabelId, setDeleteLabelId] = useState<string | null>(null);
+  const [showAgentCreate, setShowAgentCreate] = useState(false);
+  const [agentPreselectedIds, setAgentPreselectedIds] = useState<string[]>([]);
 
   // Fetch labels
   useEffect(() => {
@@ -129,11 +136,11 @@ export default function VaultPage() {
 
   // Click outside to close dropdowns
   useEffect(() => {
-    if (!typeDropdownOpen && !labelDropdownOpen) return;
-    function handleClick() { setTypeDropdownOpen(false); setLabelDropdownOpen(false); }
+    if (!typeDropdownOpen && !labelDropdownOpen && !actionDropdownDocId) return;
+    function handleClick() { setTypeDropdownOpen(false); setLabelDropdownOpen(false); setActionDropdownDocId(null); }
     document.addEventListener("click", handleClick, { once: true });
     return () => document.removeEventListener("click", handleClick);
-  }, [typeDropdownOpen, labelDropdownOpen]);
+  }, [typeDropdownOpen, labelDropdownOpen, actionDropdownDocId]);
 
   // ---- Auth gate -------------------------------------------------------------
 
@@ -494,6 +501,10 @@ export default function VaultPage() {
               <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Ask AI
             </Button>
+            <Button size="sm" variant="outline" onClick={() => { setAgentPreselectedIds(Array.from(selectedIds)); setShowAgentCreate(true); }}>
+              <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+              Create Agent
+            </Button>
             {canEdit && (
               <Button
                 size="sm"
@@ -510,12 +521,13 @@ export default function VaultPage() {
                   refresh();
                 }}
               >
+                <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 Delete
               </Button>
             )}
             <button
               type="button"
-              onClick={() => setSelectedIds(new Set())}
+              onClick={() => { setSelectedIds(new Set()); setMoveDocId(null); }}
               className="ml-auto text-sm text-muted-foreground hover:text-foreground"
             >
               Clear selection
@@ -626,46 +638,114 @@ export default function VaultPage() {
                         {formatDate(doc.created_at)}
                       </td>
                       <td className="px-4 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-0.5">
-                          {/* Anchor: editor+ */}
-                          {canEdit && (
-                            <button type="button" onClick={() => setAnchorDoc(doc)} className={cn("inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors", doc.fingerprint ? "text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950" : "text-muted-foreground hover:text-secondary hover:bg-secondary/10")} title={doc.fingerprint ? "View anchor details" : "Anchor on blockchain"} aria-label={doc.fingerprint ? `Anchor details for ${doc.name}` : `Anchor ${doc.name}`}>
-                              <IconShield className="h-[15px] w-[15px]" />
-                            </button>
-                          )}
-                          <button type="button" onClick={() => setCompareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Compare" aria-label={`Compare ${doc.name}`}>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                        <div className="relative inline-block">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionDropdownDocId(actionDropdownDocId === doc.id ? null : doc.id);
+                            }}
+                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                            title="Actions"
+                            aria-label={`Actions for ${doc.name}`}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                              <circle cx="12" cy="5" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="12" cy="19" r="2" />
+                            </svg>
                           </button>
-                          <button type="button" onClick={() => setViewDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="View" aria-label={`View ${doc.name}`}>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                          </button>
-                          <a href={`/api/documents/${doc.id}/file`} download onClick={(e) => e.stopPropagation()} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-colors" title="Download" aria-label={`Download ${doc.name}`}>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                          </a>
-                          {/* Share: editor+ */}
-                          {canEdit && (
-                            <button type="button" onClick={() => setShareDoc(doc)} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors" title="Share" aria-label={`Share ${doc.name}`}>
-                              <IconShare className="h-[15px] w-[15px]" />
-                            </button>
-                          )}
-                          {/* Edit: editor+ */}
-                          {canEdit && (
-                            <button type="button" onClick={() => {
-                              setEditDocId(doc.id);
-                              setEditDesc(doc.description ?? "");
-                            }} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950 transition-colors" title="Edit" aria-label={`Edit ${doc.name}`}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            </button>
-                          )}
-                          {/* Delete/Restore: editor+ */}
-                          {canEdit && (
-                            <button type="button" onClick={() => setConfirmDelete(doc)} className={doc.deleted_at ? "inline-flex items-center justify-center h-8 w-8 rounded-lg text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" : "inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"} title={doc.deleted_at ? "Restore" : "Delete"} aria-label={doc.deleted_at ? `Restore ${doc.name}` : `Delete ${doc.name}`}>
-                              {doc.deleted_at ? (
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                              ) : (
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          {actionDropdownDocId === doc.id && (
+                            <div
+                              className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {/* Compare */}
+                              <button
+                                type="button"
+                                onClick={() => { setActionDropdownDocId(null); setCompareDoc(doc); }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                                Compare
+                              </button>
+                              {/* View */}
+                              <button
+                                type="button"
+                                onClick={() => { setActionDropdownDocId(null); setViewDoc(doc); }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                View
+                              </button>
+                              {/* Download */}
+                              <a
+                                href={`/api/documents/${doc.id}/file`}
+                                download
+                                onClick={() => setActionDropdownDocId(null)}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download
+                              </a>
+                              {/* Editor+ actions (separated by divider) */}
+                              {canEdit && (
+                                <>
+                                  <div className="my-1 border-t border-border" />
+                                  {/* Anchor / Anchor details */}
+                                  <button
+                                    type="button"
+                                    onClick={() => { setActionDropdownDocId(null); setAnchorDoc(doc); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                                  >
+                                    <IconShield className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
+                                    {doc.fingerprint ? "Anchor details" : "Anchor"}
+                                  </button>
+                                  {/* Share */}
+                                  <button
+                                    type="button"
+                                    onClick={() => { setActionDropdownDocId(null); setShareDoc(doc); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                                  >
+                                    <IconShare className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
+                                    Share
+                                  </button>
+                                  {/* Create Agent */}
+                                  <button
+                                    type="button"
+                                    onClick={() => { setActionDropdownDocId(null); setAgentPreselectedIds([doc.id]); setShowAgentCreate(true); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                                  >
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+                                    Create Agent
+                                  </button>
+                                  {/* Edit */}
+                                  <button
+                                    type="button"
+                                    onClick={() => { setActionDropdownDocId(null); setEditDocId(doc.id); setEditDesc(doc.description ?? ""); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    Edit
+                                  </button>
+                                  {/* Delete / Restore */}
+                                  <button
+                                    type="button"
+                                    onClick={() => { setActionDropdownDocId(null); setConfirmDelete(doc); }}
+                                    className={doc.deleted_at
+                                      ? "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-colors"
+                                      : "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-destructive hover:bg-destructive/10 transition-colors"}
+                                  >
+                                    {doc.deleted_at ? (
+                                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                    ) : (
+                                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    )}
+                                    {doc.deleted_at ? "Restore" : "Delete"}
+                                  </button>
+                                </>
                               )}
-                            </button>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -708,6 +788,14 @@ export default function VaultPage() {
         open={showUpload}
         onOpenChange={setShowUpload}
         onSuccess={() => { setShowUpload(false); refresh(); }}
+      />
+      <AgentCreateModal
+        open={showAgentCreate}
+        onOpenChange={setShowAgentCreate}
+        onSubmit={async (data) => { await createAgent(data); }}
+        isSubmitting={creatingAgent}
+        documents={visibleDocs}
+        preselectedDocumentIds={agentPreselectedIds}
       />
       {/* ---- Edit Modal -------------------------------------------------------- */}
       {editDocId && (

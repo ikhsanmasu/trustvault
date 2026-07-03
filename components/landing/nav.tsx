@@ -38,7 +38,7 @@ export function LandingNav() {
         <Link href="/" className="flex items-center gap-2 select-none">
           <IconBrand className="h-8 w-8 shrink-0" />
           <span className="text-xl font-bold tracking-tight text-foreground">
-            TrustVault
+            InTrustVault
           </span>
         </Link>
 

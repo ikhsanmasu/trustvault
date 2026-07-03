@@ -1,4 +1,4 @@
-# TrustVault -- Deployment & Operations (P5)
+# InTrustVault -- Deployment & Operations (P5)
 
 This document is a **contract** for the `deployment` agent. It specifies the local dev setup, CI configuration, Supabase Auth configuration, Supabase GitHub integration, Vercel deployment process, blockchain node setup (Anvil/Railway), and contract deployment. P1-P4 deployment sections that remain valid are noted as preserved.
 
@@ -26,7 +26,7 @@ This package must be added to `package.json` by the `scaffold` agent before buil
 
 ## 2. Environment Variables
 
-All environment variables required to run TrustVault. These are **names only** -- never commit values.
+All environment variables required to run InTrustVault. These are **names only** -- never commit values.
 
 | Variable | Scope | Description | P2 Change |
 |---|---|---|---|
@@ -60,7 +60,7 @@ After `supabase start`, the output will include `anon key` and `service_role key
 
 ```bash
 git clone <repo-url>
-cd trustvault
+cd intrustvault
 npm install
 ```
 
@@ -162,7 +162,7 @@ Supabase can automatically apply migrations on every push to a linked GitHub bra
 1. Open your Supabase project Dashboard at [supabase.com](https://supabase.com).
 2. Navigate to **Settings > Integrations > GitHub**.
 3. Click **Connect** and authorise Supabase to access your GitHub account.
-4. Select the repository (e.g. `ikhsanmasu/trustvault`).
+4. Select the repository (e.g. `ikhsanmasu/intrustvault`).
 5. Select the branch to watch (e.g. `dev` for staging, `main` for production).
 6. Click **Save** or **Connect branch**.
 
@@ -414,7 +414,7 @@ All P1-P3 "No-Go" items remain. P4 adds:
 - Never skip the migration validation step in CI -- broken migration files block deployment.
 - Never manually run `supabase db push` on production if Supabase GitHub auto-deploy is connected (double-application risk).
 - Never deploy the application before running the P5 database migration (anchoring columns).
-- Never deploy the application before deploying the `TrustVaultAnchor` contract and setting `ANCHOR_CONTRACT_ADDRESS`.
+- Never deploy the application before deploying the `InTrustVaultAnchor` contract and setting `ANCHOR_CONTRACT_ADDRESS`.
 - Never expose `ANCHOR_PRIVATE_KEY` in client-side code or env vars with `NEXT_PUBLIC_` prefix.
 - Never commit `ANCHOR_PRIVATE_KEY` or any real private key to the repository.
 
@@ -439,7 +439,7 @@ All P1-P4 deployment steps remain valid and are incorporated above. The P1 deplo
 | Package | Version | Purpose |
 |---|---|---|
 | `viem` | ^2.x (latest) | EVM interaction, contract calls, transaction signing, keccak256 hashing. Replaces ethers. |
-| `solc` | ^0.8.20 (dev) | Solidity compiler for `TrustVaultAnchor.sol`. Optional if using Foundry. |
+| `solc` | ^0.8.20 (dev) | Solidity compiler for `InTrustVaultAnchor.sol`. Optional if using Foundry. |
 
 The `viem` dependency must be added to `package.json` by the `scaffold` agent before build agents start.
 
@@ -449,7 +449,7 @@ The `viem` dependency must be added to `package.json` by the `scaffold` agent be
 |---|---|---|---|
 | `ANCHOR_RPC_URL` | Server-only | JSON-RPC endpoint URL | Yes (for anchor/verify to work) |
 | `ANCHOR_CHAIN_ID` | Server-only | EVM chain ID as integer | Yes |
-| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `TrustVaultAnchor` address (`0x`-prefixed) | Yes |
+| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `InTrustVaultAnchor` address (`0x`-prefixed) | Yes |
 | `ANCHOR_PRIVATE_KEY` | Server-only | Private key for signing anchor transactions | Yes (for anchor to work; verify works without it if using read-only client) |
 
 **Note:** `ANCHOR_PRIVATE_KEY` is only required for `POST /api/anchor`. `POST /api/verify` uses a read-only public client and does not need the private key. If anchoring is not available (no private key configured), the verify endpoint can still check previously anchored documents.
@@ -484,7 +484,7 @@ npx tsx scripts/deploy-anchor.ts
 
 **Expected output:**
 ```
-Deploying TrustVaultAnchor to chain 31337...
+Deploying InTrustVaultAnchor to chain 31337...
 Transaction hash: 0x...
 Contract deployed at: 0x5FbDB2315678afecb367f032d93F642f64180aa3
 ```
@@ -531,7 +531,7 @@ ENTRYPOINT ["anvil", "--host", "0.0.0.0", "--state", "/data/anvil.state", "--sta
 
 | Setting | Value |
 |---|---|
-| Service name | `trustvault-anvil` |
+| Service name | `intrustvault-anvil` |
 | Source | Dockerfile at `docker/anvil.Dockerfile` |
 | Port | 8545 |
 | Protocol | TCP |
@@ -541,7 +541,7 @@ ENTRYPOINT ["anvil", "--host", "0.0.0.0", "--state", "/data/anvil.state", "--sta
 
 **After the Anvil service is running:**
 
-1. Note the Railway service URL (e.g., `trustvault-anvil.railway.internal:8545` for internal traffic, or the public domain).
+1. Note the Railway service URL (e.g., `intrustvault-anvil.railway.internal:8545` for internal traffic, or the public domain).
 2. Set `ANCHOR_RPC_URL` in the Next.js service's environment variables to point to the Anvil service.
 3. Run `npx tsx scripts/deploy-anchor.ts` once (with the appropriate `ANCHOR_RPC_URL`) to deploy the contract to the Railway-hosted Anvil instance.
 4. Set `ANCHOR_CONTRACT_ADDRESS` in the Next.js service to the deployed contract address.
@@ -575,7 +575,7 @@ forge verify-contract \
   --rpc-url https://sepolia.infura.io/v3/YOUR_KEY \
   --etherscan-api-key YOUR_ETHERSCAN_API_KEY \
   <CONTRACT_ADDRESS> \
-  contracts/TrustVaultAnchor.sol:TrustVaultAnchor
+  contracts/InTrustVaultAnchor.sol:InTrustVaultAnchor
 ```
 
 A verified contract allows anyone to inspect the source code and independently confirm the anchoring logic.
@@ -592,14 +592,14 @@ The script uses viem to deploy the compiled contract. Key behavior:
 
 1. Reads env vars: `ANCHOR_RPC_URL`, `ANCHOR_CHAIN_ID`, `ANCHOR_PRIVATE_KEY`.
 2. Reads compiled artifacts:
-   - ABI from `contracts/out/TrustVaultAnchor_sol_TrustVaultAnchor.abi` (solc output)
-   - Bytecode from `contracts/out/TrustVaultAnchor_sol_TrustVaultAnchor.bin`
+   - ABI from `contracts/out/InTrustVaultAnchor_sol_InTrustVaultAnchor.abi` (solc output)
+   - Bytecode from `contracts/out/InTrustVaultAnchor_sol_InTrustVaultAnchor.bin`
 3. Creates a viem wallet client and public client.
 4. Calls `walletClient.deployContract({ abi, bytecode, args: [] })`.
 5. Waits for receipt via `publicClient.waitForTransactionReceipt()`.
 6. Prints the deployed contract address.
 
-**Fallback if solc artifacts not found:** Try Foundry artifacts from `out/TrustVaultAnchor.sol/TrustVaultAnchor.json` (Forge output format). The script should detect which artifact format is available.
+**Fallback if solc artifacts not found:** Try Foundry artifacts from `out/InTrustVaultAnchor.sol/InTrustVaultAnchor.json` (Forge output format). The script should detect which artifact format is available.
 
 **Usage:**
 ```bash
@@ -648,8 +648,175 @@ Before deploying P5 to production:
 - [ ] Verify the four new columns (`fingerprint`, `chain`, `tx_hash`, `anchored_at`) exist on the production `documents` table.
 - [ ] Verify the `documents_fingerprint_unique` constraint exists.
 - [ ] Verify the `documents_update_anchor` RLS policy exists and is enabled.
-- [ ] Deploy the `TrustVaultAnchor` contract to the target chain.
+- [ ] Deploy the `InTrustVaultAnchor` contract to the target chain.
 - [ ] Set `ANCHOR_CONTRACT_ADDRESS` to the deployed contract address.
 - [ ] Set `ANCHOR_PRIVATE_KEY` to a funded account on the target chain.
 - [ ] Test a full anchor + verify cycle on production (upload a document, anchor it, verify it).
 - [ ] Verify the `ANCHOR_PRIVATE_KEY` account balance is sufficient for expected anchor volume.
+
+---
+
+## 13. P16 Additions: Custom AI Agents Deployment
+
+### 13a. New P16 Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| `whatsapp-web.js` | ^1.25.x (latest) | WhatsApp Web client (Puppeteer-based). Requires a running Chromium instance. |
+| `node-telegram-bot-api` | ^0.66.x (latest) | Telegram Bot API client. Supports webhooks (preferred for Vercel production). |
+| `qrcode.react` | ^4.x (latest) | Client-side QR code rendering for WhatsApp QR scan flow. Alternatively, `qrcode` (server) can be used for SVG generation. |
+
+The `scaffold` agent must add all three to `package.json`.
+
+**Peer dependency note:** `whatsapp-web.js` depends on `puppeteer`. In a Vercel serverless environment, `puppeteer` must be replaced with `@sparticuz/chromium` (serverless-compatible Chromium). The `backend` agent handles this configuration in `lib/agents/channel-manager.ts`. The `scaffold` agent does NOT need to add `puppeteer` or `@sparticuz/chromium` -- these are backend-owned concerns.
+
+### 13b. New Environment Variables for P16
+
+| Variable | Scope | Description | Required |
+|---|---|---|---|
+| `AGENT_CHANNEL_ENCRYPTION_KEY` | Server-only | 32-byte base64-encoded AES-256 key for encrypting channel credentials. Generate via: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. | Yes (for channel functionality) |
+| `APP_URL` | Server-only | Public URL of the deployed application (e.g., `https://intrustvault.vercel.app`). Used to construct Telegram webhook URLs. | Yes (for Telegram webhook) |
+| `TELEGRAM_WEBHOOK_SECRET` | Server-only | (Optional but recommended) Secret token for Telegram webhook verification. Passed as `secret_token` in `setWebhook`. | Recommended |
+| `WHATSAPP_WEBHOOK_SECRET` | Server-only | (Future) Secret for WhatsApp Business API webhook validation. Not used in P16. | No |
+
+**Local dev (`.env.local`)** -- add these entries:
+
+```
+# P16: Custom AI Agents
+AGENT_CHANNEL_ENCRYPTION_KEY=<generated 32-byte base64 key>
+APP_URL=http://localhost:3000
+TELEGRAM_WEBHOOK_SECRET=<optional local dev secret>
+```
+
+**Generating `AGENT_CHANNEL_ENCRYPTION_KEY`:**
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Example output: `dGhpcyBpcyBhIDMyIGJ5dGUgZW5jcnlwdGlvbiBrZXk=` (44 characters).
+
+**Dev fallback:** If `AGENT_CHANNEL_ENCRYPTION_KEY` is not set in development, the `channel-encryption.ts` module uses a hardcoded dev key and emits a warning. Production MUST set this variable.
+
+### 13c. Local Dev Workflow (P16 Additions)
+
+Additional steps for P16 agent features:
+
+1. **Generate encryption key:**
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+   Add the output as `AGENT_CHANNEL_ENCRYPTION_KEY` in `.env.local`.
+
+2. **Set APP_URL:**
+   Add `APP_URL=http://localhost:3000` to `.env.local`.
+
+3. **WhatsApp local testing:**
+   - WhatsApp Web client uses local Chrome/Chromium (installed by `puppeteer`).
+   - No additional setup needed. The QR code appears in the browser UI during connect flow.
+   - Scan with WhatsApp mobile app (linked devices feature).
+
+4. **Telegram local testing:**
+   - Create a bot via [@BotFather](https://t.me/BotFather) on Telegram.
+   - Get the bot token.
+   - Use a tunneling service (ngrok, localtunnel) to expose `localhost:3000` to the internet for webhook delivery:
+     ```bash
+     ngrok http 3000
+     ```
+   - Set `APP_URL` to the ngrok URL (e.g., `https://abc123.ngrok.io`).
+   - Connect the agent to Telegram using the bot token. The webhook is registered to the ngrok URL.
+   - For local dev without webhooks, `node-telegram-bot-api` can use long-polling mode as a fallback.
+
+5. **Verify new migration:**
+   ```bash
+   supabase db reset
+   ```
+   This applies all migrations including `20260703000002_p16_agents.sql`.
+
+### 13d. Migration Structure (Updated for P16)
+
+```
+supabase/
+  migrations/
+    20260621000000_init.sql              ← P1: documents table + bucket
+    20260621000001_p2_auth_rbac.sql      ← P2: tenants, profiles, RLS, trigger
+    20260621000002_p3_multiformat.sql    ← P3: multi-format support
+    20260621000003_p4_soft_delete.sql    ← P4: soft delete
+    20260622000000_p5_blockchain_anchor.sql  ← P5: anchoring columns
+    20260701000000_p6_ai_assistant.sql   ← P6: pgvector, chat tables
+    20260703000000_p14_rbac_invitations.sql  ← P14: tenant RBAC + invitations
+    20260703000002_p16_agents.sql        ← P16: agents, agent_documents,
+                                              agent_channels, agent_sessions,
+                                              agent_messages + RLS policies
+  seed.sql
+```
+
+### 13e. Vercel Deployment for P16
+
+**New environment variables required in Vercel:**
+
+| Variable | Environments | Sensitivity |
+|---|---|---|
+| `AGENT_CHANNEL_ENCRYPTION_KEY` | Production, Preview | **Sensitive (secret)** |
+| `APP_URL` | Production, Preview | Plain |
+| `TELEGRAM_WEBHOOK_SECRET` | Production, Preview | **Sensitive (secret)** |
+
+**WhatsApp in Vercel serverless:**
+
+The `whatsapp-web.js` library requires a persistent Chromium process. Vercel's serverless functions are not suitable for long-running Puppeteer instances. Two deployment options:
+
+**Option A -- Separate WhatsApp Service (Recommended for production):**
+- Deploy a separate lightweight Node.js service (Railway, Fly.io, or a VPS) that runs the WhatsApp clients.
+- The Next.js API routes communicate with this service via HTTP (e.g., `POST /connect`, `GET /status`, etc.).
+- The service uses the same Supabase database and encryption key.
+- This is the recommended architecture for production. The `ChannelManager` in `lib/agents/channel-manager.ts` is designed for this via a swappable `WhatsAppClientProvider`.
+
+**Option B -- Vercel + @sparticuz/chromium (Simple, limited):**
+- Use `@sparticuz/chromium` for serverless-compatible Chromium.
+- WhatsApp connections are ephemeral -- serverless cold starts destroy the browser.
+- Session state is persisted to the database (encrypted in `agent_channels.config`) and restored on next invocation.
+- Acceptable for demo/low-traffic scenarios. Not recommended for production use with multiple concurrent agents.
+
+**For P16, Option A (separate service) is the recommended production architecture.** The separate WhatsApp service is documented but its implementation is a deployment concern (not in scope for the `backend` agent). The `backend` agent implements the `WhatsAppClientProvider` interface with both an in-process implementation (for local dev) and an HTTP-based implementation (for production with a separate service).
+
+**Telegram in Vercel serverless:**
+
+Telegram webhooks work well with Vercel serverless functions. Each webhook request is a stateless HTTP call. The `node-telegram-bot-api` library's webhook mode receives the update, processes it via the RAG pipeline, and sends the reply -- all within one function invocation. No persistent process needed.
+
+The `APP_URL` env var must be set to the Vercel deployment URL for webhook registration.
+
+### 13f. CI Updates for P16
+
+The GitHub Actions CI workflow must:
+
+1. Continue running `eslint`, `tsc --noEmit`, and `vitest run` (unchanged).
+2. Validate that the new P16 migration file exists and follows the naming convention (`20260703000002_p16_agents.sql`).
+3. No new CI dependencies are required for P16 (no Solidity compilation needed).
+
+### 13g. Pre-Deploy Checklist Additions (P16)
+
+Before deploying P16 to production:
+
+- [ ] Verify the P16 migration (`20260703000002_p16_agents.sql`) has been applied to the production Supabase database.
+- [ ] Verify the five new tables exist: `agents`, `agent_documents`, `agent_channels`, `agent_sessions`, `agent_messages`.
+- [ ] Verify RLS is enabled on all five new tables.
+- [ ] Generate `AGENT_CHANNEL_ENCRYPTION_KEY` for production (never reuse the dev key).
+- [ ] Set `AGENT_CHANNEL_ENCRYPTION_KEY` in Vercel, marked as **Sensitive**.
+- [ ] Set `APP_URL` in Vercel to the production Vercel domain.
+- [ ] (Optional) Set `TELEGRAM_WEBHOOK_SECRET` in Vercel.
+- [ ] If using a separate WhatsApp service, deploy and configure it.
+- [ ] Test agent creation, knowledge-base document selection, and playground chat.
+- [ ] Test Telegram bot connection and webhook message handling.
+- [ ] Test WhatsApp QR scan flow (if WhatsApp service is deployed).
+- [ ] Verify channel credentials in the database are encrypted (check `agent_channels.config` contains `{ "encrypted": "..." }`).
+
+### 13h. No-Go List Additions (P16)
+
+- Never deploy the application before running the P16 database migration.
+- Never edit prior migration files -- all P16 changes go in `20260703000002_p16_agents.sql`.
+- Never set `AGENT_CHANNEL_ENCRYPTION_KEY` with the `NEXT_PUBLIC_` prefix.
+- Never reuse the development encryption key in production.
+- Never commit `AGENT_CHANNEL_ENCRYPTION_KEY` or any real channel credentials.
+- Never run Puppeteer with `--no-sandbox` in a production environment without proper container isolation.
+- Never leave Telegram webhooks registered for deleted agents or disconnected channels.
+- Never store channel credentials as plaintext in the database or in logs.

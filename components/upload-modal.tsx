@@ -107,7 +107,7 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
             </div>
             <div>
               <h2 className="text-sm font-bold tracking-tight">Upload Documents</h2>
-              <p className="text-xs text-muted-foreground">14 formats · Max 20 MB each</p>
+              <p className="text-xs text-muted-foreground">Max 20 MB each</p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={handleClose}>{done ? "Done" : "Cancel"}</Button>

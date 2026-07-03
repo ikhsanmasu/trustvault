@@ -46,7 +46,7 @@ export function Navbar() {
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
               <IconBrand className="h-4 w-4" />
             </div>
-            <span className="text-sm hidden sm:inline">TrustVault</span>
+            <span className="text-sm hidden sm:inline">InTrustVault</span>
           </Link>
 
           {/* Desktop nav links */}

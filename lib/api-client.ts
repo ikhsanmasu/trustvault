@@ -468,6 +468,8 @@ export interface SharedLink {
   created_by: string;
   allow_download: boolean;
   allow_chat: boolean;
+  allow_anchor: boolean;
+  allow_compare: boolean;
   title: string;
   is_active: boolean;
   created_at: string;
@@ -485,6 +487,8 @@ export interface CreateShareRequestCompat {
   document_ids: string[];
   allow_download: boolean;
   allow_chat: boolean;
+  allow_anchor: boolean;
+  allow_compare: boolean;
 }
 
 // New canonical request type (matches backend POST /api/share)
@@ -493,6 +497,8 @@ export interface CreateShareRequest {
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;
+  allowAnchor: boolean;
+  allowCompare: boolean;
   title?: string;
 }
 
@@ -515,6 +521,8 @@ export interface SharePublicData {
     title: string;
     allow_download: boolean;
     allow_chat: boolean;
+    allow_anchor: boolean;
+    allow_compare: boolean;
     is_active: boolean;
     created_at: string;
     expires_at: string | null;
@@ -537,6 +545,8 @@ export async function createShare(
         documentIds: (data as CreateShareRequestCompat).document_ids,
         allowDownload: (data as CreateShareRequestCompat).allow_download,
         allowChat: (data as CreateShareRequestCompat).allow_chat,
+        allowAnchor: (data as CreateShareRequestCompat).allow_anchor ?? false,
+        allowCompare: (data as CreateShareRequestCompat).allow_compare ?? false,
         title: (data as CreateShareRequestCompat).title,
       };
   const response = await fetch("/api/share", {
@@ -577,21 +587,7 @@ export async function getShareByToken(
     share: SharedLink;
     documents: Document[];
   }>(response);
-  // Map to frontend-compatible shape
-  return {
-    share: {
-      id: raw.share.id,
-      token: raw.share.token,
-      document_ids: raw.share.document_ids,
-      title: raw.share.title,
-      allow_download: raw.share.allow_download,
-      allow_chat: raw.share.allow_chat,
-      is_active: raw.share.is_active,
-      created_at: raw.share.created_at,
-      expires_at: raw.share.expires_at,
-    },
-    documents: raw.documents,
-  };
+  return raw;
 }
 
 // Also export under the spec name for direct use
@@ -806,4 +802,362 @@ export async function acceptInvitation(
     `/api/tenant/join?token=${encodeURIComponent(token)}`,
   );
   return handleResponse<JoinResponse>(response);
+}
+
+// ===== P16: Custom AI Agents + Multi-Channel =====
+
+export interface Agent {
+  id: string;
+  tenant_id: string;
+  name: string;
+  system_prompt: string;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentChannel {
+  id: string;
+  agent_id: string;
+  channel_type: "whatsapp" | "telegram";
+  config: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AgentWithDetails extends Agent {
+  documents: Document[];
+  channels: AgentChannel[];
+}
+
+export interface AgentSession {
+  id: string;
+  agent_id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentCitation {
+  document_id: string;
+  document_name: string;
+  chunk_index: number;
+  snippet: string;
+}
+
+export interface AgentMessage {
+  id: string;
+  agent_id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  channel: string | null;
+  external_user_id: string | null;
+  citations: AgentCitation[] | null;
+  created_at: string;
+}
+
+export interface CreateAgentRequest {
+  name: string;
+  system_prompt: string;
+  document_ids: string[];
+}
+
+export interface UpdateAgentRequest {
+  name?: string;
+  system_prompt?: string;
+  document_ids?: string[];
+  is_active?: boolean;
+}
+
+export interface AddChannelRequest {
+  channel_type: "whatsapp" | "telegram";
+  config: Record<string, unknown>;
+}
+
+export interface WhatsAppConnectResponse {
+  status: "connected";
+  phoneNumberId: string;
+}
+
+export interface WhatsAppStatusResponse {
+  status: "connected" | "disconnected";
+  phoneNumberId: string | null;
+}
+
+export interface TelegramConnectRequest {
+  bot_token: string;
+}
+
+export interface TelegramConnectResponse {
+  channel_id: string;
+  bot_username: string;
+  webhook_url: string;
+}
+
+export interface AgentChatRequest {
+  session_id?: string;
+  message: string;
+}
+
+export interface CreateAgentResponse {
+  agent: AgentWithDetails;
+}
+
+export interface ListAgentsResponse {
+  agents: Agent[];
+  total: number;
+}
+
+export interface GetAgentResponse {
+  agent: AgentWithDetails;
+}
+
+export interface UpdateAgentResponse {
+  agent: AgentWithDetails;
+}
+
+export interface AddChannelResponse {
+  channel: AgentChannel;
+}
+
+export interface ListAgentSessionsResponse {
+  sessions: AgentSession[];
+}
+
+export interface GetAgentSessionResponse {
+  session: AgentSession;
+  messages: AgentMessage[];
+}
+
+/**
+ * POST /api/agents — create a new custom AI agent.
+ */
+export async function createAgent(
+  data: CreateAgentRequest,
+): Promise<CreateAgentResponse> {
+  const response = await fetch("/api/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<CreateAgentResponse>(response);
+}
+
+/**
+ * GET /api/agents — list all agents in the tenant.
+ */
+export async function listAgents(): Promise<ListAgentsResponse> {
+  const response = await fetch("/api/agents");
+  return handleResponse<ListAgentsResponse>(response);
+}
+
+/**
+ * GET /api/agents/[id] — get full agent details with channels and documents.
+ */
+export async function getAgent(id: string): Promise<GetAgentResponse> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}`);
+  return handleResponse<GetAgentResponse>(response);
+}
+
+/**
+ * PATCH /api/agents/[id] — update agent (name, prompt, documents, active status).
+ */
+export async function updateAgent(
+  id: string,
+  data: UpdateAgentRequest,
+): Promise<UpdateAgentResponse> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<UpdateAgentResponse>(response);
+}
+
+/**
+ * DELETE /api/agents/[id] — delete an agent and all associated data.
+ */
+export async function deleteAgent(
+  id: string,
+): Promise<{ deleted: boolean }> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  return handleResponse<{ deleted: boolean }>(response);
+}
+
+/**
+ * POST /api/agents/[id]/channels — add a messaging channel to the agent.
+ */
+export async function addAgentChannel(
+  agentId: string,
+  data: AddChannelRequest,
+): Promise<AddChannelResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/channels`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+  return handleResponse<AddChannelResponse>(response);
+}
+
+/**
+ * DELETE /api/agents/[id]/channels/[channelId] — remove a channel.
+ */
+export async function removeAgentChannel(
+  agentId: string,
+  channelId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/channels/${encodeURIComponent(channelId)}`,
+    { method: "DELETE" },
+  );
+  return handleResponse<{ deleted: boolean }>(response);
+}
+
+/**
+ * POST /api/agents/[id]/whatsapp/connect — connect via Meta Cloud API.
+ */
+export async function connectWhatsApp(
+  agentId: string,
+  phoneNumberId: string,
+  accessToken: string,
+): Promise<WhatsAppConnectResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/whatsapp/connect`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumberId, accessToken }),
+    },
+  );
+  return handleResponse<WhatsAppConnectResponse>(response);
+}
+
+/**
+ * POST /api/agents/[id]/whatsapp/disconnect — disconnect WhatsApp.
+ */
+export async function disconnectWhatsApp(
+  agentId: string,
+): Promise<{ status: string }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/whatsapp/disconnect`,
+    { method: "POST" },
+  );
+  return handleResponse<{ status: string }>(response);
+}
+
+/**
+ * GET /api/agents/[id]/whatsapp/status — get WhatsApp connection status.
+ */
+export async function getWhatsAppStatus(
+  agentId: string,
+): Promise<WhatsAppStatusResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/whatsapp/status`,
+  );
+  return handleResponse<WhatsAppStatusResponse>(response);
+}
+
+/**
+ * POST /api/agents/[id]/telegram/connect — connect Telegram bot.
+ */
+export async function connectTelegram(
+  agentId: string,
+  botToken: string,
+): Promise<TelegramConnectResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/telegram/connect`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bot_token: botToken }),
+    },
+  );
+  return handleResponse<TelegramConnectResponse>(response);
+}
+
+/**
+ * POST /api/agents/[id]/telegram/disconnect — disconnect Telegram bot.
+ */
+export async function disconnectTelegram(
+  agentId: string,
+): Promise<{ disconnected: boolean }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/telegram/disconnect`,
+    { method: "POST" },
+  );
+  return handleResponse<{ disconnected: boolean }>(response);
+}
+
+/**
+ * GET /api/agents/[id]/chat/sessions — list playground sessions for an agent.
+ */
+export async function listAgentSessions(
+  agentId: string,
+): Promise<ListAgentSessionsResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/chat/sessions`,
+  );
+  return handleResponse<ListAgentSessionsResponse>(response);
+}
+
+/**
+ * GET /api/agents/[id]/chat/sessions/[sessionId] — get a session with messages.
+ */
+export async function getAgentSession(
+  agentId: string,
+  sessionId: string,
+): Promise<GetAgentSessionResponse> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
+  );
+  return handleResponse<GetAgentSessionResponse>(response);
+}
+
+/**
+ * DELETE /api/agents/[id]/chat/sessions/[sessionId] — delete a session.
+ */
+export async function deleteAgentSession(
+  agentId: string,
+  sessionId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
+  );
+  return handleResponse<{ deleted: boolean }>(response);
+}
+
+// ===== P17: Usage Tracking + Billing =====
+
+export type PlanType = "free" | "pro" | "enterprise";
+
+export interface UsageStats {
+  plan: PlanType;
+  documents_used: number;
+  documents_limit: number | null;
+  llm_calls_used: number;
+  llm_calls_limit: number | null;
+  storage_bytes_used: number;
+  storage_bytes_limit: number | null;
+  usage_reset_at: string | null;
+}
+
+export interface GetUsageResponse {
+  usage: UsageStats;
+}
+
+/**
+ * GET /api/usage — get usage stats for the current tenant.
+ */
+export async function getUsage(): Promise<GetUsageResponse> {
+  const response = await fetch("/api/usage");
+  return handleResponse<GetUsageResponse>(response);
 }

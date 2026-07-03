@@ -1,4 +1,4 @@
-# TrustVault
+# InTrustVault
 
 **Cryptographic document integrity vault.** Upload, track, compare, and verify your documents with deterministic hashing and blockchain anchoring.
 
@@ -23,23 +23,23 @@ Anchor fingerprint on-chain → Verify integrity anytime
 ## Quick Start
 
 ```bash
-git clone https://github.com/ikhsanmasu/trustvault.git
-cd trustvault
+git clone https://github.com/ikhsanmasu/intrustvault.git
+cd intrustvault
 cp .env.example .env.local
 # Add your DEEPSEEK_API_KEY to .env.local
 
 ./start-local.sh
 ```
 
-Opens http://localhost:3000 — login: `demo@trustvault.dev` / `demo123456`
+Opens http://localhost:3000 — login: `demo@intrustvault.dev` / `demo123456`
 
 The script installs deps, starts Supabase, applies migrations, seeds demo data, and starts Next.js. The demo includes 16 documents across 7 file types.
 
 ## Manual setup (step by step)
 
 ```bash
-git clone https://github.com/ikhsanmasu/trustvault.git
-cd trustvault
+git clone https://github.com/ikhsanmasu/intrustvault.git
+cd intrustvault
 cp .env.example .env.local      # add DEEPSEEK_API_KEY
 
 npm install                      # 1. Install dependencies
@@ -49,7 +49,7 @@ npx tsx scripts/seed-demo.ts     # 4. Upload sample documents (optional, may fai
 npm run dev                      # 5. Start Next.js
 ```
 
-Login: `demo@trustvault.dev` / `demo123456` — 16 documents ready.
+Login: `demo@intrustvault.dev` / `demo123456` — 16 documents ready.
 
 ## Production deployment
 

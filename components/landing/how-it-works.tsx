@@ -3,7 +3,7 @@ const steps = [
     number: "01",
     title: "Upload",
     description:
-      "Drag and drop documents in any supported format — PDF, DOCX, XLSX, CSV, JSON, and more. Each file is automatically hashed and its text is extracted server-side.",
+      "Drop your documents into your secure vault. We support 14 formats -- PDFs, Word files, spreadsheets, images, and more. Every file is encrypted at rest the moment it arrives.",
     illustration: (
       <svg
         className="h-full w-full"
@@ -51,9 +51,9 @@ const steps = [
   },
   {
     number: "02",
-    title: "Track",
+    title: "Verify",
     description:
-      "Every version is stored with a binary hash and a text hash. The hash chain proves integrity. See your full document history in a clean, sortable table.",
+      "Every file receives a unique cryptographic fingerprint, permanently anchored to the blockchain. An immutable, tamper-proof record you can verify at any time.",
     illustration: (
       <svg
         className="h-full w-full"
@@ -61,40 +61,39 @@ const steps = [
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Row 1 */}
-        <rect x="25" y="15" width="150" height="28" rx="6" className="fill-muted stroke-primary" strokeWidth="1.5" opacity="0.3" />
-        <rect x="40" y="24" width="60" height="10" rx="3" className="fill-primary" opacity="0.2" />
-        <text x="140" y="32" textAnchor="end" className="fill-primary" opacity="0.3" fontSize="9" fontFamily="monospace">
-          v3
-        </text>
-        {/* Row 2 */}
-        <rect x="25" y="50" width="150" height="28" rx="6" className="fill-muted stroke-primary" strokeWidth="1.5" opacity="0.3" />
-        <rect x="40" y="59" width="60" height="10" rx="3" className="fill-primary" opacity="0.2" />
-        <text x="140" y="67" textAnchor="end" className="fill-primary" opacity="0.3" fontSize="9" fontFamily="monospace">
-          v2
-        </text>
-        {/* Row 3 (active) */}
-        <rect x="25" y="85" width="150" height="28" rx="6" className="fill-secondary stroke-secondary" strokeWidth="1.5" opacity="0.12" />
-        <rect x="40" y="94" width="60" height="10" rx="3" className="fill-primary" opacity="0.3" />
-        <text x="140" y="102" textAnchor="end" className="fill-secondary" opacity="0.8" fontSize="9" fontFamily="monospace" fontWeight="600">
-          v1
-        </text>
-        {/* Hash chain connectors */}
+        {/* Document */}
+        <rect x="25" y="15" width="60" height="80" rx="6" className="fill-muted stroke-primary" strokeWidth="1.5" opacity="0.3" />
+        <rect x="38" y="35" width="35" height="5" rx="2.5" className="fill-primary" opacity="0.15" />
+        <rect x="38" y="47" width="28" height="5" rx="2.5" className="fill-primary" opacity="0.1" />
+        <rect x="38" y="59" width="32" height="5" rx="2.5" className="fill-primary" opacity="0.1" />
+        {/* Fingerprint icon */}
         <path
-          d="M100 43V50M100 78V85"
-          className="stroke-primary"
+          d="M120 30C120 30 130 20 140 30C150 40 145 55 140 55M125 45C125 45 128 35 135 38M118 55C118 55 122 48 128 50"
+          className="stroke-secondary"
           strokeWidth="1.5"
-          opacity="0.12"
-          strokeDasharray="4 3"
+          strokeLinecap="round"
         />
+        {/* Chain links */}
+        <rect x="140" y="70" width="18" height="10" rx="3" className="fill-none stroke-primary" strokeWidth="1.5" opacity="0.4" />
+        <rect x="155" y="80" width="18" height="10" rx="3" className="fill-none stroke-primary" strokeWidth="1.5" opacity="0.4" />
+        <rect x="140" y="90" width="18" height="10" rx="3" className="fill-none stroke-primary" strokeWidth="1.5" opacity="0.4" />
+        {/* Shield checkmark */}
+        <path
+          d="M120 110L115 105L110 110L120 120L135 105L130 100L120 110Z"
+          className="fill-secondary"
+          opacity="0.9"
+        />
+        <text x="100" y="145" className="fill-primary" opacity="0.4" fontSize="8" fontFamily="monospace" textAnchor="middle">
+          TAMPER-PROOF
+        </text>
       </svg>
     ),
   },
   {
     number: "03",
-    title: "Compare",
+    title: "Understand",
     description:
-      "Select any two versions and TrustVault runs the comparison. If content differs, intelligent analysis determines whether the change is MATERIAL or NOT MATERIAL — with transparent reasoning you can review.",
+      "Ask your AI assistant anything about your documents. Get instant answers, summaries, and insights -- no reading required. Your vault becomes a knowledge base that talks back.",
     illustration: (
       <svg
         className="h-full w-full"
@@ -102,41 +101,28 @@ const steps = [
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Left document */}
-        <rect x="15" y="25" width="75" height="100" rx="6" className="fill-muted stroke-primary" strokeWidth="1.5" opacity="0.3" />
-        <rect x="28" y="48" width="50" height="6" rx="3" className="fill-primary" opacity="0.15" />
-        <rect x="28" y="60" width="40" height="6" rx="3" className="fill-primary" opacity="0.1" />
-        <rect x="28" y="72" width="46" height="6" rx="3" className="fill-destructive" opacity="0.2" />
-        <text x="35" y="25" className="fill-primary" opacity="0.4" fontSize="9" fontFamily="monospace">
-          Original
+        {/* Chat bubble left (user) */}
+        <rect x="15" y="30" width="70" height="30" rx="12" className="fill-muted stroke-primary" strokeWidth="1.2" opacity="0.25" />
+        <text x="50" y="49" className="fill-primary" opacity="0.4" fontSize="8" fontFamily="monospace" textAnchor="middle">
+          What changed?
         </text>
-
-        {/* Right document */}
-        <rect x="110" y="25" width="75" height="100" rx="6" className="fill-muted stroke-primary" strokeWidth="1.5" opacity="0.3" />
-        <rect x="123" y="48" width="50" height="6" rx="3" className="fill-primary" opacity="0.15" />
-        <rect x="123" y="60" width="40" height="6" rx="3" className="fill-primary" opacity="0.1" />
-        <rect x="123" y="72" width="46" height="6" rx="3" className="fill-success" opacity="0.2" />
-        <text x="130" y="25" className="fill-primary" opacity="0.4" fontSize="9" fontFamily="monospace">
-          New
+        {/* Chat bubble right (AI) */}
+        <rect x="115" y="55" width="70" height="45" rx="12" className="fill-secondary stroke-secondary" strokeWidth="1.2" opacity="0.1" />
+        <text x="150" y="74" className="fill-secondary" opacity="0.7" fontSize="7" fontFamily="monospace" textAnchor="middle">
+          The payment
         </text>
-
-        {/* Verdict badge */}
-        <rect x="55" y="115" width="90" height="28" rx="14" className="fill-primary" />
-        <text
-          x="100"
-          y="133"
-          textAnchor="middle"
-          className="fill-secondary"
-          fontSize="8"
-          fontFamily="monospace"
-          fontWeight="600"
-        >
-          MATERIAL CHANGE
+        <text x="150" y="84" className="fill-secondary" opacity="0.7" fontSize="7" fontFamily="monospace" textAnchor="middle">
+          amount changed
         </text>
-
-        {/* Connectors */}
-        <path d="M97.5 75H102.5" className="stroke-primary" strokeWidth="1.5" opacity="0.15" strokeDasharray="3 2" />
-        <path d="M100 105V115" className="stroke-primary" strokeWidth="1.5" opacity="0.12" />
+        {/* Sparkles */}
+        <path d="M40 85L42 90L47 92L42 94L40 99L38 94L33 92L38 90L40 85Z" className="fill-secondary" opacity="0.4" />
+        <path d="M175 25L176 28L179 29L176 30L175 33L174 30L171 29L174 28L175 25Z" className="fill-secondary" opacity="0.3" />
+        {/* Document stack bottom */}
+        <rect x="55" y="110" width="40" height="35" rx="5" className="fill-muted stroke-primary" strokeWidth="1" opacity="0.2" />
+        <rect x="65" y="115" width="40" height="35" rx="5" className="fill-muted stroke-primary" strokeWidth="1" opacity="0.15" />
+        <rect x="75" y="120" width="40" height="35" rx="5" className="fill-muted stroke-primary" strokeWidth="1" opacity="0.2" />
+        {/* Arrow from docs to chat */}
+        <path d="M95 130C105 130 110 100 115 85" className="stroke-secondary" strokeWidth="1.2" opacity="0.3" strokeDasharray="3 2" />
       </svg>
     ),
   },
@@ -163,11 +149,11 @@ export function HowItWorks() {
             How It Works
           </span>
           <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            Three steps to document confidence
+            Simple, powerful, and transparent
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            No complex setup. No manual hashing. Upload, track, and compare in
-            minutes.
+            Three steps to turn your document collection into an intelligent,
+            verifiable vault.
           </p>
         </div>
 

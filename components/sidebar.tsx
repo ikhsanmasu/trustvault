@@ -15,6 +15,8 @@ import {
   IconCollapseSidebar,
   IconMessageBot,
   IconShare,
+  IconBot,
+  IconChart,
 } from "@/components/icons";
 
 // ---- Nav item definition -------------------------------------------------------
@@ -29,7 +31,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: IconDashboard },
   { label: "My Vault", href: "/vault", icon: IconFolder },
   { label: "Assistant", href: "/assistant", icon: IconMessageBot },
+  { label: "Agents", href: "/agents", icon: IconBot },
   { label: "Shared Links", href: "/shares", icon: IconShare },
+  { label: "Usage", href: "/usage", icon: IconChart },
   { label: "Settings", href: "/settings", icon: IconSettings },
 ];
 
@@ -121,7 +125,7 @@ export function Sidebar({
               href="/dashboard"
               className="flex items-center gap-3 min-w-0 transition-all duration-200 ease-out"
               onClick={onMobileClose}
-              aria-label="TrustVault Dashboard"
+              aria-label="InTrustVault Dashboard"
             >
             <div
               className={cn(
@@ -140,7 +144,7 @@ export function Sidebar({
                 collapsed && "opacity-0 scale-75 w-0",
               )}
             >
-              TrustVault
+              InTrustVault
             </span>
           </Link>
           <button

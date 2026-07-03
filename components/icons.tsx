@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// SVG Icon Library — TrustVault
+// SVG Icon Library — InTrustVault
 // All shared icons in one place. Consistent sizing (20x20 default, strokeWidth 1.75).
 // Each icon accepts className for overrides.
 // ---------------------------------------------------------------------------
@@ -22,9 +22,9 @@ export function IconBrand({ className }: IconProps) {
       fill="none"
       className={cn("h-5 w-5 shrink-0", className)}
       role="img"
-      aria-label="TrustVault"
+      aria-label="InTrustVault"
     >
-      <title>TrustVault</title>
+      <title>InTrustVault</title>
       <rect width="32" height="32" rx="8" className="fill-primary" />
       <path d="M16 6L8 10V17C8 22.5 16 26 16 26C16 26 24 22.5 24 17V10L16 6Z" className="fill-secondary" opacity="0.9" />
       <path d="M16 11L11 13.5V17.8C11 21 16 23.5 16 23.5C16 23.5 21 21 21 17.8V13.5L16 11Z" className="fill-primary" />
@@ -1006,6 +1006,57 @@ export function IconDownload({ className }: IconProps) {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+// ---- P17: Usage / Chart -------------------------------------------------------
+
+export function IconChart({ className }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("h-5 w-5 shrink-0", className)}
+      role="img"
+      aria-label="Chart"
+    >
+      <title>Chart</title>
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  );
+}
+
+// ---- P16: Agents --------------------------------------------------------------
+
+export function IconBot({ className }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("h-5 w-5 shrink-0", className)}
+      role="img"
+      aria-label="Agents"
+    >
+      <title>Agents</title>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <circle cx="9" cy="10" r="1.5" />
+      <circle cx="15" cy="10" r="1.5" />
+      <path d="M8 16c0-2 1.5-3 4-3s4 1 4 3" />
+      <line x1="9" y1="3" x2="9" y2="5" />
+      <line x1="15" y1="3" x2="15" y2="5" />
     </svg>
   );
 }

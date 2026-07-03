@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, requireProjectRole } from "@/lib/supabase/auth";
+import { requireAuth, requireProjectRole, getUserTenantId } from "@/lib/supabase/auth";
 import {
   generateEmbedding,
   buildRAGPrompt,
@@ -7,8 +7,8 @@ import {
   extractCitations,
   ChatMessage as ChatMessageInput,
 } from "@/lib/ai-assistant";
+import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
 import type {
-  ChatRequest,
   ErrorResponse,
   Citation,
 } from "@/lib/types";
@@ -70,10 +70,22 @@ export async function POST(
   if (!auth.ok) return auth.response;
   const { user, supabase } = auth;
 
+  // -- 1a. P17: Check LLM call limit for the user's tenant ------------------
+  const tenantId = await getUserTenantId(supabase, user.id);
+  if (tenantId) {
+    const llmCheck = await checkLLMLimit(supabase, tenantId);
+    if (!llmCheck.allowed) {
+      return NextResponse.json(
+        { error: llmCheck.reason ?? "LLM call limit reached", code: "PLAN_LIMIT_REACHED" },
+        { status: 403 },
+      );
+    }
+  }
+
   // -- 2. Parse & validate body ---------------------------------------------
-  let body: ChatRequest;
+  let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as ChatRequest;
+    body = (await request.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json(
       { error: "Invalid JSON body", code: "MISSING_PROJECT_ID" },
@@ -81,7 +93,23 @@ export async function POST(
     );
   }
 
-  const { sessionId, projectId, message } = body;
+  const sessionId = body.sessionId as string | undefined;
+  const projectId = body.projectId as string | undefined;
+  const message = body.message as string | undefined;
+  const documentIds = body.documentIds as string[] | undefined;
+  const customPrompt = body.customPrompt as string | undefined;
+
+  // Type-check optional documentIds array
+  const docIdList: string[] | undefined =
+    Array.isArray(documentIds) && documentIds.every((id: unknown) => typeof id === "string")
+      ? documentIds
+      : undefined;
+
+  // Type-check optional customPrompt
+  const customSystemPrompt: string | undefined =
+    typeof customPrompt === "string" && customPrompt.trim().length > 0
+      ? customPrompt.trim()
+      : undefined;
 
   // Validate message
   if (!message || typeof message !== "string" || message.trim().length === 0) {
@@ -231,10 +259,13 @@ export async function POST(
             .from("document_chunks")
             .select("id, document_id, chunk_index, content, embedding");
 
-          if (capturedProjectId) {
+          if (docIdList && docIdList.length > 0) {
+            // Filter to only chunks from selected knowledge-base documents
+            chunkQuery = chunkQuery.in("document_id", docIdList);
+          } else if (capturedProjectId) {
             chunkQuery = chunkQuery.eq("project_id", capturedProjectId);
           }
-          // If no projectId, RLS + tenant scoping handles access
+          // If neither documentIds nor projectId, RLS + tenant scoping handles access
 
           const { data: allChunks, error: chunksError } = await chunkQuery;
 
@@ -304,8 +335,11 @@ export async function POST(
           message,
         );
 
-        // 7g. Stream DeepSeek response via SSE
-        await chatCompletionStream(system, userPrompt, {
+        // 7g. Use custom system prompt if provided, otherwise use the default
+        const finalSystem = customSystemPrompt ?? system;
+
+        // 7h. Stream DeepSeek response via SSE
+        await chatCompletionStream(finalSystem, userPrompt, {
           onToken: (token: string) => {
             send("token", { token });
           },
@@ -341,6 +375,14 @@ export async function POST(
                 .from("chat_sessions")
                 .update({ updated_at: new Date().toISOString() })
                 .eq("id", capturedSessionId);
+
+              // P17: Increment LLM usage
+              if (tenantId) {
+                await incrementUsage(supabase, tenantId, "llm_calls", {
+                  endpoint: "assistant/chat",
+                  tokens: 0,
+                });
+              }
 
               // Send done event
               send("done", {

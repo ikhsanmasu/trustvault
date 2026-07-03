@@ -1,11 +1,11 @@
-# TrustVault — Vision
+# InTrustVault — Vision
 
 ## Problem
 Documents change over time. Detecting *that* a file changed is a solved, commodity problem (hashing, diffing). The harder and more valuable question in audit, legal, and compliance work is: **does a change actually matter?** A reformatted paragraph is noise; a changed payment
 amount or an altered obligation is critical. Existing integrity tools flag that bytes differ but cannot judge the *significance* of a change.
 
 ## Solution
-TrustVault is a document-integrity platform that combines:
+InTrustVault is a document-integrity platform that combines:
 
 1. **Layered verification** — hash at multiple levels (raw file, extracted text, and later a semantic summary) so we can distinguish "the file was re-saved" from "the content actuall changed".
 2. **AI materiality assessment** — when content differs, an AI judges whether the change is **material** (alters meaning, value, or obligation) or **cosmetic** — assessed against a verified baseline.
@@ -20,7 +20,7 @@ TrustVault is a document-integrity platform that combines:
 Audit teams, legal/compliance reviewers, and multi-team document workflows where knowing *whether* a change matters — not just that it happened — drives decisions.
 
 ## What makes it different
-Most tools answer "did this change?" TrustVault answers "**does this change matter?**" — the question that actually requires judgment.
+Most tools answer "did this change?" InTrustVault answers "**does this change matter?**" — the question that actually requires judgment.
 
 ## Non-goals (for now)
 - Not an e-signature service.

@@ -3,9 +3,12 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: "TrustVault",
+  title: "InTrustVault — Intelligent and trusted vault",
   description:
-    "Document-integrity platform — upload, hash, compare, and assess materiality of changes.",
+    "AI-powered document integrity platform — secure storage, blockchain verification, and intelligent analysis.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 // Inline script that runs before React hydrates to prevent a flash of

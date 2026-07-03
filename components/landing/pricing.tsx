@@ -7,11 +7,11 @@ const PLANS = [
     name: "Starter",
     price: "Free",
     period: "forever",
-    description: "Perfect for individuals and small teams getting started.",
+    description: "Perfect for individuals getting started with secure document storage.",
     features: [
-      "Up to 50 documents",
-      "3 workspaces",
-      "SHA-256 integrity hashing",
+      "Up to 10 documents",
+      "Secure encrypted vault storage",
+      "Essential integrity verification",
       "AI change analysis (10/month)",
       "Basic document preview",
       "Community support",
@@ -22,17 +22,17 @@ const PLANS = [
   },
   {
     name: "Pro",
-    price: "$29",
+    price: "$65",
     period: "/month",
-    description: "For growing teams that need advanced integrity features.",
+    description: "For growing teams that need full integrity, intelligence, and collaboration.",
     features: [
       "Unlimited documents",
-      "Unlimited workspaces",
-      "Blockchain anchoring",
-      "AI change analysis (unlimited)",
-      "AI Vault Assistant (RAG chat)",
-      "Document sharing & public links",
+      "Full blockchain anchoring",
+      "AI analysis & assistant (unlimited)",
+      "Smart document sharing & public links",
+      "Version tracking & comparison",
       "Team collaboration (5 members)",
+      "Role-based access control",
       "Priority support",
     ],
     cta: "Start Free Trial",
@@ -43,14 +43,14 @@ const PLANS = [
     name: "Enterprise",
     price: "Custom",
     period: "",
-    description: "For organizations with advanced security and compliance needs.",
+    description: "For organizations with advanced security, scale, and compliance needs.",
     features: [
       "Everything in Pro",
       "Unlimited team members",
       "SSO / SAML integration",
       "Audit logs & compliance reports",
       "Dedicated infrastructure",
-      "Custom retention policies",
+      "Custom data retention policies",
       "SLA & dedicated support",
       "On-premise deployment option",
     ],
@@ -69,10 +69,11 @@ export function Pricing() {
             Pricing
           </span>
           <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            Simple, transparent pricing
+            Start free, scale with confidence
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Start free. Upgrade when you need more power. No hidden fees.
+            Every plan includes secure storage and essential integrity features.
+            Upgrade when your team needs more.
           </p>
         </div>
 
