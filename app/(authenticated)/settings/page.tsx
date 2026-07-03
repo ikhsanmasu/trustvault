@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -30,14 +30,12 @@ import {
   type TenantRole,
   ApiClientError,
 } from "@/lib/api-client";
-import { useTenant } from "@/hooks/use-tenant";
 import { InviteModal } from "@/components/invite-modal";
 import { useToastState, type ToastData } from "@/hooks/use-toast-state";
 import { cn } from "@/lib/utils";
 import {
   IconUser,
   IconLock,
-  IconHome,
   IconUsers,
   IconX,
   IconSpinner,
@@ -47,19 +45,17 @@ import {
 
 // ---- Settings tab type -------------------------------------------------------
 
-type SettingsTab = "profile" | "password" | "tenant" | "members";
+type SettingsTab = "profile" | "password" | "members";
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   profile: "Profile",
   password: "Password",
-  tenant: "Tenant",
   members: "Members",
 };
 
 const TAB_ICONS: Record<SettingsTab, React.ReactNode> = {
   profile: <IconUser className="h-5 w-5" />,
   password: <IconLock className="h-5 w-5" />,
-  tenant: <IconHome className="h-5 w-5" />,
   members: <IconUsers className="h-5 w-5" />,
 };
 
@@ -315,7 +311,7 @@ function ProfileTab() {
                       month: "long",
                       day: "numeric",
                     })
-                  : "—"}
+                  : "â€”"}
               </span>
             </div>
             <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-muted/20 dark:bg-muted/10">
@@ -474,147 +470,6 @@ function PasswordTab() {
 
 // ---- Tenant Tab -------------------------------------------------------------
 
-function TenantTab() {
-  const { tenant, isLoading, error, updateTenantName, isUpdating, updateError } =
-    useTenant();
-  const [name, setName] = useState("");
-  const { toast, showToast, dismissToast } = useToastState();
-  const [localSuccess, setLocalSuccess] = useState(false);
-
-  useEffect(() => {
-    if (tenant) {
-      setName(tenant.name);
-    }
-  }, [tenant]);
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setLocalSuccess(false);
-    if (!name.trim()) return;
-    const ok = await updateTenantName(name.trim());
-    if (ok) {
-      setLocalSuccess(true);
-      showToast("Tenant name updated successfully.", "success");
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="py-10 space-y-4">
-          <Skeleton className="h-6 w-40" />
-          <Skeleton className="h-20 w-full rounded-2xl" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-32" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (error || !tenant) {
-    return (
-      <Card>
-        <CardContent className="py-10">
-          <Alert variant="destructive">
-            <AlertDescription>{error || "Tenant not found."}</AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="shadow-sm">
-      <CardHeader>
-        <CardTitle className="text-xl">Tenant Settings</CardTitle>
-        <CardDescription>
-          Manage your organization&apos;s tenant configuration.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-8">
-        {/* Tenant info card */}
-        <div className="rounded-2xl border bg-muted/10 dark:bg-muted/5 p-5 space-y-1">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <IconHome className="h-5 w-5" />
-            </div>
-            <h3 className="font-semibold text-sm">{tenant.name}</h3>
-          </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between py-1.5 px-3 rounded-xl bg-background/60">
-              <span className="text-muted-foreground">Tenant ID</span>
-              <code className="text-xs font-mono">{tenant.id.slice(0, 8)}...</code>
-            </div>
-            <div className="flex items-center justify-between py-1.5 px-3 rounded-xl bg-background/60">
-              <span className="text-muted-foreground">Created</span>
-              <span className="text-xs tabular-nums font-medium">
-                {new Date(tenant.created_at).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSave} className="space-y-5 max-w-lg">
-          <div className="space-y-2">
-            <Label htmlFor="tenant-name" className="text-sm font-medium">
-              Organization Name
-            </Label>
-            <Input
-              id="tenant-name"
-              placeholder="Your organization name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={255}
-              disabled={isUpdating}
-              className="rounded-lg h-11"
-            />
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                This name identifies your organization.
-              </p>
-              <p className="text-xs text-muted-foreground/70 tabular-nums shrink-0 ml-4">
-                {name.length}/255
-              </p>
-            </div>
-          </div>
-
-          {updateError && (
-            <Alert variant="destructive">
-              <AlertDescription>{updateError}</AlertDescription>
-            </Alert>
-          )}
-
-          {localSuccess && !updateError && (
-            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-              <AlertDescription>Tenant updated successfully.</AlertDescription>
-            </Alert>
-          )}
-
-          <Button
-            type="submit"
-            disabled={isUpdating || !name.trim()}
-            className="rounded-lg h-10 px-6"
-          >
-            {isUpdating ? (
-              <span className="flex items-center gap-2">
-                <IconSpinner className="h-4 w-4" />
-                Saving...
-              </span>
-            ) : (
-              "Save Changes"
-            )}
-          </Button>
-        </form>
-      </CardContent>
-
-      {toast && <ToastUI toast={toast} onDismiss={dismissToast} />}
-    </Card>
-  );
-}
 
 // ---- Members Tab -------------------------------------------------------------
 
@@ -946,7 +801,7 @@ export default function SettingsPage() {
     );
   }
 
-  const tabs: SettingsTab[] = ["profile", "password", "tenant", "members"];
+  const tabs: SettingsTab[] = ["profile", "password", "members"];
 
   return (
     <div className="space-y-6">
@@ -1028,10 +883,10 @@ export default function SettingsPage() {
         <div className="flex-1 min-w-0">
           {activeTab === "profile" && <ProfileTab />}
           {activeTab === "password" && <PasswordTab />}
-          {activeTab === "tenant" && <TenantTab />}
           {activeTab === "members" && <MembersTab />}
         </div>
       </div>
     </div>
   );
 }
+
