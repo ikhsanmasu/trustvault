@@ -468,6 +468,8 @@ export interface SharedLink {
   created_by: string;
   allow_download: boolean;
   allow_chat: boolean;
+  allow_anchor: boolean;
+  allow_compare: boolean;
   title: string;
   is_active: boolean;
   created_at: string;
@@ -485,6 +487,8 @@ export interface CreateShareRequestCompat {
   document_ids: string[];
   allow_download: boolean;
   allow_chat: boolean;
+  allow_anchor: boolean;
+  allow_compare: boolean;
 }
 
 // New canonical request type (matches backend POST /api/share)
@@ -493,6 +497,8 @@ export interface CreateShareRequest {
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;
+  allowAnchor: boolean;
+  allowCompare: boolean;
   title?: string;
 }
 
@@ -515,6 +521,8 @@ export interface SharePublicData {
     title: string;
     allow_download: boolean;
     allow_chat: boolean;
+    allow_anchor: boolean;
+    allow_compare: boolean;
     is_active: boolean;
     created_at: string;
     expires_at: string | null;
@@ -537,6 +545,8 @@ export async function createShare(
         documentIds: (data as CreateShareRequestCompat).document_ids,
         allowDownload: (data as CreateShareRequestCompat).allow_download,
         allowChat: (data as CreateShareRequestCompat).allow_chat,
+        allowAnchor: (data as CreateShareRequestCompat).allow_anchor ?? false,
+        allowCompare: (data as CreateShareRequestCompat).allow_compare ?? false,
         title: (data as CreateShareRequestCompat).title,
       };
   const response = await fetch("/api/share", {
@@ -577,21 +587,7 @@ export async function getShareByToken(
     share: SharedLink;
     documents: Document[];
   }>(response);
-  // Map to frontend-compatible shape
-  return {
-    share: {
-      id: raw.share.id,
-      token: raw.share.token,
-      document_ids: raw.share.document_ids,
-      title: raw.share.title,
-      allow_download: raw.share.allow_download,
-      allow_chat: raw.share.allow_chat,
-      is_active: raw.share.is_active,
-      created_at: raw.share.created_at,
-      expires_at: raw.share.expires_at,
-    },
-    documents: raw.documents,
-  };
+  return raw;
 }
 
 // Also export under the spec name for direct use

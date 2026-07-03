@@ -340,6 +340,8 @@ export interface CreateShareRequest {
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;
+  allowAnchor?: boolean;
+  allowCompare?: boolean;
   title?: string;
 }
 

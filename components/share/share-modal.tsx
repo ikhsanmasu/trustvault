@@ -32,6 +32,8 @@ export function ShareModal({
   const [title, setTitle] = useState("");
   const [allowDownload, setAllowDownload] = useState(true);
   const [allowChat, setAllowChat] = useState(true);
+  const [allowAnchor, setAllowAnchor] = useState(false);
+  const [allowCompare, setAllowCompare] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>(preselectedIds ?? []);
   const [copied, setCopied] = useState(false);
   const [createdLink, setCreatedLink] = useState<string | null>(null);
@@ -56,6 +58,8 @@ export function ShareModal({
       documentIds: selectedIds,
       allowDownload,
       allowChat,
+      allowAnchor,
+      allowCompare,
       title: title.trim() || undefined,
     });
 
@@ -182,6 +186,30 @@ export function ShareModal({
                 />
                 <span className="text-sm text-foreground group-hover:text-primary transition-colors">
                   Allow AI chat
+                </span>
+              </label>
+              <label className="flex items-center gap-2.5 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={allowAnchor}
+                  onChange={(e) => setAllowAnchor(e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                  disabled={isLoading}
+                />
+                <span className="text-sm text-foreground group-hover:text-primary transition-colors">
+                  Show blockchain verification
+                </span>
+              </label>
+              <label className="flex items-center gap-2.5 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={allowCompare}
+                  onChange={(e) => setAllowCompare(e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                  disabled={isLoading}
+                />
+                <span className="text-sm text-foreground group-hover:text-primary transition-colors">
+                  Allow document compare
                 </span>
               </label>
             </div>
