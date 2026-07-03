@@ -2,13 +2,17 @@
 -- TrustVault P12: Deep clean — drop projects, project_members, unused columns
 -- ============================================================================
 
--- 0. Drop RLS policies that reference project_id columns first
+-- 0. Drop ALL RLS policies that reference project_id columns
 DROP POLICY IF EXISTS "document_chunks_select_member" ON public.document_chunks;
 DROP POLICY IF EXISTS "document_chunks_insert_editor" ON public.document_chunks;
 DROP POLICY IF EXISTS "document_chunks_delete_editor" ON public.document_chunks;
 DROP POLICY IF EXISTS "document_labels_select_member" ON public.document_labels;
 DROP POLICY IF EXISTS "document_labels_insert_editor" ON public.document_labels;
 DROP POLICY IF EXISTS "document_labels_delete_editor" ON public.document_labels;
+DROP POLICY IF EXISTS "shared_links_select_member" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_insert_editor" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_update_editor" ON public.shared_links;
+DROP POLICY IF EXISTS "shared_links_delete_editor" ON public.shared_links;
 
 -- 1. Remove project_id from documents (already nullable from P11, now drop it)
 ALTER TABLE public.documents DROP COLUMN IF EXISTS project_id;
