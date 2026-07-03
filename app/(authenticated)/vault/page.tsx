@@ -16,6 +16,8 @@ import { AnchorModal } from "@/components/anchor-modal";
 import { ShareModal } from "@/components/share/share-modal";
 import { UploadModal } from "@/components/upload-modal";
 import { EditDocumentModal } from "@/components/edit-document-modal";
+import { AgentCreateModal } from "@/components/agent-create-modal";
+import { useCreateAgent } from "@/hooks/use-agents";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
@@ -61,6 +63,7 @@ export default function VaultPage() {
   const { user, isLoading: isAuthLoading } = useAuthContext();
   const { role: currentRole } = useProfile();
   const canEdit = isEditorOrAbove(currentRole);
+  const { create: createAgent, isCreating: creatingAgent } = useCreateAgent();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
@@ -102,7 +105,9 @@ export default function VaultPage() {
   const [selectedLabelId, setSelectedLabelId] = useState("");
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [docLabels, setDocLabels] = useState<Map<string, string[]>>(new Map());
-  const [deleteLabelId, setDeleteLabelId] = useState<string | null>(null); // docId → labelIds
+  const [deleteLabelId, setDeleteLabelId] = useState<string | null>(null);
+  const [showAgentCreate, setShowAgentCreate] = useState(false);
+  const [agentPreselectedIds, setAgentPreselectedIds] = useState<string[]>([]);
 
   // Fetch labels
   useEffect(() => {
@@ -494,6 +499,10 @@ export default function VaultPage() {
               <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Ask AI
             </Button>
+            <Button size="sm" variant="outline" onClick={() => { setAgentPreselectedIds(Array.from(selectedIds)); setShowAgentCreate(true); }}>
+              <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+              Create Agent
+            </Button>
             {canEdit && (
               <Button
                 size="sm"
@@ -648,6 +657,11 @@ export default function VaultPage() {
                               <IconShare className="h-[15px] w-[15px]" />
                             </button>
                           )}
+                          {canEdit && (
+                            <button type="button" onClick={() => { setAgentPreselectedIds([doc.id]); setShowAgentCreate(true); }} className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950 transition-colors" title="Create Agent" aria-label={`Create agent from ${doc.name}`}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+                            </button>
+                          )}
                           {/* Edit: editor+ */}
                           {canEdit && (
                             <button type="button" onClick={() => {
@@ -708,6 +722,14 @@ export default function VaultPage() {
         open={showUpload}
         onOpenChange={setShowUpload}
         onSuccess={() => { setShowUpload(false); refresh(); }}
+      />
+      <AgentCreateModal
+        open={showAgentCreate}
+        onOpenChange={setShowAgentCreate}
+        onSubmit={async (data) => { await createAgent(data); }}
+        isSubmitting={creatingAgent}
+        documents={visibleDocs}
+        preselectedDocumentIds={agentPreselectedIds}
       />
       {/* ---- Edit Modal -------------------------------------------------------- */}
       {editDocId && (

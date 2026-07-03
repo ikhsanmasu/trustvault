@@ -23,8 +23,8 @@ interface AgentCreateModalProps {
     document_ids: string[];
   }) => Promise<void>;
   isSubmitting: boolean;
-  /** Available documents for knowledge base selection */
   documents: Document[];
+  preselectedDocumentIds?: string[];
 }
 
 // ---- Component --------------------------------------------------------------
@@ -35,20 +35,21 @@ export function AgentCreateModal({
   onSubmit,
   isSubmitting,
   documents,
+  preselectedDocumentIds,
 }: AgentCreateModalProps) {
   const [name, setName] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>(preselectedDocumentIds ?? []);
   const [nameError, setNameError] = useState<string | null>(null);
   const [promptError, setPromptError] = useState<string | null>(null);
 
   const resetForm = useCallback(() => {
     setName("");
     setSystemPrompt("");
-    setSelectedDocIds([]);
+    setSelectedDocIds(preselectedDocumentIds ?? []);
     setNameError(null);
     setPromptError(null);
-  }, []);
+  }, [preselectedDocumentIds]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
