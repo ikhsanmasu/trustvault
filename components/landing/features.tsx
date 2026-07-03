@@ -1,50 +1,8 @@
 const features = [
   {
-    title: "Multi-Format Support",
+    title: "Secure Vault",
     description:
-      "Upload PDF, DOCX, XLSX, CSV, JSON, images, and plain text files. One platform for all your document types.",
-    icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-        />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M9 9h1M9 13h6M9 17h6M14 3v4a1 1 0 001 1h4"
-        />
-      </svg>
-    ),
-  },
-  {
-    title: "Smart Change Detection",
-    description:
-      "Intelligent analysis classifies document changes as MATERIAL or NOT MATERIAL, with clear, human-readable reasoning for every verdict.",
-    icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-        />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M12 8v4M12 12l2-2"
-        />
-      </svg>
-    ),
-  },
-  {
-    title: "Deterministic Integrity",
-    description:
-      "Every file is fingerprinted with SHA-256 binary and text hashing. Intelligent analysis only runs when content actually changes — zero wasted resources.",
+      "Your documents, encrypted and protected. Upload PDFs, contracts, spreadsheets, images, and more -- 14 formats supported, all stored safely in one place.",
     icon: (
       <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -53,40 +11,13 @@ const features = [
           strokeWidth={1.5}
           d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
         />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M9 13h.01M15 13h.01"
-        />
       </svg>
     ),
   },
   {
-    title: "Version Tracking",
+    title: "Blockchain Integrity",
     description:
-      "Every upload creates a traceable version. Compare any two versions side-by-side to see exactly what changed over time.",
-    icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M4.5 4.5L8 6M19.5 4.5L16 6"
-        />
-      </svg>
-    ),
-  },
-  {
-    title: "Secure Storage",
-    description:
-      "All files are stored encrypted in Supabase with row-level security. Your documents stay private and isolated by tenant.",
+      "Every document is cryptographically sealed on the blockchain. Immutable fingerprints create a tamper-evident record you can verify anytime -- proof that your files have never been altered.",
     icon: (
       <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -99,9 +30,53 @@ const features = [
     ),
   },
   {
+    title: "AI Intelligence",
+    description:
+      "Ask questions directly to your documents. Our AI assistant reads, understands, and answers -- pulling insights, summaries, and answers from your entire vault in seconds.",
+    icon: (
+      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M9.937 15.5A2 2 0 008.5 14.063l-6.135-1.582a.5.5 0 010-.962L8.5 9.936A2 2 0 009.937 8.5l1.582-6.135a.5.5 0 01.963 0L14.063 8.5A2 2 0 0015.5 9.937l6.135 1.581a.5.5 0 010 .964L15.5 14.063a2 2 0 00-1.437 1.437l-1.582 6.135a.5.5 0 01-.963 0z"
+        />
+      </svg>
+    ),
+  },
+  {
+    title: "Smart Sharing",
+    description:
+      "Share documents securely with public links. Set granular permissions -- allow viewing, downloading, or asking questions. You stay in control of who sees what.",
+    icon: (
+      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <circle cx="18" cy="5" r="3" strokeWidth={1.5} />
+        <circle cx="6" cy="12" r="3" strokeWidth={1.5} />
+        <circle cx="18" cy="19" r="3" strokeWidth={1.5} />
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" strokeWidth={1.5} />
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" strokeWidth={1.5} />
+      </svg>
+    ),
+  },
+  {
+    title: "Version Tracking",
+    description:
+      "Track every version of every document over time. Compare any two versions side-by-side, and let AI assess which changes are significant -- so you focus on what matters.",
+    icon: (
+      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
+      </svg>
+    ),
+  },
+  {
     title: "Team Ready",
     description:
-      "Built for teams with group-level organization, role-based access control, and full member management. Multi-tenant from day one.",
+      "Built for teams of any size. Role-based access control, multi-user collaboration, and tenant-level isolation keep everyone working securely -- together.",
     icon: (
       <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -131,11 +106,11 @@ export function Features() {
             Features
           </span>
           <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            Everything you need to trust your documents
+            Everything your documents deserve
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            From upload to verdict, TrustVault gives you deterministic proof
-            and intelligent analysis in one clean workflow.
+            Secure storage, blockchain proof, and AI-powered insights -- all in
+            one intelligent vault.
           </p>
         </div>
 

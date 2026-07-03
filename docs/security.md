@@ -1,4 +1,4 @@
-# TrustVault -- Security Model (P5)
+# inTrustVault -- Security Model (P5)
 
 This document is a **contract** for the `security` audit agent and a reference for `backend` and `deployment`. It defines the accepted threat model for P5 and the controls in place. P1-P4 sections that remain valid are noted as preserved.
 
@@ -6,7 +6,7 @@ This document is a **contract** for the `security` audit agent and a reference f
 
 ## 1. P2 Threat Model
 
-TrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was unauthenticated and single-operator), P2 introduces user identity, tenant scoping, and role-based permissions. The threat model shifts from "trusted local operator" to "authenticated users who must not see each other's data."
+inTrustVault P2 is a **multi-tenant, authenticated** system. Unlike P1 (which was unauthenticated and single-operator), P2 introduces user identity, tenant scoping, and role-based permissions. The threat model shifts from "trusted local operator" to "authenticated users who must not see each other's data."
 
 ### What P2 protects against
 
@@ -348,7 +348,7 @@ P5 introduces blockchain interaction, private key management, and an on-chain sm
 | Replay attacks (double-anchor of the same fingerprint) | Smart contract enforces `require(anchoredAt[fingerprint] == 0, "Already anchored")`. Once set, the fingerprint mapping is immutable. The database also enforces `UNIQUE (fingerprint)`. |
 | RPC man-in-the-middle | The RPC URL is configured via env var. For production, always use HTTPS endpoints (Infura, Alchemy, QuickNode). The viem `http` transport uses HTTPS. For Anvil (local dev), the RPC is on `localhost` -- not exposed to the network. |
 | Smart contract re-entrancy | Not applicable. The `anchor()` function has no external calls before state change. The single SSTORE happens after the require check, which is a read-only check on the same mapping. |
-| Smart contract upgrade/replacement | `TrustVaultAnchor` has no upgrade mechanism (no proxy, no `selfdestruct`, no owner). The contract is immutable once deployed. If a new contract is needed, deploy a new instance and update `ANCHOR_CONTRACT_ADDRESS`. Documents anchored to the old contract remain verifiable against the old contract address. |
+| Smart contract upgrade/replacement | `inTrustVaultAnchor` has no upgrade mechanism (no proxy, no `selfdestruct`, no owner). The contract is immutable once deployed. If a new contract is needed, deploy a new instance and update `ANCHOR_CONTRACT_ADDRESS`. Documents anchored to the old contract remain verifiable against the old contract address. |
 | Chain reorg removes an anchor transaction | Accepted risk for P5. On Anvil (single node, no reorgs) this is impossible. On public testnets/mainnets, wait for sufficient block confirmations. The frontend can poll `POST /api/verify` after anchoring to confirm. For production, the `waitForTransactionReceipt` with a configurable number of confirmations provides reasonable assurance. |
 | Fingerprint collision (two different (binary_hash, text_hash) pairs produce the same keccak256 output) | Relies on keccak256's collision resistance. The probability of a random collision in a 256-bit space is negligible (~1 in 2^128 with birthday bound). Not a practical threat. |
 | Signer account drained (gas theft) | The signer account holds only enough ETH for gas. It is not used for any other purpose. Use a dedicated account with a minimal balance. On Anvil, prefunded accounts have 10,000 test ETH -- acceptable for dev. For production testnet/mainnet, fund only enough for expected anchor volume (estimate 22,000 gas per anchor at current gas price). |
@@ -365,7 +365,7 @@ The `ANCHOR_PRIVATE_KEY` environment variable is the most sensitive secret in P5
 1. **Never prefix with `NEXT_PUBLIC_`.** Next.js inlines all `NEXT_PUBLIC_*` env vars into the client bundle at build time. `ANCHOR_PRIVATE_KEY` must be a plain server-side env var.
 2. **Never log the key.** Do not `console.log(process.env.ANCHOR_PRIVATE_KEY)` anywhere. Do not include it in error messages.
 3. **Never expose in API responses.** The `AnchorResponse` returns `fingerprint`, `chain`, `txHash`, `anchoredAt`, and `verified`. It does NOT return the private key or any derivative.
-4. **Use a dedicated account.** The private key should control an account used exclusively for TrustVault anchoring. It should not hold significant funds beyond gas requirements.
+4. **Use a dedicated account.** The private key should control an account used exclusively for inTrustVault anchoring. It should not hold significant funds beyond gas requirements.
 5. **Rotate periodically (future).** When KMS is implemented, key rotation becomes trivial. For the raw private key approach in P5, rotation requires deploying a new signer account, funding it, and updating `ANCHOR_PRIVATE_KEY`.
 
 ### 14c. Server-Side Execution Guarantee
@@ -438,7 +438,7 @@ P5 adds a new RLS policy (`documents_update_anchor`) that allows editors and adm
 - [ ] The signer account (from `ANCHOR_PRIVATE_KEY`) has a balance sufficient for expected anchor volume.
 
 #### Smart Contract Safety
-- [ ] `TrustVaultAnchor.sol` uses Solidity ^0.8.20 (built-in overflow protection).
+- [ ] `inTrustVaultAnchor.sol` uses Solidity ^0.8.20 (built-in overflow protection).
 - [ ] `anchor()` has no external calls before state change (re-entrancy safe).
 - [ ] `require(anchoredAt[fingerprint] == 0)` prevents overwrites.
 - [ ] No `selfdestruct`, no proxy/upgrade mechanism, no owner role.
@@ -769,7 +769,7 @@ P16 does not implement application-level rate limiting, but the architecture sup
 | Channel messages (WhatsApp/Telegram) | 30 msg/min per agent | Free-form influx from external users; each triggers full RAG pipeline |
 | `GET /api/agents/[id]/whatsapp/status` | 30 req/min per user | Polling during QR flow; 2s intervals = 30/min |
 | `POST /api/agents` | 10 req/min per tenant | Agent creation is infrequent |
-| Telegram webhook | Telegram's own rate limits apply (~30 msg/sec per bot) | Not controlled by TrustVault |
+| Telegram webhook | Telegram's own rate limits apply (~30 msg/sec per bot) | Not controlled by inTrustVault |
 
 For the Telegram webhook specifically, Telegram itself rate-limits updates to ~30 messages per second per bot. This provides a natural ceiling. For WhatsApp (unofficial), rate limiting must be applied at the `whatsapp-handler.ts` level to prevent abuse of the AI pipeline.
 

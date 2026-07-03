@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// SVG Icon Library — TrustVault
+// SVG Icon Library — inTrustVault
 // All shared icons in one place. Consistent sizing (20x20 default, strokeWidth 1.75).
 // Each icon accepts className for overrides.
 // ---------------------------------------------------------------------------
@@ -22,9 +22,9 @@ export function IconBrand({ className }: IconProps) {
       fill="none"
       className={cn("h-5 w-5 shrink-0", className)}
       role="img"
-      aria-label="TrustVault"
+      aria-label="inTrustVault"
     >
-      <title>TrustVault</title>
+      <title>inTrustVault</title>
       <rect width="32" height="32" rx="8" className="fill-primary" />
       <path d="M16 6L8 10V17C8 22.5 16 26 16 26C16 26 24 22.5 24 17V10L16 6Z" className="fill-secondary" opacity="0.9" />
       <path d="M16 11L11 13.5V17.8C11 21 16 23.5 16 23.5C16 23.5 21 21 21 17.8V13.5L16 11Z" className="fill-primary" />

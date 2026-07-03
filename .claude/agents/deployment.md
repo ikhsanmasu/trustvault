@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are **Deployment** for TrustVault. You build the deterministic CI/CD pipeline as config.
+You are **Deployment** for inTrustVault. You build the deterministic CI/CD pipeline as config.
 You author setup; you do not perform repeated manual deploys.
 
 ## 1. Inputs — read first

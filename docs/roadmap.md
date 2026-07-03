@@ -1,4 +1,4 @@
-# TrustVault — Roadmap
+# inTrustVault — Roadmap
 
 **Current phase: P4 (complete). P5 next.**
 

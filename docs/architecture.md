@@ -1,4 +1,4 @@
-# TrustVault -- Architecture (P5)
+# inTrustVault -- Architecture (P5)
 
 ## Open Decisions
 
@@ -8,7 +8,7 @@ None for P5. All interfaces are fully specified below.
 
 ## 1. System Overview
 
-TrustVault is a multi-tenant document-integrity platform. It adds **Supabase Auth for authentication**, **Row Level Security (RLS) for tenant isolation**, and **tenant-level role-based access control (owner/admin/editor/viewer)** via `profiles.role`. The deployment is a **Next.js monolith** -- the same application serves both the React UI and all API route handlers.
+inTrustVault is a multi-tenant document-integrity platform. It adds **Supabase Auth for authentication**, **Row Level Security (RLS) for tenant isolation**, and **tenant-level role-based access control (owner/admin/editor/viewer)** via `profiles.role`. The deployment is a **Next.js monolith** -- the same application serves both the React UI and all API route handlers.
 
 ```
                               ┌─────────────────────┐
@@ -89,7 +89,7 @@ Step 3: AI compare  (call DeepSeek only here)
 
 ### 3a. Authentication Architecture
 
-TrustVault uses **Supabase Auth** with the `@supabase/ssr` package for Next.js App Router integration. Auth is cookie-based (not bearer-token-in-header).
+inTrustVault uses **Supabase Auth** with the `@supabase/ssr` package for Next.js App Router integration. Auth is cookie-based (not bearer-token-in-header).
 
 **Auth flow:**
 
@@ -165,7 +165,7 @@ The middleware does **NOT**:
 - Check roles or permissions (route handlers do that).
 - Protect routes (this is a design choice: API routes return 401, pages check auth in their server component or client-side).
 
-**Why no middleware redirects:** TrustVault is API-heavy. Most pages are server-rendered and fetch data from API routes. Redirecting in middleware creates a brittle coupling between URL structure and auth state. Instead, each page/component checks auth and renders accordingly.
+**Why no middleware redirects:** inTrustVault is API-heavy. Most pages are server-rendered and fetch data from API routes. Redirecting in middleware creates a brittle coupling between URL structure and auth state. Instead, each page/component checks auth and renders accordingly.
 
 ### 3d. Tenant Isolation Architecture
 
@@ -410,7 +410,7 @@ P5 adds a **blockchain anchoring layer** that proves document integrity via an o
                               ┌──────────────────────────────────────┐
                               │   EVM Blockchain (Anvil/Sepolia/...)  │
                               │   ┌────────────────────────────────┐  │
-                              │   │  TrustVaultAnchor (Solidity)    │  │
+                              │   │  inTrustVaultAnchor (Solidity)    │  │
                               │   │  mapping(bytes32 => uint256)    │  │
                               │   │  anchor() / verify()            │  │
                               │   └────────────────────────────────┘  │
@@ -567,7 +567,7 @@ Browser (authenticated)    API: POST /api/verify       lib/anchor.ts       Smart
 
 #### New Modules (owned by `deployment`)
 
-**`contracts/TrustVaultAnchor.sol`** -- Smart contract (see `docs/blockchain.md`).
+**`contracts/inTrustVaultAnchor.sol`** -- Smart contract (see `docs/blockchain.md`).
 
 **`scripts/deploy-anchor.ts`** -- Contract deployment script using viem.
 
@@ -600,7 +600,7 @@ Browser (authenticated)    API: POST /api/verify       lib/anchor.ts       Smart
 |---|---|---|
 | `ANCHOR_RPC_URL` | Server-only | JSON-RPC endpoint URL (e.g., `http://127.0.0.1:8545` for Anvil) |
 | `ANCHOR_CHAIN_ID` | Server-only | EVM chain ID (e.g., `31337` for Anvil, `11155111` for Sepolia) |
-| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `TrustVaultAnchor` contract address (`0x`-prefixed) |
+| `ANCHOR_CONTRACT_ADDRESS` | Server-only | Deployed `inTrustVaultAnchor` contract address (`0x`-prefixed) |
 | `ANCHOR_PRIVATE_KEY` | Server-only | Private key for signing anchor transactions (`0x`-prefixed, 64 hex chars). **Never prefixed with `NEXT_PUBLIC_`** |
 
 ### 11h. Forward Compatibility
@@ -624,7 +624,7 @@ Build sequence for P5 -- must run in this order:
 | 1 | `frontend` | `docs/api-spec.md` P5 endpoints + `docs/blockchain.md` -> anchor button (shield icon) on vault rows, anchor modal, explorer link logic | **Parallel** with database + backend |
 | 2 | `qa` | `docs/roadmap.md` P5 acceptance criteria -> write eval tests for anchoring + verify flows, fingerprint computation | **Sequential** after build (gate) |
 | 2 | `security` | `docs/security.md` P5 section -> audit private key handling, server-side-only execution, env var exposure, replay protection | **Sequential** after build (gate, read-only) |
-| 3 | `deployment` | `docs/deployment.md` P5 section + `docs/blockchain.md` -> create `contracts/TrustVaultAnchor.sol`, `scripts/deploy-anchor.ts`, `docker/anvil.Dockerfile`, update CI, add Vercel env vars for P5 | **Last**, after gates pass |
+| 3 | `deployment` | `docs/deployment.md` P5 section + `docs/blockchain.md` -> create `contracts/inTrustVaultAnchor.sol`, `scripts/deploy-anchor.ts`, `docker/anvil.Dockerfile`, update CI, add Vercel env vars for P5 | **Last**, after gates pass |
 
 **Critical rules:**
 - `scaffold` is a serial prerequisite. No build agent may start before the skeleton exists and compiles with `viem` added.
@@ -1198,7 +1198,7 @@ The playground chat (`POST /api/agents/[id]/chat`) reuses the same SSE streaming
 
 | Aspect | P6 Assistant | P16 Agent Playground |
 |---|---|---|
-| **System prompt** | Fixed: "You are TrustVault AI Assistant..." | Agent's `system_prompt` |
+| **System prompt** | Fixed: "You are inTrustVault AI Assistant..." | Agent's `system_prompt` |
 | **RAG scope** | All documents in tenant | Only documents linked via `agent_documents` |
 | **Session storage** | `chat_sessions` + `chat_messages` | `agent_sessions` + `agent_messages` |
 | **Citation source** | `document_chunks` filtered by tenant | `document_chunks` filtered to agent's `document_ids` |
@@ -1330,7 +1330,7 @@ LIMIT 5;
 | Variable | Scope | Description |
 |---|---|---|
 | `AGENT_CHANNEL_ENCRYPTION_KEY` | Server-only | 32-byte base64-encoded AES-256 key for encrypting channel configs. Generate via: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. |
-| `APP_URL` | Server-only | Public URL of the deployed app (e.g., `https://trustvault.vercel.app`). Used to construct Telegram webhook URLs. |
+| `APP_URL` | Server-only | Public URL of the deployed app (e.g., `https://intrustvault.vercel.app`). Used to construct Telegram webhook URLs. |
 | `TELEGRAM_WEBHOOK_SECRET` | Server-only | (Optional) Secret token for Telegram webhook verification. Set in `setWebhook` as `secret_token`. |
 | `WHATSAPP_WEBHOOK_SECRET` | Server-only | (Future) Secret for WhatsApp Business API webhook validation. Not used in P16. |
 

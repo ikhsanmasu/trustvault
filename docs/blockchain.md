@@ -1,4 +1,4 @@
-# TrustVault -- Blockchain Anchoring Specification (P5)
+# inTrustVault -- Blockchain Anchoring Specification (P5)
 
 This document is a **contract**. The `backend`, `deployment`, and `frontend` agents use it as the authoritative reference for blockchain anchoring. It specifies the smart contract, fingerprint computation, AnchorService abstraction, deployment procedure, and chain configuration.
 
@@ -6,7 +6,7 @@ This document is a **contract**. The `backend`, `deployment`, and `frontend` age
 
 ## 1. Overview
 
-TrustVault P5 adds **blockchain anchoring** to prove document integrity. The system already produces two SHA-256 hashes per document: `binary_hash` and `text_hash` (stored as 64-character lowercase hex strings). P5 compresses these into a single bytes32 **fingerprint** via `keccak256(abi.encodePacked(...))` and writes that fingerprint to an EVM-compatible blockchain via a minimal smart contract.
+inTrustVault P5 adds **blockchain anchoring** to prove document integrity. The system already produces two SHA-256 hashes per document: `binary_hash` and `text_hash` (stored as 64-character lowercase hex strings). P5 compresses these into a single bytes32 **fingerprint** via `keccak256(abi.encodePacked(...))` and writes that fingerprint to an EVM-compatible blockchain via a minimal smart contract.
 
 **Key principles:**
 
@@ -73,18 +73,18 @@ This equality is the cryptographic guarantee of the system: the same inputs prod
 
 ## 3. Smart Contract Specification
 
-### 3a. Contract: `TrustVaultAnchor`
+### 3a. Contract: `inTrustVaultAnchor`
 
-**File:** `contracts/TrustVaultAnchor.sol`
+**File:** `contracts/inTrustVaultAnchor.sol`
 
 ```solidity
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title TrustVaultAnchor
+/// @title inTrustVaultAnchor
 /// @notice Immutable fingerprint registry for document integrity verification.
 ///         Once a fingerprint is anchored it cannot be overwritten.
-contract TrustVaultAnchor {
+contract inTrustVaultAnchor {
     /// @notice Maps a document fingerprint to the block timestamp when it was first anchored.
     ///         Value is 0 if the fingerprint has never been anchored.
     mapping(bytes32 => uint256) public anchoredAt;
@@ -199,7 +199,7 @@ export interface AnchorService {
 export interface AnchorServiceConfig {
   rpcUrl: string;           // e.g. "http://127.0.0.1:8545" (Anvil) or Infura/Alchemy endpoint
   chainId: number;          // e.g. 31337 (Anvil), 11155111 (Sepolia)
-  contractAddress: `0x${string}`; // deployed TrustVaultAnchor address
+  contractAddress: `0x${string}`; // deployed inTrustVaultAnchor address
   signer: ReturnType<typeof createSigner>; // viem wallet client
 }
 ```
@@ -305,7 +305,7 @@ The `verify()` method:
 
 **File:** `scripts/deploy-anchor.ts` (owned by `deployment` agent)
 
-Uses `viem` to deploy the `TrustVaultAnchor` contract. The script:
+Uses `viem` to deploy the `inTrustVaultAnchor` contract. The script:
 
 1. Reads `ANCHOR_RPC_URL`, `ANCHOR_CHAIN_ID`, `ANCHOR_PRIVATE_KEY` from env.
 2. Creates a viem wallet client and public client.
@@ -320,7 +320,7 @@ npx tsx scripts/deploy-anchor.ts
 
 **Output:**
 ```
-Deploying TrustVaultAnchor to chain 31337...
+Deploying inTrustVaultAnchor to chain 31337...
 Transaction hash: 0x...
 Contract deployed at: 0x...
 ```
@@ -332,8 +332,8 @@ After deployment, the contract address must be set as `ANCHOR_CONTRACT_ADDRESS` 
 Use `solc` (Solidity compiler) or a toolchain like Foundry (`forge build`). The simplest approach for this project:
 
 1. Install `solc`: `npm install --save-dev solc@0.8.20` (optional -- compilation can also be done with Foundry).
-2. Compile: `npx solcjs --bin --abi --optimize --base-path . contracts/TrustVaultAnchor.sol -o contracts/out/`
-3. The deploy script reads `contracts/out/TrustVaultAnchor_sol_TrustVaultAnchor.abi` and `contracts/out/TrustVaultAnchor_sol_TrustVaultAnchor.bin`.
+2. Compile: `npx solcjs --bin --abi --optimize --base-path . contracts/inTrustVaultAnchor.sol -o contracts/out/`
+3. The deploy script reads `contracts/out/inTrustVaultAnchor_sol_inTrustVaultAnchor.abi` and `contracts/out/inTrustVaultAnchor_sol_inTrustVaultAnchor.bin`.
 
 **Alternative (recommended for dev velocity):** Use Foundry:
 ```bash
@@ -395,7 +395,7 @@ ANCHOR_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f
 2. Deploy contract: `npx tsx scripts/deploy-anchor.ts` (terminal 2)
 3. Copy the output contract address into `.env.local` as `ANCHOR_CONTRACT_ADDRESS`
 4. Start Next.js: `npm run dev` (terminal 2)
-5. Anchor and verify documents through the TrustVault UI
+5. Anchor and verify documents through the inTrustVault UI
 
 ---
 
@@ -426,7 +426,7 @@ ENTRYPOINT ["anvil", "--host", "0.0.0.0", "--state", "/data/anvil.state", "--sta
 
 | Setting | Value |
 |---|---|
-| Service name | `trustvault-anvil` |
+| Service name | `intrustvault-anvil` |
 | Dockerfile path | `docker/anvil.Dockerfile` |
 | Port | 8545 |
 | Health check path | TCP port 8545 |
@@ -451,7 +451,7 @@ All four variables are **server-only**. None has a `NEXT_PUBLIC_` prefix. The pr
 |---|---|---|---|---|
 | `ANCHOR_RPC_URL` | URL | JSON-RPC endpoint for the anchor chain | `http://127.0.0.1:8545` | `https://sepolia.infura.io/v3/YOUR_KEY` |
 | `ANCHOR_CHAIN_ID` | number | EVM chain ID | `31337` | `11155111` |
-| `ANCHOR_CONTRACT_ADDRESS` | `0x${string}` | Deployed `TrustVaultAnchor` address | `0x5FbDB2...` | `0x...` |
+| `ANCHOR_CONTRACT_ADDRESS` | `0x${string}` | Deployed `inTrustVaultAnchor` address | `0x5FbDB2...` | `0x...` |
 | `ANCHOR_PRIVATE_KEY` | `0x${string}` | Private key for the anchor signer (64 hex chars + 0x) | `0xac0974...` | `0x...` |
 
 ### 8b. Supported Chains
@@ -511,7 +511,7 @@ Multiple document fingerprints can be batched into a single Merkle root anchored
 3. Each document stores its Merkle proof alongside the root.
 4. Verification reconstructs the proof path.
 
-The smart contract `TrustVaultAnchor` remains unchanged (it still stores a single bytes32 -> timestamp mapping). The change is in the AnchorService layer and the database schema.
+The smart contract `inTrustVaultAnchor` remains unchanged (it still stores a single bytes32 -> timestamp mapping). The change is in the AnchorService layer and the database schema.
 
 ### 9c. Multi-Chain Anchoring (future)
 

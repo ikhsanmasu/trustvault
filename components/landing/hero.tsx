@@ -11,21 +11,21 @@ function scrollTo(id: string) {
   }
 }
 
-/** Abstract geometric visual — pure CSS shapes referencing design tokens. */
+/** Abstract geometric visual -- pure CSS shapes referencing design tokens. */
 function GeometricVisual() {
   return (
     <div
       className="relative w-full max-w-md mx-auto aspect-square select-none"
       aria-hidden="true"
     >
-      {/* Large circle — navy */}
+      {/* Large circle -- navy */}
       <div className="absolute top-[10%] left-[5%] w-[55%] aspect-square rounded-full bg-primary/8 border border-primary/15" />
-      {/* Medium circle — gold */}
+      {/* Medium circle -- gold */}
       <div className="absolute top-[25%] right-[8%] w-[40%] aspect-square rounded-full bg-secondary/12 border border-secondary/25" />
-      {/* Small circle — navy */}
+      {/* Small circle -- navy */}
       <div className="absolute bottom-[15%] left-[20%] w-[30%] aspect-square rounded-full bg-primary/6 border border-primary/10" />
 
-      {/* Shield shape — centerpiece */}
+      {/* Shield shape -- centerpiece */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[35%] aspect-square">
         <svg
           viewBox="0 0 120 140"
@@ -96,22 +96,21 @@ export function Hero() {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-secondary" />
               </span>
               <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
-                Now in Public Beta
+                Your Intelligent Document Vault
               </span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-foreground leading-[1.1]">
-              Every Document.
+              Store. Verify.
               <br />
-              <span className="text-secondary">Every Version.</span>
-              <br />
-              Fully Accounted For.
+              <span className="text-secondary">Understand.</span>
             </h1>
 
             <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              Upload, hash, and version your documents. TrustVault combines
-              cryptographic integrity checks with intelligent analysis to
-              tell you exactly what changed — and whether it matters.
+              Your documents deserve more than just storage. inTrustVault
+              combines secure vault storage, blockchain integrity, and AI
+              intelligence to protect, prove, and unlock the value of every
+              document.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
@@ -132,7 +131,7 @@ export function Hero() {
                   "w-full sm:w-auto border-border text-foreground hover:bg-accent h-12 px-8 text-base cursor-pointer",
                 )}
               >
-                Learn More
+                See How It Works
                 <svg
                   className="ml-2 h-4 w-4"
                   fill="none"
@@ -165,7 +164,7 @@ export function Hero() {
                     d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
                   />
                 </svg>
-                End-to-end hashed
+                Bank-grade encryption
               </span>
               <span className="flex items-center gap-1.5">
                 <svg
@@ -181,7 +180,7 @@ export function Hero() {
                     d="M13 10V3L4 14h7v7l9-11h-7z"
                   />
                 </svg>
-                Intelligent change detection
+                Blockchain verified
               </span>
             </div>
           </div>

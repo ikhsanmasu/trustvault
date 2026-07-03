@@ -438,7 +438,7 @@ function DashboardEmptyState() {
         </svg>
       </div>
       <h2 className="mt-6 text-lg font-semibold text-foreground">
-        Welcome to TrustVault
+        Welcome to inTrustVault
       </h2>
       <p className="mt-2 text-sm text-muted-foreground max-w-md">
         Your dashboard will populate once you create a group and upload your

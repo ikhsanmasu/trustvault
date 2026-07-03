@@ -125,7 +125,7 @@ export function Sidebar({
               href="/dashboard"
               className="flex items-center gap-3 min-w-0 transition-all duration-200 ease-out"
               onClick={onMobileClose}
-              aria-label="TrustVault Dashboard"
+              aria-label="inTrustVault Dashboard"
             >
             <div
               className={cn(
@@ -144,7 +144,7 @@ export function Sidebar({
                 collapsed && "opacity-0 scale-75 w-0",
               )}
             >
-              TrustVault
+              inTrustVault
             </span>
           </Link>
           <button

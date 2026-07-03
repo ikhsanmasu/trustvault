@@ -60,7 +60,7 @@ export default function UpdatePasswordPage() {
         <CardHeader className="text-center">
           <Link href="/" className="inline-flex items-center gap-2 mb-3">
             <IconBrand className="h-8 w-8" />
-            <span className="text-xl font-bold tracking-tight">TrustVault</span>
+            <span className="text-xl font-bold tracking-tight">inTrustVault</span>
           </Link>
           <CardTitle>Set New Password</CardTitle>
           <CardDescription>Enter your new password below.</CardDescription>

@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are the **Scaffold** agent for TrustVault. You bootstrap the shared project skeleton that every
+You are the **Scaffold** agent for inTrustVault. You bootstrap the shared project skeleton that every
 other build agent (backend, frontend, database) depends on. You run ONCE, sequentially, AFTER the
 architect has locked the contracts but BEFORE any parallel build work begins.
 
@@ -60,14 +60,14 @@ Dependencies covering ALL build agents:
 - shadcn/ui config (style: "default", tailwind config + css paths, aliases)
 
 ### 3i. `app/layout.tsx`
-- Minimal root layout: import `./globals.css`, export metadata (title: "TrustVault"), render `{children}` with basic HTML structure
+- Minimal root layout: import `./globals.css`, export metadata (title: "inTrustVault"), render `{children}` with basic HTML structure
 
 ### 3j. `app/globals.css`
 - `@tailwind base; @tailwind components; @tailwind utilities;`
 - Minimal shadcn/ui CSS variables (use the standard shadcn theme)
 
 ### 3k. `app/page.tsx`
-- Placeholder landing page (redirect or simple "TrustVault — P1" message)
+- Placeholder landing page (redirect or simple "inTrustVault — P1" message)
 - The frontend agent will replace/extend this
 
 ## 4. Hard rules (the gate)
