@@ -67,6 +67,7 @@ export interface ChangePasswordRequest {
 export interface Document {
   id: string;
   name: string;
+  original_filename?: string | null;  // P18: original uploaded filename
   storage_path: string;
   binary_hash: string;
   text_hash: string;

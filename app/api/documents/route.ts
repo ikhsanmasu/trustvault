@@ -91,23 +91,19 @@ export async function POST(
     );
   }
 
-  // -- 6. Validate name -----------------------------------------------------
-  if (!name || typeof name !== "string" || name.trim().length === 0) {
-    return NextResponse.json(
-      { error: "Document name is required", code: "MISSING_NAME" },
-      { status: 400 },
-    );
+  // -- 6. Resolve name (optional — fallback to original filename) ------------
+  const originalFilename = file.name;
+  const providedName = name && typeof name === "string" ? name.trim() : "";
+  let trimmedName: string;
+  if (providedName.length > 0) {
+    trimmedName = providedName;
+  } else {
+    // Fallback: strip extension from original filename
+    const dotIndex = originalFilename.lastIndexOf(".");
+    trimmedName = dotIndex > 0 ? originalFilename.slice(0, dotIndex) : originalFilename;
   }
-
-  const trimmedName = name.trim();
   if (trimmedName.length > MAX_NAME_LENGTH) {
-    return NextResponse.json(
-      {
-        error: `Document name must be ${MAX_NAME_LENGTH} characters or fewer`,
-        code: "NAME_TOO_LONG",
-      },
-      { status: 400 },
-    );
+    trimmedName = trimmedName.slice(0, MAX_NAME_LENGTH);
   }
 
   // -- 7. Get user's tenant_id ----------------------------------------------
@@ -180,6 +176,7 @@ export async function POST(
     .from("documents")
     .insert({
       name: trimmedName,
+      original_filename: originalFilename,
       storage_path: storagePath,
       binary_hash: binaryHash,
       text_hash: textHash,

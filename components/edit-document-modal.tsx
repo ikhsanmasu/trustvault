@@ -1,22 +1,58 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { editDocument } from "@/lib/api-client";
+import { editDocument, checkDocumentName } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
 interface Props {
   docId: string;
+  initialName: string;
   initialDesc: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function EditDocumentModal({ docId, initialDesc, onClose, onSaved }: Props) {
+export function EditDocumentModal({ docId, initialName, initialDesc, onClose, onSaved }: Props) {
+  const [name, setName] = useState(initialName);
   const [desc, setDesc] = useState(initialDesc);
   const [saving, setSaving] = useState(false);
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [docLabels, setDocLabels] = useState<Set<string>>(new Set());
   const [newLabelName, setNewLabelName] = useState("");
+  const [nameWarning, setNameWarning] = useState<{ exists: boolean; suggestion?: string } | null>(null);
+  const dupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced duplicate name check
+  function handleNameChange(value: string) {
+    setName(value);
+    if (dupTimer.current) clearTimeout(dupTimer.current);
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === initialName) {
+      setNameWarning(null);
+      return;
+    }
+    dupTimer.current = setTimeout(async () => {
+      try {
+        const res = await checkDocumentName(trimmed);
+        if (res.exists) {
+          let n = 1;
+          let suggestion = "";
+          while (n <= 99) {
+            suggestion = `${trimmed} (${n})`;
+            const check = await checkDocumentName(suggestion);
+            if (!check.exists) break;
+            n++;
+          }
+          setNameWarning({ exists: true, suggestion });
+        } else {
+          setNameWarning(null);
+        }
+      } catch {
+        // fail open
+      }
+    }, 500);
+  }
 
   useEffect(() => {
     // Fetch all labels
@@ -66,7 +102,11 @@ export function EditDocumentModal({ docId, initialDesc, onClose, onSaved }: Prop
 
   async function handleSave() {
     setSaving(true);
-    await editDocument(docId, { description: desc });
+    const updates: { name?: string; description?: string } = { description: desc };
+    if (name.trim() && name.trim() !== initialName) {
+      updates.name = name.trim();
+    }
+    await editDocument(docId, updates);
     onSaved();
   }
 
@@ -75,6 +115,37 @@ export function EditDocumentModal({ docId, initialDesc, onClose, onSaved }: Prop
       <div className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-elevation-3" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-lg font-bold mb-4">Edit Document</h3>
         <div className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => handleNameChange(e.target.value)}
+              maxLength={255}
+              className={cn(
+                "w-full rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20",
+                nameWarning?.exists ? "border-amber-400" : "border-border",
+              )}
+              placeholder="Document name"
+            />
+            {nameWarning?.exists && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="text-[10px] text-amber-600 font-medium">Name already exists</span>
+                {nameWarning.suggestion && (
+                  <>
+                    <span className="text-[10px] text-muted-foreground">— try:</span>
+                    <button
+                      type="button"
+                      onClick={() => { setName(nameWarning.suggestion!); setNameWarning(null); }}
+                      className="text-[10px] font-medium text-primary hover:underline"
+                    >
+                      {nameWarning.suggestion}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <div>
             <label className="text-xs font-semibold text-muted-foreground block mb-1">Description</label>
             <textarea value={desc} onChange={(e) => setDesc(e.target.value.slice(0, 1000))}

@@ -13,6 +13,7 @@ type UploadStatus = "idle" | "uploading" | "done" | "error";
 interface FileEntry {
   file: File;
   name: string;
+  originalFilename: string;
   status: "pending" | "uploading" | "ok" | "error";
   error?: string;
   code?: string;
@@ -44,8 +45,9 @@ export function useBulkUpload(projectId: string = ""): UseBulkUploadReturn {
           if (updated.length >= 10) break;
           // Skip duplicates by name + size
           if (updated.some((f) => f.file.name === file.name && f.file.size === file.size)) continue;
-          const baseName = file.name.replace(/\.pdf$/i, "").slice(0, 255);
-          updated.push({ file, name: baseName, status: "pending" });
+          const dotIndex = file.name.lastIndexOf(".");
+          const baseName = (dotIndex > 0 ? file.name.slice(0, dotIndex) : file.name).slice(0, 255);
+          updated.push({ file, name: baseName, originalFilename: file.name, status: "pending" });
         }
         return updated;
       });
@@ -95,12 +97,10 @@ export function useBulkUpload(projectId: string = ""): UseBulkUploadReturn {
       setResult(response);
       setStatus("done");
 
-      // Update per-file statuses from the response
+      // Update per-file statuses by positional index (results are in order)
       setFiles((prev) =>
-        prev.map((f) => {
-          const match = response.results.find(
-            (r: BulkUploadItem) => r.name === f.name,
-          );
+        prev.map((f, i) => {
+          const match = response.results[i];
           if (match) {
             return {
               ...f,

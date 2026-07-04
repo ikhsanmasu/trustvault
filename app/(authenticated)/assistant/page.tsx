@@ -17,6 +17,30 @@ import { useToastState } from "@/hooks/use-toast-state";
 import type { ToastData } from "@/hooks/use-toast-state";
 import { cn } from "@/lib/utils";
 
+// ---- Cookie helpers for per-session KB selection -------------------------
+
+const KB_COOKIE_PREFIX = "tv-kb-";
+
+function saveSessionDocIds(sessionId: string, docIds: string[]) {
+  if (typeof document === "undefined") return;
+  const value = docIds.join(",");
+  document.cookie = `${KB_COOKIE_PREFIX}${sessionId}=${encodeURIComponent(value)};path=/;max-age=2592000;SameSite=Lax`;
+}
+
+function loadSessionDocIds(sessionId: string): string[] {
+  if (typeof document === "undefined") return [];
+  const prefix = `${KB_COOKIE_PREFIX}${sessionId}=`;
+  const match = document.cookie.split("; ").find(row => row.startsWith(prefix));
+  if (!match) return [];
+  const value = decodeURIComponent(match.slice(prefix.length));
+  return value ? value.split(",").filter(Boolean) : [];
+}
+
+function clearSessionDocIds(sessionId: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${KB_COOKIE_PREFIX}${sessionId}=;path=/;max-age=0;SameSite=Lax`;
+}
+
 // ---- Default system prompt (mirrors the backend default) ---------------------
 
 const DEFAULT_SYSTEM_PROMPT = `You are InTrustVault AI Assistant, a document-integrity and knowledge assistant.
@@ -368,6 +392,46 @@ function AssistantContent() {
   useEffect(() => {
     savePrompt(customPrompt);
   }, [customPrompt]);
+
+  // ---- Per-session KB selection: restore on session change -------------------
+  const prevSessionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const prev = prevSessionRef.current;
+    // Save previous session's selection before switching
+    if (prev && prev !== currentSessionId) {
+      saveSessionDocIds(prev, Array.from(selectedDocIds));
+    }
+    // Restore saved selection for the new session
+    if (currentSessionId) {
+      const saved = loadSessionDocIds(currentSessionId);
+      // Merge: prefer saved cookie, but also keep URL docs if this is the initial load
+      if (saved.length > 0) {
+        setSelectedDocIds(new Set(saved));
+      } else if (prev === null) {
+        // Initial load — URL docs already set via useState initializer
+        // Save them so they persist when switching back
+        if (selectedDocIds.size > 0) {
+          saveSessionDocIds(currentSessionId, Array.from(selectedDocIds));
+        }
+      } else {
+        // Switched to a session with no saved selection — clear
+        setSelectedDocIds(new Set());
+      }
+    } else {
+      // New session (currentSessionId is null) — clear selection
+      setSelectedDocIds(new Set());
+    }
+    prevSessionRef.current = currentSessionId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]);
+
+  // Save KB selection to cookies whenever it changes (for current session)
+  useEffect(() => {
+    if (currentSessionId && selectedDocIds.size > 0) {
+      saveSessionDocIds(currentSessionId, Array.from(selectedDocIds));
+    }
+  }, [selectedDocIds, currentSessionId]);
 
   // ---- Auth guard -----------------------------------------------------------
 

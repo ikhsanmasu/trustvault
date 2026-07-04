@@ -277,6 +277,7 @@ export async function POST(
         .from("documents")
         .insert({
           name: finalName,
+          original_filename: file.name,
           storage_path: storagePath,
           binary_hash: binaryHash,
           text_hash: textHash,
