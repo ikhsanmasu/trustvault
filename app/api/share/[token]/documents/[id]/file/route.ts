@@ -108,7 +108,7 @@ export async function GET(
   const serviceClient = createServiceClient();
   const { data: doc, error: docError } = await serviceClient
     .from("documents")
-    .select("storage_path, file_type, name, deleted_at")
+    .select("storage_path, file_type, name, original_filename, deleted_at")
     .eq("id", id)
     .single();
 
@@ -139,10 +139,16 @@ export async function GET(
     );
   }
 
+  // Use original_filename for download if available (preserves extension)
+  const downloadName = (doc.original_filename as string) || doc.name || "document";
+  const isDownload = _request.nextUrl.searchParams.get("dl") === "1";
+
   return new NextResponse(blob, {
     headers: {
       "Content-Type": doc.file_type || "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${doc.name}"`,
+      "Content-Disposition": isDownload
+        ? `attachment; filename="${downloadName}"`
+        : `inline; filename="${downloadName}"`,
       "Cache-Control": "private, max-age=300",
     },
   });
