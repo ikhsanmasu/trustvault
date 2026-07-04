@@ -405,11 +405,10 @@ function AssistantContent() {
     // Restore saved selection for the new session
     if (currentSessionId) {
       const saved = loadSessionDocIds(currentSessionId);
-      // Merge: prefer saved cookie, but also keep URL docs if this is the initial load
       if (saved.length > 0) {
         setSelectedDocIds(new Set(saved));
       } else if (prev === null) {
-        // Initial load — URL docs already set via useState initializer
+        // Initial mount — URL docs already set via useState initializer
         // Save them so they persist when switching back
         if (selectedDocIds.size > 0) {
           saveSessionDocIds(currentSessionId, Array.from(selectedDocIds));
@@ -418,8 +417,8 @@ function AssistantContent() {
         // Switched to a session with no saved selection — clear
         setSelectedDocIds(new Set());
       }
-    } else {
-      // New session (currentSessionId is null) — clear selection
+    } else if (prev !== null) {
+      // Explicit new-session action (not initial mount) — clear selection
       setSelectedDocIds(new Set());
     }
     prevSessionRef.current = currentSessionId;
