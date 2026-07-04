@@ -624,16 +624,43 @@ export default function VaultPage() {
                         )}
                       </td>
                       <td className="hidden lg:table-cell px-4 py-3.5">
-                        <div className="flex flex-wrap gap-1">
-                          {(docLabels.get(doc.id) ?? []).map((labelId) => {
-                            const label = labels.find(l => l.id === labelId);
-                            if (!label) return null;
-                            return (
-                              <span key={labelId} className="rounded-full px-1.5 py-0.5 text-[10px] text-white" style={{ backgroundColor: label.color }}>
-                                {label.name}
-                              </span>
-                            );
-                          })}
+                        {(docLabels.get(doc.id) ?? []).length === 0 ? (
+                          <span className="text-xs text-muted-foreground/50 italic">No label</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {(docLabels.get(doc.id) ?? []).map((labelId) => {
+                              const label = labels.find(l => l.id === labelId);
+                              if (!label) return null;
+                              return (
+                                <span key={labelId} className="rounded-full px-1.5 py-0.5 text-[10px] text-white" style={{ backgroundColor: label.color }}>
+                                  {label.name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </td>
+                      <td className="hidden xl:table-cell px-4 py-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {doc.fingerprint ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                              title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                              Anchored
+                            </span>
+                          ) : doc.extracted_text ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                              title="Text extracted and indexed"
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                              Indexed
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/50 italic">—</span>
+                          )}
                         </div>
                       </td>
                       <td className="hidden md:table-cell px-4 py-3.5 text-right text-sm text-muted-foreground tabular-nums">
