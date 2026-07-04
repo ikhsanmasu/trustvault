@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
+import { parseSharedLink } from "@/lib/db-schemas";
 import type {
   CreateShareResponse,
   ListSharesResponse,
@@ -8,13 +9,11 @@ import type {
   SharedLink,
   CreateShareRequest,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Generates a cryptographically random hex token (32 characters).
@@ -57,7 +56,7 @@ export async function POST(
   }
 
   for (const docId of documentIds) {
-    if (typeof docId !== "string" || !UUID_RE.test(docId)) {
+    if (typeof docId !== "string" || !isValidUUID(docId)) {
       return NextResponse.json(
         {
           error: `Invalid document ID: ${docId}. Must be a valid UUID.`,
@@ -151,7 +150,7 @@ export async function POST(
 
   return NextResponse.json(
     {
-      share: share as unknown as SharedLink,
+      share: parseSharedLink(share) as unknown as SharedLink,
       url,
     },
     { status: 201 },
@@ -181,6 +180,6 @@ export async function GET(
   }
 
   return NextResponse.json({
-    shares: (shares ?? []) as unknown as SharedLink[],
+    shares: (shares ?? []).map(s => parseSharedLink(s)) as unknown as SharedLink[],
   });
 }

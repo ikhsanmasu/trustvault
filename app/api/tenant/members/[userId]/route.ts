@@ -8,13 +8,11 @@ import type {
   TenantMember,
   TenantRole,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ALLOWED_ROLES: TenantRole[] = ["admin", "editor", "viewer"];
 
@@ -43,7 +41,7 @@ export async function PATCH(
   const { userId } = await params;
 
   // -- 4. Validate userId ----------------------------------------------------
-  if (!UUID_RE.test(userId)) {
+  if (!isValidUUID(userId)) {
     return NextResponse.json(
       { error: "userId must be a valid UUID", code: "INVALID_USER_ID" },
       { status: 400 },
@@ -203,7 +201,7 @@ export async function DELETE(
   const { userId } = await params;
 
   // -- 3. Validate userId ----------------------------------------------------
-  if (!UUID_RE.test(userId)) {
+  if (!isValidUUID(userId)) {
     return NextResponse.json(
       { error: "userId must be a valid UUID", code: "INVALID_USER_ID" },
       { status: 400 },

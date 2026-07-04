@@ -18,9 +18,7 @@ import {
   encryptChannelConfig,
   markWhatsAppConnected,
 } from "@/lib/agent-channel";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils';
 
 export async function POST(
   request: NextRequest,
@@ -34,7 +32,7 @@ export async function POST(
   const { user, supabase } = auth;
 
   // -- 2. Validate agentId --------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },

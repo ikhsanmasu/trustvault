@@ -10,9 +10,7 @@ import { requireAuth } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
 import type { WhatsAppStatusResponse, ErrorResponse } from "@/lib/types";
 import { decryptChannelConfig, type WhatsAppPlainConfig } from "@/lib/agent-channel";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils';
 
 export async function GET(
   _request: NextRequest,
@@ -26,7 +24,7 @@ export async function GET(
   const { supabase } = auth;
 
   // -- 2. Validate agentId --------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },

@@ -212,26 +212,35 @@ export async function incrementUsage(
         ? "usage_llm_calls"
         : "usage_storage_bytes";
 
-  // Atomically increment the counter
-  const { error } = await serviceClient.rpc("increment_tenant_usage", {
+  // ── Atomic increment via RPC ──────────────────────────────────────────
+  // The DB function increment_tenant_usage(p_tenant_id, p_documents, p_llm_calls, p_storage_bytes)
+  // atomically increments usage counters in a single UPDATE.
+  const rpcParams = {
     p_tenant_id: tenantId,
-    p_column: column,
-    p_amount: amount,
-  });
+    p_documents: type === "documents" ? amount : 0,
+    p_llm_calls: type === "llm_calls" ? amount : 0,
+    p_storage_bytes: type === "storage_bytes" ? amount : 0,
+  };
 
-  if (error) {
-    // Fallback: read + write if RPC is not available
-    const tenant = await getTenant(supabase, tenantId);
-    if (tenant) {
-      const current = (tenant as unknown as Record<string, number>)[column] ?? 0;
-      await serviceClient
-        .from("tenants")
-        .update({ [column]: current + amount })
-        .eq("id", tenantId);
+  let rpcError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { error } = await serviceClient.rpc("increment_tenant_usage", rpcParams);
+    if (!error) {
+      rpcError = null;
+      break;
     }
+    rpcError = error;
   }
 
-  // Log LLM calls to the audit table
+  if (rpcError) {
+    // RPC unavailable after retries — log and skip.
+    console.error(
+      `[incrementUsage] RPC increment_tenant_usage failed after retries for tenant=${tenantId}:`,
+      rpcError,
+    );
+  }
+
+  // ── LLM audit log ────────────────────────────────────────────────────
   if (type === "llm_calls") {
     await serviceClient.from("llm_usage_log").insert({
       tenant_id: tenantId,
@@ -281,12 +290,78 @@ export async function resetMonthlyUsage(
 }
 
 // ---------------------------------------------------------------------------
-// RPC function helper (used by incrementUsage for atomic increments)
-//
-// Note: The RPC function must be created in the database for this to work.
-// The migration does NOT create it (that's a separate step). incrementUsage
-// falls back to read-then-write if the RPC call fails.
+// P17: Webhook rate limiter (in-memory, per-agent)
 // ---------------------------------------------------------------------------
+
+interface RateWindow {
+  count: number;
+  resetAt: number;
+}
+
+const webhookRateMap = new Map<string, RateWindow>();
+
+/**
+ * Result of a webhook rate limit check, including headers for the client.
+ */
+export interface WebhookRateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  resetAt: number; // unix timestamp (seconds)
+}
+
+/**
+ * Simple sliding-window rate limiter for webhook endpoints.
+ *
+ * Webhooks (Telegram, WhatsApp) are public endpoints called by third-party
+ * servers. To protect tenants from LLM cost explosion via webhook abuse, we
+ * enforce a per-agent rate limit:
+ *
+ * - `maxRequests`: max webhook requests allowed in the window (default 30)
+ * - `windowMs`: time window in milliseconds (default 60_000 = 1 minute)
+ *
+ * Returns a WebhookRateLimitResult with `allowed`, `remaining`, and `resetAt`.
+ */
+export function checkWebhookRateLimit(
+  agentId: string,
+  maxRequests = 30,
+  windowMs = 60_000,
+): WebhookRateLimitResult {
+  const now = Date.now();
+  const entry = webhookRateMap.get(agentId);
+
+  if (!entry || now >= entry.resetAt) {
+    // No entry or window expired — start a new window
+    webhookRateMap.set(agentId, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: maxRequests - 1, resetAt: Math.ceil((now + windowMs) / 1000) };
+  }
+
+  const remaining = maxRequests - entry.count;
+
+  if (entry.count >= maxRequests) {
+    return { allowed: false, remaining: 0, resetAt: Math.ceil(entry.resetAt / 1000) };
+  }
+
+  entry.count++;
+  return { allowed: true, remaining: remaining - 1, resetAt: Math.ceil(entry.resetAt / 1000) };
+}
+
+/**
+ * Cleans up expired rate-limit windows. Call periodically (e.g. every 5 min)
+ * to prevent unbounded memory growth from stale agent IDs.
+ */
+export function cleanupWebhookRateLimits(): void {
+  const now = Date.now();
+  for (const [key, entry] of webhookRateMap) {
+    if (now >= entry.resetAt) {
+      webhookRateMap.delete(key);
+    }
+  }
+}
+
+// Periodic cleanup every 5 minutes (only in server context)
+if (typeof setInterval !== "undefined") {
+  setInterval(cleanupWebhookRateLimits, 5 * 60 * 1000);
+}
 
 /**
  * Creates the `increment_tenant_usage` RPC function in the database.
@@ -295,18 +370,19 @@ export async function resetMonthlyUsage(
 export const INCREMENT_USAGE_RPC_SQL = `
 CREATE OR REPLACE FUNCTION public.increment_tenant_usage(
   p_tenant_id uuid,
-  p_column text,
-  p_amount bigint
+  p_documents int DEFAULT 0,
+  p_llm_calls int DEFAULT 0,
+  p_storage_bytes bigint DEFAULT 0
 )
 RETURNS void AS $$
 BEGIN
-  IF p_column = 'usage_documents' THEN
-    UPDATE public.tenants SET usage_documents = usage_documents + p_amount WHERE id = p_tenant_id;
-  ELSIF p_column = 'usage_llm_calls' THEN
-    UPDATE public.tenants SET usage_llm_calls = usage_llm_calls + p_amount WHERE id = p_tenant_id;
-  ELSIF p_column = 'usage_storage_bytes' THEN
-    UPDATE public.tenants SET usage_storage_bytes = usage_storage_bytes + p_amount WHERE id = p_tenant_id;
-  END IF;
+  UPDATE public.tenants
+  SET
+    usage_documents = usage_documents + p_documents,
+    usage_llm_calls = usage_llm_calls + p_llm_calls,
+    usage_storage_bytes = usage_storage_bytes + p_storage_bytes,
+    usage_reset_at = COALESCE(usage_reset_at, date_trunc('month', now()) + interval '1 month')
+  WHERE id = p_tenant_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 `;

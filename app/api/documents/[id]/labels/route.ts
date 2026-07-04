@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase/auth";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils';
 
 // GET /api/documents/:id/labels — list labels for a document
 export async function GET(
@@ -12,7 +11,7 @@ export async function GET(
   if (!auth.ok) return auth.response;
   const { supabase } = auth;
   const { id } = await params;
-  if (!UUID_RE.test(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
+  if (!isValidUUID(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
 
   const { data, error } = await supabase
     .from("document_labels")
@@ -39,7 +38,7 @@ export async function POST(
   if (!auth.ok) return auth.response;
   const { supabase } = auth;
   const { id } = await params;
-  if (!UUID_RE.test(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
+  if (!isValidUUID(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
 
   let body: { labelIds?: string[] };
   try { body = await request.json(); } catch {
@@ -66,11 +65,11 @@ export async function DELETE(
   if (!auth.ok) return auth.response;
   const { supabase } = auth;
   const { id } = await params;
-  if (!UUID_RE.test(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
+  if (!isValidUUID(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
 
   const url = new URL(request.url);
   const labelId = url.searchParams.get("labelId");
-  if (!labelId || !UUID_RE.test(labelId)) return NextResponse.json({ error: "labelId required", code: "INVALID_LABEL_ID" }, { status: 400 });
+  if (!labelId || !isValidUUID(labelId)) return NextResponse.json({ error: "labelId required", code: "INVALID_LABEL_ID" }, { status: 400 });
 
   await supabase.from("document_labels").delete().eq("document_id", id).eq("label_id", labelId);
   return NextResponse.json({ ok: true });

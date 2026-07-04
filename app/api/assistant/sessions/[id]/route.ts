@@ -6,13 +6,11 @@ import type {
   ChatSession,
   ChatMessage,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // GET /api/assistant/sessions/:id
@@ -30,7 +28,7 @@ export async function GET(
   const { id } = await params;
 
   // -- 2. Validate UUID -----------------------------------------------------
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json(
       { error: "Invalid session ID format", code: "INVALID_ID" },
       { status: 400 },
@@ -87,7 +85,7 @@ export async function DELETE(
   const { id } = await params;
 
   // -- 2. Validate UUID -----------------------------------------------------
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json(
       { error: "Invalid session ID format", code: "INVALID_ID" },
       { status: 400 },

@@ -12,13 +12,11 @@ import type {
   ErrorResponse,
 } from "@/lib/types";
 import { encryptChannelConfig, redactChannelConfig } from "@/lib/agent-channel";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const VALID_CHANNEL_TYPES = ["whatsapp", "telegram"] as const;
 
@@ -38,7 +36,7 @@ export async function POST(
   const { user, supabase } = auth;
 
   // -- 2. Validate agentId --------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },
@@ -191,7 +189,7 @@ export async function GET(
   const { supabase } = auth;
 
   // -- 2. Validate agentId --------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },

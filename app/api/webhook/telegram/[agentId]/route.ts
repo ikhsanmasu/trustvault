@@ -12,15 +12,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { WebhookResponse, ErrorResponse } from "@/lib/types";
 import { createServiceClient } from "@/lib/supabase/client";
+import { checkWebhookRateLimit } from "@/lib/rate-limit";
+import { safeError } from "@/lib/utils";
 import {
   decryptChannelConfig,
   handleAgentMessage,
   findOrCreateChannelSession,
   getTelegramBotToken,
 } from "@/lib/agent-channel";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helper types for Telegram updates
@@ -62,16 +62,42 @@ export async function POST(
   const { agentId } = await params;
 
   // -- 1. Validate agentId --------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },
     );
   }
 
-  // -- 2. Optional: verify Telegram webhook secret --------------------------
+  // -- 2. Rate limit check --------------------------------------------------
+  const rateLimit = checkWebhookRateLimit(agentId, 30, 60_000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests", code: "RATE_LIMITED" },
+      {
+        status: 429,
+        headers: {
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(rateLimit.resetAt),
+          "Retry-After": String(rateLimit.resetAt - Math.ceil(Date.now() / 1000)),
+        },
+      },
+    );
+  }
+
+  // -- 3. Verify Telegram webhook secret ------------------------------------
+  // REQUIRED in production. In dev, can be skipped for local testing.
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (webhookSecret) {
+  if (!webhookSecret) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[webhook:telegram] TELEGRAM_WEBHOOK_SECRET is not set — refusing webhook in production");
+      return NextResponse.json(
+        { error: "Webhook not configured", code: "CONFIG_ERROR" },
+        { status: 500 },
+      );
+    }
+    console.warn("[webhook:telegram] TELEGRAM_WEBHOOK_SECRET not set — webhook verification skipped (dev only)");
+  } else {
     const header = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
     if (header !== webhookSecret) {
       return NextResponse.json(
@@ -189,7 +215,7 @@ export async function POST(
   } catch (err) {
     return NextResponse.json(
       {
-        error: `Failed to create session: ${err instanceof Error ? err.message : "Unknown error"}`,
+        error: safeError("Failed to create session", err),
         code: "PROCESSING_ERROR",
       },
       { status: 500 },
@@ -244,7 +270,7 @@ export async function POST(
 
     return NextResponse.json(
       {
-        error: `Processing error: ${err instanceof Error ? err.message : "Unknown error"}`,
+        error: safeError("Message processing failed", err),
         code: "PROCESSING_ERROR",
       },
       { status: 500 },

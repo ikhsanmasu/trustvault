@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
+import { parseDocument, parseSharedLink } from "@/lib/db-schemas";
 import type {
   PublicShareResponse,
   ErrorResponse,
@@ -8,12 +9,11 @@ import type {
   Document,
   RevokeShareResponse,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Validates that the token is a 32-character hex string. */
 function isValidToken(token: string): boolean {
@@ -35,7 +35,7 @@ async function getShareByToken(
     .single();
 
   if (error || !data) return null;
-  return data as unknown as SharedLink;
+  return parseSharedLink(data) as unknown as SharedLink;
 }
 
 /**
@@ -53,7 +53,7 @@ async function getShareById(
     .single();
 
   if (error || !data) return null;
-  return data as unknown as SharedLink;
+  return parseSharedLink(data) as unknown as SharedLink;
 }
 
 /**
@@ -70,7 +70,7 @@ async function getDocumentsByIds(
     .in("id", documentIds);
 
   if (error || !data) return [];
-  return data as unknown as Document[];
+  return data.map(d => parseDocument(d)) as unknown as Document[];
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ export async function DELETE(
   const { token } = await params;
 
   // Accept both UUID (share id) and hex token formats
-  const isUuid = UUID_RE.test(token);
+  const isUuid = isValidUUID(token);
   const isToken = isValidToken(token);
 
   if (!isUuid && !isToken) {

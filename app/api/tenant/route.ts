@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getUserTenantId } from "@/lib/supabase/auth";
+import { parseTenant } from "@/lib/db-schemas";
 import type {
   GetTenantResponse,
   UpdateTenantResponse,
@@ -47,7 +48,7 @@ export async function GET(): Promise<
   }
 
   return NextResponse.json({
-    tenant: tenant as unknown as Tenant,
+    tenant: parseTenant(tenant) as unknown as Tenant,
   });
 }
 
@@ -116,6 +117,6 @@ export async function PATCH(
   }
 
   return NextResponse.json({
-    tenant: tenant as unknown as Tenant,
+    tenant: parseTenant(tenant) as unknown as Tenant,
   });
 }

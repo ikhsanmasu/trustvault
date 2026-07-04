@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, getUserTenantId } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
+import { parseDocument } from "@/lib/db-schemas";
 import type {
   DashboardResponse,
   ErrorResponse,
@@ -169,7 +170,7 @@ export async function GET(): Promise<
     !recentResult.value.error &&
     recentResult.value.data
   ) {
-    recentDocs = recentResult.value.data as unknown as Document[];
+    recentDocs = (recentResult.value.data as unknown[]).map(d => parseDocument(d)) as unknown as Document[];
   }
 
   // P7 fields

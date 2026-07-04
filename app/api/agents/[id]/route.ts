@@ -23,13 +23,11 @@ import {
   markWhatsAppDisconnected,
   setTelegramDisconnected,
 } from "@/lib/agent-channel";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_NAME_LENGTH = 255;
 const MAX_PROMPT_LENGTH = 10000;
@@ -147,7 +145,7 @@ export async function GET(
   const { supabase } = auth;
 
   // -- 2. Validate id -------------------------------------------------------
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_ID" },
       { status: 400 },
@@ -185,7 +183,7 @@ export async function PATCH(
   const { user, supabase } = auth;
 
   // -- 2. Validate id -------------------------------------------------------
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_ID" },
       { status: 400 },
@@ -300,7 +298,7 @@ export async function PATCH(
       );
     }
     for (const docId of body.document_ids) {
-      if (typeof docId !== "string" || !UUID_RE.test(docId)) {
+      if (typeof docId !== "string" || !isValidUUID(docId)) {
         return NextResponse.json(
           {
             error: `Invalid document ID: ${docId}`,
@@ -395,7 +393,7 @@ export async function DELETE(
   const { user, supabase } = auth;
 
   // -- 2. Validate id -------------------------------------------------------
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_ID" },
       { status: 400 },
