@@ -288,6 +288,33 @@ export async function POST(
           }
         }
 
+        // 7c-b. Fallback: when specific documents are selected but embedding
+        // search returned no chunks, use the full extracted_text directly.
+        if (scored.length === 0 && docIdList && docIdList.length > 0) {
+          const { data: fallbackDocs } = await supabase
+            .from("documents")
+            .select("id, name, extracted_text")
+            .in("id", docIdList)
+            .limit(MAX_RETRIEVED_CHUNKS);
+
+          if (fallbackDocs && fallbackDocs.length > 0) {
+            let chunkIdx = 0;
+            for (const doc of fallbackDocs) {
+              const text = (doc.extracted_text as string) ?? "";
+              if (text.trim().length === 0) continue;
+              // Take up to 4000 chars per document to keep prompt manageable
+              const snippet = text.slice(0, 4000);
+              scored.push({
+                chunk_id: `fallback-${doc.id}`,
+                document_id: doc.id as string,
+                chunk_index: chunkIdx++,
+                content: snippet,
+                similarity: 0,
+              });
+            }
+          }
+        }
+
         // 7d. Fetch document names for the retrieved chunks
         const uniqueDocIds = [...new Set(scored.map((c) => c.document_id))];
         const docNameMap = new Map<string, string>();

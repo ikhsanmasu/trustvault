@@ -305,12 +305,16 @@ export async function getDocument(
 export async function bulkUploadDocuments(
   files: File[],
   names: string[],
+  description?: string,
 ): Promise<BulkUploadResponse> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("files", file);
   }
   formData.append("names", JSON.stringify(names));
+  if (description) {
+    formData.append("description", description);
+  }
 
   const response = await fetch("/api/documents/bulk", {
     method: "POST",

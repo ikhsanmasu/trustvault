@@ -94,7 +94,14 @@ export async function POST(
     );
   }
 
-  // -- 8. Parse names (JSON array, optional) --------------------------------
+  // -- 8. Parse description (optional, shared across all files) ----------------
+  const descriptionRaw = formData.get("description");
+  const sharedDescription: string | undefined =
+    typeof descriptionRaw === "string" && descriptionRaw.trim().length > 0
+      ? descriptionRaw.trim().slice(0, 1000)
+      : undefined;
+
+  // -- 9. Parse names (JSON array, optional) --------------------------------
   let providedNames: string[] = [];
   const namesRaw = formData.get("names");
   if (namesRaw && typeof namesRaw === "string" && namesRaw.trim().length > 0) {
@@ -278,6 +285,7 @@ export async function POST(
           file_type: mimeType,
           tenant_id: tenantId,
           uploaded_by: user.id,
+          ...(sharedDescription ? { description: sharedDescription } : {}),
         })
         .select("*")
         .single();
@@ -305,13 +313,12 @@ export async function POST(
         if (!extractedText || extractedText.trim().length === 0) {
           ingestion = { status: "empty_text", chunks: 0 };
         } else {
-          const records = await ingestDocument(docId, null, extractedText);
+          const records = await ingestDocument(docId, extractedText);
           ingestion = { status: records.length > 0 ? "ok" : "no_chunks", chunks: records.length };
           if (records.length > 0) {
             const { error: insErr } = await supabase.from("document_chunks").insert(
               records.map((r) => ({
                 document_id: r.document_id,
-                project_id: r.project_id,
                 chunk_index: r.chunk_index,
                 content: r.content,
                 embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,

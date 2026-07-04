@@ -23,6 +23,7 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [selectedLabelIds, setSelectedLabelIds] = useState<Set<string>>(new Set());
   const [newLabelName, setNewLabelName] = useState("");
+  const [description, setDescription] = useState("");
 
   const isUploading = status === "uploading";
   const canUpload = files.length > 0 && !isUploading;
@@ -47,6 +48,7 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
       fetch("/api/labels").then(r => r.json()).then(d => setLabels(d.labels ?? [])).catch(() => {});
       setSelectedLabelIds(new Set());
       setNewLabelName("");
+      setDescription("");
     }
   }, [open]);
 
@@ -93,7 +95,7 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
   }
 
   async function handleUpload() {
-    await uploadAll();
+    await uploadAll(description.trim() || undefined);
   }
 
   return (
@@ -115,6 +117,22 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
       </div>
 
       <div className="p-5 space-y-4">
+        {/* Description */}
+        {!done && (
+          <div>
+            <label htmlFor="upload-description" className="text-xs font-semibold text-muted-foreground block mb-1.5">Description <span className="text-muted-foreground/50 font-normal">(optional)</span></label>
+            <textarea
+              id="upload-description"
+              rows={2}
+              maxLength={1000}
+              placeholder="Brief description for all documents in this batch…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/50"
+            />
+          </div>
+        )}
+
         {/* Label selector */}
         {!done && (
           <div>

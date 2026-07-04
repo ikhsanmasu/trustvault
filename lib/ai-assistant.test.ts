@@ -414,23 +414,19 @@ describe("ingestDocument", () => {
   it("returns empty array for empty text", async () => {
     // Use dynamic import so the module picks up our mocked OpenAI
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
-    const result = await ingDoc("doc1", "proj1", "");
+    const result = await ingDoc("doc1", "");
     expect(result).toEqual([]);
   });
 
   it("returns empty array for whitespace-only text", async () => {
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
-    const result = await ingDoc("doc1", "proj1", "   \n  ");
+    const result = await ingDoc("doc1", "   \n  ");
     expect(result).toEqual([]);
   });
 
   it("returns empty array for null/undefined text", async () => {
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
-    const result = await ingDoc(
-      "doc1",
-      "proj1",
-      null as unknown as string,
-    );
+    const result = await ingDoc("doc1", null as unknown as string);
     expect(result).toEqual([]);
   });
 
@@ -439,12 +435,11 @@ describe("ingestDocument", () => {
 
     // Text that produces multiple chunks (2000 chars = roughly 2-3 chunks)
     const text = "abc ".repeat(500);
-    const result = await ingDoc("doc1", "proj1", text);
+    const result = await ingDoc("doc1", text);
     expect(result.length).toBeGreaterThanOrEqual(1);
-    // Each record should have embedding, document_id, project_id, etc.
+    // Each record should have embedding, document_id, etc.
     for (const record of result) {
       expect(record.document_id).toBe("doc1");
-      expect(record.project_id).toBe("proj1");
       expect(record.embedding).not.toBeNull();
       expect(record.embedding).toHaveLength(EMBEDDING_DIM);
       expect(record.content.length).toBeGreaterThan(0);
@@ -960,12 +955,11 @@ describe("ingestDocument edge cases", () => {
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
     const longText = "The contract specifies payment terms and conditions. ".repeat(600);
     expect(longText.length).toBeGreaterThan(20000);
-    const result = await ingDoc("doc-large", "proj-1", longText);
+    const result = await ingDoc("doc-large", longText);
     expect(result.length).toBeGreaterThan(10);
     // Each record should have consistent metadata
     for (const record of result) {
       expect(record.document_id).toBe("doc-large");
-      expect(record.project_id).toBe("proj-1");
       expect(record.content.length).toBeGreaterThan(0);
       expect(record.content.length).toBeLessThanOrEqual(2000);
       expect(record.embedding).toHaveLength(EMBEDDING_DIM);
@@ -980,7 +974,7 @@ describe("ingestDocument edge cases", () => {
 
   it("handles text that produces a single chunk", async () => {
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
-    const result = await ingDoc("doc1", "proj1", "Short text.");
+    const result = await ingDoc("doc1", "Short text.");
     expect(result).toHaveLength(1);
     expect(result[0].chunk_index).toBe(0);
     expect(result[0].content).toBe("Short text.");
@@ -989,14 +983,14 @@ describe("ingestDocument edge cases", () => {
 
   it("handles text with only whitespace and newlines", async () => {
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
-    const result = await ingDoc("doc1", "proj1", "\n\n   \n\t  \n\n");
+    const result = await ingDoc("doc1", "\n\n   \n\t  \n\n");
     expect(result).toEqual([]);
   });
 
   it("does not call embedding pipeline for empty text", async () => {
     const fetchSpy = vi.spyOn(global, "fetch");
     const { ingestDocument: ingDoc } = await import("./ai-assistant");
-    await ingDoc("doc1", "proj1", "");
+    await ingDoc("doc1", "");
     // OpenAI API should not have been called for empty text
     expect(fetchSpy).not.toHaveBeenCalled();
   });
