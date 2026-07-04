@@ -46,20 +46,7 @@ export async function POST(
     );
   }
 
-  const { projectId, documentIds, allowDownload, allowChat, allowAnchor, allowCompare, title } = body;
-
-  // Validate projectId (P11: optional, allow null)
-  const resolvedProjectId: string | null =
-    projectId && typeof projectId === "string" && UUID_RE.test(projectId)
-      ? projectId
-      : null;
-
-  if (projectId && typeof projectId === "string" && !UUID_RE.test(projectId)) {
-    return NextResponse.json(
-      { error: "Invalid projectId format (must be a UUID)", code: "INVALID_PROJECT_ID" },
-      { status: 400 },
-    );
-  }
+  const { documentIds, allowDownload, allowChat, allowAnchor, allowCompare, title } = body;
 
   // Validate documentIds
   if (!Array.isArray(documentIds) || documentIds.length === 0) {
@@ -104,14 +91,11 @@ export async function POST(
   ]);
   if (!roleCheck.ok) return roleCheck.response;
 
-  // -- 4. Verify all documentIds are accessible (P11: project-scoped or tenant-scoped)
-  let docsQuery = supabase.from("documents").select("id").in("id", documentIds);
-  if (resolvedProjectId) {
-    docsQuery = docsQuery.eq("project_id", resolvedProjectId);
-  }
-  // When no projectId, RLS ensures tenant-scoped access
-
-  const { data: docs, error: docsError } = await docsQuery;
+  // -- 4. Verify all documentIds are accessible (RLS ensures tenant-scoped access)
+  const { data: docs, error: docsError } = await supabase
+    .from("documents")
+    .select("id")
+    .in("id", documentIds);
 
   if (docsError || !docs) {
     return NextResponse.json(
@@ -139,7 +123,6 @@ export async function POST(
   const { data: share, error: insertError } = await supabase
     .from("shared_links")
     .insert({
-      project_id: resolvedProjectId,
       document_ids: documentIds,
       token,
       created_by: user.id,
@@ -187,21 +170,11 @@ export async function GET(
   if (!auth.ok) return auth.response;
   const { supabase } = auth;
 
-  // -- 2. Parse projectId query param ---------------------------------------
-  const searchParams = request.nextUrl.searchParams;
-  const projectId = searchParams.get("projectId")?.trim();
-
-  // -- 3. Query shares — all projects if no projectId given (P14: tenant-scoped)
-  let query = supabase.from("shared_links").select("*");
-
-  if (projectId && UUID_RE.test(projectId)) {
-    // Filter by project_id if provided (RLS handles access)
-    query = query.eq("project_id", projectId);
-  }
-  // P14: RLS on shared_links enforces creator-or-admin ownership.
-  // No project_members query needed — tenant-level RLS handles it.
-
-  const { data: shares, error } = await query.order("created_at", { ascending: false });
+  // -- 2. Query shares (P14: tenant-scoped via RLS) -------------------------
+  const { data: shares, error } = await supabase
+    .from("shared_links")
+    .select("*")
+    .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ error: "Failed to fetch shares", code: "DB_ERROR" }, { status: 500 });
