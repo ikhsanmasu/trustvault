@@ -256,7 +256,7 @@ export default function PublicSharePage() {
                           className="h-7 rounded-lg text-[11px]"
                           onClick={() => {
                             const a = document.createElement("a");
-                            a.href = `/api/share/${token}/documents/${doc.id}/file`;
+                            a.href = `/api/share/${token}/documents/${doc.id}/file?dl=1`;
                             a.download = doc.name;
                             a.click();
                           }}
@@ -363,7 +363,7 @@ export default function PublicSharePage() {
                       className="shrink-0 rounded-lg text-xs"
                       onClick={() => {
                         const a = document.createElement("a");
-                        a.href = `/api/share/${token}/documents/${doc.id}/file`;
+                        a.href = `/api/share/${token}/documents/${doc.id}/file?dl=1`;
                         a.download = doc.name;
                         a.click();
                       }}
