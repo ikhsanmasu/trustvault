@@ -5,6 +5,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useBulkUpload } from "@/hooks/use-bulk-upload";
+import { checkDocumentName } from "@/lib/api-client";
 import { formatBytes } from "@/lib/utils";
 import { IconUpload, IconCheck, IconX, IconSpinner, IconTrash, IconDocument } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -19,11 +20,49 @@ interface Props {
 export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const { files, addFiles, removeFile, clearFiles, uploadAll, status, result, error } = useBulkUpload(projectId ?? "");
+  const { files, addFiles, removeFile, updateFileName, clearFiles, uploadAll, status, result, error } = useBulkUpload(projectId ?? "");
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [selectedLabelIds, setSelectedLabelIds] = useState<Set<string>>(new Set());
   const [newLabelName, setNewLabelName] = useState("");
   const [description, setDescription] = useState("");
+
+  // Duplicate name checking — per-file index
+  const [dupWarnings, setDupWarnings] = useState<Map<number, { exists: boolean; suggestion?: string }>>(new Map());
+  const dupTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+
+  function checkDup(index: number, name: string) {
+    // Clear existing timer for this index
+    const existing = dupTimers.current.get(index);
+    if (existing) clearTimeout(existing);
+
+    if (!name.trim()) {
+      setDupWarnings(prev => { const next = new Map(prev); next.delete(index); return next; });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await checkDocumentName(name.trim());
+        if (res.exists) {
+          // Find next available "name (N)" suggestion
+          let n = 1;
+          let suggestion = "";
+          while (n <= 99) {
+            suggestion = `${name.trim()} (${n})`;
+            const check = await checkDocumentName(suggestion);
+            if (!check.exists) break;
+            n++;
+          }
+          setDupWarnings(prev => new Map(prev).set(index, { exists: true, suggestion }));
+        } else {
+          setDupWarnings(prev => { const next = new Map(prev); next.delete(index); return next; });
+        }
+      } catch {
+        // API error — fail open, don't block
+      }
+    }, 500);
+    dupTimers.current.set(index, timer);
+  }
 
   const isUploading = status === "uploading";
   const canUpload = files.length > 0 && !isUploading;
@@ -185,22 +224,66 @@ export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props)
 
             {/* File list */}
             {files.length > 0 && (
-              <div className="space-y-1.5">
-                {files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-3 rounded-xl border bg-card px-3 py-2.5">
-                    <IconDocument className="h-4 w-4 shrink-0 text-primary" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{f.name}</p>
-                      <p className="text-xs text-muted-foreground tabular-nums">{formatBytes(f.file.size)}</p>
+              <div className="space-y-2">
+                {files.map((f, i) => {
+                  const dup = dupWarnings.get(i);
+                  return (
+                    <div key={i} className="rounded-xl border bg-card px-3 py-2.5 space-y-1.5">
+                      <div className="flex items-center gap-3">
+                        <IconDocument className="h-4 w-4 shrink-0 text-primary" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{f.originalFilename}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground tabular-nums shrink-0">{formatBytes(f.file.size)}</p>
+                        {status === "idle" && (
+                          <button type="button" onClick={() => removeFile(i)} className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" aria-label={`Remove ${f.originalFilename}`}>
+                            <IconTrash className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {isUploading && <IconSpinner className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+                      </div>
+                      {/* Editable display name */}
+                      <div className="flex items-center gap-1.5 pl-7">
+                        <input
+                          type="text"
+                          value={f.name}
+                          onChange={(e) => {
+                            updateFileName(i, e.target.value);
+                            checkDup(i, e.target.value);
+                          }}
+                          placeholder="Display name (optional)"
+                          maxLength={255}
+                          disabled={isUploading}
+                          className={cn(
+                            "flex-1 text-xs rounded-md border bg-background px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/30",
+                            dup?.exists ? "border-amber-400" : "border-border",
+                          )}
+                        />
+                      </div>
+                      {/* Duplicate warning + suggestion */}
+                      {dup?.exists && (
+                        <div className="flex items-center gap-1.5 pl-7">
+                          <span className="text-[10px] text-amber-600 font-medium">Name exists</span>
+                          {dup.suggestion && (
+                            <>
+                              <span className="text-[10px] text-muted-foreground">— try:</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateFileName(i, dup.suggestion!);
+                                  setDupWarnings(prev => { const next = new Map(prev); next.delete(i); return next; });
+                                }}
+                                className="text-[10px] font-medium text-primary hover:underline"
+                              >
+                                {dup.suggestion}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {status === "idle" && (
-                      <button type="button" onClick={() => removeFile(i)} className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" aria-label={`Remove ${f.name}`}>
-                        <IconTrash className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                    {isUploading && <IconSpinner className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

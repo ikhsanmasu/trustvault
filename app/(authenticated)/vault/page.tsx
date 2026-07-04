@@ -101,6 +101,7 @@ export default function VaultPage() {
   const [moveDocId, setMoveDocId] = useState<string | null>(null);
   const [actionDropdownDocId, setActionDropdownDocId] = useState<string | null>(null);
   const [editDocId, setEditDocId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [labelDropdownOpen, setLabelDropdownOpen] = useState(false);
@@ -558,6 +559,9 @@ export default function VaultPage() {
                       aria-label="Select all"
                     />
                   </th>
+                  <th className="hidden xl:table-cell px-2 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase w-[90px]">
+                    ID
+                  </th>
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("name")}>
                     Name <span className="ml-0.5">{sortIndicator("name")}</span>
                   </th>
@@ -608,11 +612,23 @@ export default function VaultPage() {
                           aria-label={`Select ${doc.name}`}
                         />
                       </td>
+                      <td className="hidden xl:table-cell px-2 py-3.5">
+                        <code className="text-xs font-mono text-muted-foreground/60 select-all">
+                          {doc.id.slice(0, 8)}
+                        </code>
+                      </td>
                       <td className="px-4 py-3.5">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-0.5">
                           <span className={cn("text-sm font-medium truncate block max-w-[220px]", doc.deleted_at && "line-through text-muted-foreground/60")}>
                             {doc.name}
                           </span>
+                          {doc.original_filename && doc.original_filename !== doc.name ? (
+                            <span className="text-[10px] text-muted-foreground/50 truncate block max-w-[220px]" title={doc.original_filename}>
+                              {doc.original_filename}
+                            </span>
+                          ) : !doc.original_filename ? (
+                            <span className="text-[10px] text-muted-foreground/30 italic">—</span>
+                          ) : null}
                         </div>
                       </td>
                       <td className="hidden lg:table-cell px-4 py-3.5">
@@ -775,7 +791,7 @@ export default function VaultPage() {
                                   {/* Edit */}
                                   <button
                                     type="button"
-                                    onClick={() => { setActionDropdownDocId(null); setEditDocId(doc.id); setEditDesc(doc.description ?? ""); }}
+                                    onClick={() => { setActionDropdownDocId(null); setEditDocId(doc.id); setEditName(doc.name); setEditDesc(doc.description ?? ""); }}
                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -853,6 +869,7 @@ export default function VaultPage() {
       {editDocId && (
         <EditDocumentModal
           docId={editDocId}
+          initialName={editName}
           initialDesc={editDesc}
           onClose={() => setEditDocId(null)}
           onSaved={() => { setEditDocId(null); setToast("Document updated"); setTimeout(() => setToast(null), 3000); refresh(); }}

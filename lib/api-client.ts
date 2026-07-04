@@ -25,6 +25,7 @@ export interface Tenant {
 export interface Document {
   id: string;
   name: string;
+  original_filename?: string | null;  // P18: original uploaded filename
   storage_path: string;
   binary_hash: string;
   text_hash: string;
@@ -391,9 +392,21 @@ export async function restoreDocument(id: string): Promise<{ document: Document 
 }
 
 /** PATCH /api/documents/:id — edit document metadata (description, notes). */
+// P18: Check if a document name already exists in the tenant
+export interface CheckNameResponse {
+  exists: boolean;
+  count: number;
+}
+
+export async function checkDocumentName(name: string): Promise<CheckNameResponse> {
+  const url = `/api/documents/check-name?name=${encodeURIComponent(name)}`;
+  const response = await fetch(url);
+  return handleResponse<CheckNameResponse>(response);
+}
+
 export async function editDocument(
   id: string,
-  data: { description?: string; notes?: string },
+  data: { name?: string; description?: string; notes?: string },
 ): Promise<{ document: Document }> {
   const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
     method: "PATCH",

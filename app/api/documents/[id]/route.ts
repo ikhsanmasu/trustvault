@@ -73,8 +73,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid document ID", code: "INVALID_ID" }, { status: 400 });
   }
 
-  let body: { action?: string; project_id?: string; description?: string; notes?: string };
-  try { body = (await request.json()) as { action?: string; project_id?: string; description?: string; notes?: string }; } catch {
+  let body: { action?: string; project_id?: string; description?: string; notes?: string; name?: string };
+  try { body = (await request.json()) as { action?: string; project_id?: string; description?: string; notes?: string; name?: string }; } catch {
     return NextResponse.json({ error: "Invalid body", code: "INVALID_REQUEST" }, { status: 400 });
   }
 
@@ -100,6 +100,16 @@ export async function PATCH(
   // ---- Edit: update description, notes, and/or project ----
   if (action === "edit") {
     const updates: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      const trimmedName = String(body.name).trim();
+      if (trimmedName.length === 0) {
+        return NextResponse.json({ error: "Name cannot be empty", code: "INVALID_NAME" }, { status: 400 });
+      }
+      if (trimmedName.length > 255) {
+        return NextResponse.json({ error: "Name must be 255 characters or fewer", code: "NAME_TOO_LONG" }, { status: 400 });
+      }
+      updates.name = trimmedName;
+    }
     if (body.description !== undefined) updates.description = body.description.slice(0, 1000);
     if (body.notes !== undefined) updates.notes = body.notes.slice(0, 5000);
     if (body.project_id) {
