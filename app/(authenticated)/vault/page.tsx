@@ -669,26 +669,26 @@ export default function VaultPage() {
                         )}
                       </td>
                       <td className="hidden xl:table-cell px-4 py-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                        <div className="flex items-center justify-center gap-1">
                           {doc.fingerprint ? (
                             <span
-                              className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                              className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
                               title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}
                             >
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                              Anchored
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                             </span>
-                          ) : doc.extracted_text ? (
+                          ) : null}
+                          {doc.extracted_text ? (
                             <span
-                              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                              className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
                               title="Text extracted and indexed"
                             >
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                              Indexed
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                             </span>
-                          ) : (
+                          ) : null}
+                          {!doc.fingerprint && !doc.extracted_text ? (
                             <span className="text-xs text-muted-foreground/50 italic">—</span>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                       <td className="hidden md:table-cell px-4 py-3.5 text-right text-sm text-muted-foreground tabular-nums">
