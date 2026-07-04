@@ -58,6 +58,11 @@ export function useAssistantChat(): UseAssistantChatReturn {
     }
   }, []);
 
+  // Load sessions on initial mount
+  useEffect(() => {
+    refreshSessions();
+  }, [refreshSessions]);
+
   // ---- Select an existing session (load its messages) -----------------------
 
   const selectSession = useCallback(async (sessionId: string) => {
