@@ -33,7 +33,6 @@ export interface Document {
   file_size_bytes: number;
   file_type: string;
   tenant_id: string;
-  project_id?: string | null;
   uploaded_by: string;
   created_at: string;
   deleted_at?: string | null;
@@ -269,7 +268,7 @@ export async function uploadDocument(
 }
 
 /**
- * GET /api/documents — list documents. P3: project_id is optional, file_type filter added.
+ * GET /api/documents — list documents.
  */
 export async function listDocuments(
   params?: ListDocumentsParams,
@@ -479,7 +478,6 @@ export async function verifyDocument(
 // Backend DB shape (shared with lib/types.ts)
 export interface SharedLink {
   id: string;
-  project_id?: string | null;
   document_ids: string[];
   token: string;
   created_by: string;
@@ -499,7 +497,6 @@ export type ShareLink = SharedLink;
 
 /** @deprecated Use CreateShareRequest instead — kept for backward compat with share-modal */
 export interface CreateShareRequestCompat {
-  project_id?: string | null;
   title: string;
   document_ids: string[];
   allow_download: boolean;
@@ -510,7 +507,6 @@ export interface CreateShareRequestCompat {
 
 // New canonical request type (matches backend POST /api/share)
 export interface CreateShareRequest {
-  projectId?: string | null;
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;
@@ -533,8 +529,7 @@ export interface SharePublicData {
   share: {
     id: string;
     token: string;
-    project_id?: string | null;
-    document_ids: string[];
+      document_ids: string[];
     title: string;
     allow_download: boolean;
     allow_chat: boolean;
@@ -555,10 +550,10 @@ export async function createShare(
   data: CreateShareRequest | CreateShareRequestCompat,
 ): Promise<CreateShareResponse> {
   // Normalize legacy shape to canonical shape
-  const body = "projectId" in data
+  const body = false
     ? data
     : {
-        projectId: (data as CreateShareRequestCompat).project_id,
+
         documentIds: (data as CreateShareRequestCompat).document_ids,
         allowDownload: (data as CreateShareRequestCompat).allow_download,
         allowChat: (data as CreateShareRequestCompat).allow_chat,

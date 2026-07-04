@@ -104,7 +104,6 @@ export interface Project {
 
 export interface ProjectMember {
   id: string;
-  project_id: string;
   user_id: string;
   role: Role;
   created_at: string;

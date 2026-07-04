@@ -277,8 +277,7 @@ describe("P2: Bulk upload validation", () => {
 
   it("bulk upload result shape matches BulkUploadResult contract", () => {
     const result: BulkUploadResult = {
-      project_id: "550e8400-e29b-41d4-a716-446655440000",
-      results: [
+            results: [
         { status: "ok", document: {} as Document, name: "file1.pdf" },
         { status: "error", error: "Failed", code: "DB_ERROR", name: "file2.pdf" },
       ],
@@ -347,8 +346,7 @@ describe("P2: Document type contract", () => {
       file_size_bytes: 1024,
       file_type: "application/pdf",
       tenant_id: "tenant-uuid",
-      project_id: "project-uuid",
-      uploaded_by: "user-uuid",
+            uploaded_by: "user-uuid",
       created_at: "2026-06-21T10:00:00.000Z",
     };
 
@@ -391,8 +389,7 @@ describe("P2: Document type contract", () => {
   it("ProjectMember type includes role field with correct type", () => {
     const member: ProjectMember = {
       id: "member-uuid",
-      project_id: "project-uuid",
-      user_id: "user-uuid",
+            user_id: "user-uuid",
       role: "editor",
       created_at: "2026-06-21T10:00:00.000Z",
     };

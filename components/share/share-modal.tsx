@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 interface ShareModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  projectId: string;
   documents: Document[];
   onCreated: () => void;
   preselectedIds?: string[];
@@ -24,7 +23,6 @@ interface ShareModalProps {
 export function ShareModal({
   open,
   onOpenChange,
-  projectId,
   documents,
   onCreated,
   preselectedIds,
@@ -54,8 +52,7 @@ export function ShareModal({
     if (!canCreate) return;
 
     const result = await createLink({
-      projectId,
-      documentIds: selectedIds,
+          documentIds: selectedIds,
       allowDownload,
       allowChat,
       allowAnchor,

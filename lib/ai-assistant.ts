@@ -603,7 +603,6 @@ export interface ChunkRecord {
  * Chunks the text, generates embeddings, and returns the records.
  *
  * @param documentId - UUID of the source document
- * @param projectId - UUID of the project
  * @param extractedText - Full extracted text from the document
  * @returns Array of chunk records (embedding may be null if generation failed)
  */

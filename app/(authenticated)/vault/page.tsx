@@ -846,7 +846,7 @@ export default function VaultPage() {
         <ShareModal
           open={shareDoc !== null}
           onOpenChange={(open) => { if (!open) { setShareDoc(null); setBulkShareIds([]); } }}
-          projectId={shareDoc.project_id ?? ""}
+          
           documents={visibleDocs}
           preselectedIds={bulkShareIds.length > 0 ? bulkShareIds : [shareDoc.id]}
           onCreated={() => { setBulkShareIds([]); setSelectedIds(new Set()); refresh(); }}

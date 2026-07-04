@@ -48,14 +48,12 @@ describe("ai-api-client type contracts", () => {
   it("ChatSession type has required fields", () => {
     const s: ChatSession = {
       id: "550e8400-e29b-41d4-a716-446655440000",
-      project_id: "550e8400-e29b-41d4-a716-446655440001",
       user_id: "550e8400-e29b-41d4-a716-446655440002",
       title: "New Chat",
       created_at: "2026-07-01T00:00:00.000Z",
       updated_at: "2026-07-01T00:00:00.000Z",
     };
     expect(s.id).toBeTypeOf("string");
-    expect(s.project_id).toBeTypeOf("string");
     expect(s.user_id).toBeTypeOf("string");
     expect(s.title).toBeTypeOf("string");
     expect(s.created_at).toBeTypeOf("string");
@@ -123,13 +121,11 @@ describe("ai-api-client type contracts", () => {
   it("ChatRequest type accepts optional sessionId", () => {
     const withSession: ChatRequest = {
       sessionId: "550e8400-0000-0000-0000-000000000000",
-      projectId: "550e8400-0000-0000-0000-000000000001",
       message: "Hello",
     };
     expect(withSession.sessionId).toBeDefined();
 
     const withoutSession: ChatRequest = {
-      projectId: "550e8400-0000-0000-0000-000000000001",
       message: "Hello",
     };
     expect(withoutSession.sessionId).toBeUndefined();
@@ -140,7 +136,6 @@ describe("ai-api-client type contracts", () => {
       sessions: [
         {
           id: "s1",
-          project_id: "p1",
           user_id: "u1",
           title: "Chat 1",
           created_at: "2026-07-01T00:00:00.000Z",
@@ -155,7 +150,6 @@ describe("ai-api-client type contracts", () => {
     const resp: GetSessionResponse = {
       session: {
         id: "s1",
-        project_id: "p1",
         user_id: "u1",
         title: "Chat",
         created_at: "2026-07-01T00:00:00.000Z",
@@ -313,15 +307,14 @@ describe("ai-api-client fetch behavior", () => {
   // ---- listSessions ----
 
   describe("listSessions", () => {
-    it("calls GET /api/assistant/sessions with project_id query param", async () => {
+    it("calls GET /api/assistant/sessions ", async () => {
       const mockFetch = vi.spyOn(global, "fetch").mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue({
           sessions: [
             {
               id: "s1",
-              project_id: "p1",
-              user_id: "u1",
+                  user_id: "u1",
               title: "Chat",
               created_at: "2026-07-01T00:00:00.000Z",
               updated_at: "2026-07-01T00:00:00.000Z",
@@ -330,27 +323,23 @@ describe("ai-api-client fetch behavior", () => {
         } as ListSessionsResponse),
       } as unknown as Response);
 
-      const result = await listSessions(
-        "550e8400-e29b-41d4-a716-446655440000",
-      );
+      const result = await listSessions();
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
-        "/api/assistant/sessions?project_id=550e8400-e29b-41d4-a716-446655440000",
       );
       expect(result.sessions).toHaveLength(1);
     });
 
-    it("encodes project_id with special characters", async () => {
+    it("lists sessions", async () => {
       const mockFetch = vi.spyOn(global, "fetch").mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue({ sessions: [] }),
       } as unknown as Response);
 
       // Should not crash — valid UUIDs don't have special chars, but defensive encode
-      await listSessions("550e8400-e29b-41d4-a716-446655440000");
+      await listSessions();
       expect(mockFetch).toHaveBeenCalledWith(
-        "/api/assistant/sessions?project_id=550e8400-e29b-41d4-a716-446655440000",
       );
     });
 
@@ -359,12 +348,12 @@ describe("ai-api-client fetch behavior", () => {
         ok: false,
         status: 400,
         json: vi.fn().mockResolvedValue({
-          error: "project_id must be a valid UUID",
+          error: "session not found",
           code: "MISSING_PROJECT_ID",
         }),
       } as unknown as Response);
 
-      await expect(listSessions("invalid")).rejects.toThrow(ApiClientError);
+      await expect(listSessions()).rejects.toThrow(ApiClientError);
     });
   });
 
@@ -377,8 +366,7 @@ describe("ai-api-client fetch behavior", () => {
         json: vi.fn().mockResolvedValue({
           session: {
             id: "s1",
-            project_id: "p1",
-            user_id: "u1",
+              user_id: "u1",
             title: "Chat",
             created_at: "2026-07-01T00:00:00.000Z",
             updated_at: "2026-07-01T00:00:00.000Z",
