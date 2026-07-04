@@ -592,7 +592,6 @@ export async function chatCompletionStream(
 
 export interface ChunkRecord {
   document_id: string;
-  project_id: string | null;
   chunk_index: number;
   content: string;
   embedding: number[] | null;
@@ -610,7 +609,6 @@ export interface ChunkRecord {
  */
 export async function ingestDocument(
   documentId: string,
-  projectId: string | null,
   extractedText: string,
 ): Promise<ChunkRecord[]> {
   if (!extractedText || extractedText.trim().length === 0) {
@@ -631,7 +629,6 @@ export async function ingestDocument(
     for (let j = 0; j < batch.length; j++) {
       records.push({
         document_id: documentId,
-        project_id: projectId,
         chunk_index: i + j,
         content: batch[j].slice(0, MAX_CHUNK_CHARS),
         embedding: embeddings[j],

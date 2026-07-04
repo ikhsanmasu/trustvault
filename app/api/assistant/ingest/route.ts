@@ -134,11 +134,7 @@ export async function POST(
       }
 
       // 3e. Chunk + embed via core library
-      const chunkRecords = await ingestDocument(
-        documentId,
-        (document.project_id as string | null) ?? null,
-        extractedText,
-      );
+      const chunkRecords = await ingestDocument(documentId, extractedText);
 
       if (chunkRecords.length === 0) {
         failed++;
@@ -160,7 +156,6 @@ export async function POST(
         .filter((c) => c.embedding !== null)
         .map((c) => ({
           document_id: c.document_id,
-          project_id: c.project_id,
           chunk_index: c.chunk_index,
           content: c.content,
           embedding: toPgVector(c.embedding!), // pgvector text format

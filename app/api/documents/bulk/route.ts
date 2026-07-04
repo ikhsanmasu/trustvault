@@ -313,13 +313,12 @@ export async function POST(
         if (!extractedText || extractedText.trim().length === 0) {
           ingestion = { status: "empty_text", chunks: 0 };
         } else {
-          const records = await ingestDocument(docId, null, extractedText);
+          const records = await ingestDocument(docId, extractedText);
           ingestion = { status: records.length > 0 ? "ok" : "no_chunks", chunks: records.length };
           if (records.length > 0) {
             const { error: insErr } = await supabase.from("document_chunks").insert(
               records.map((r) => ({
                 document_id: r.document_id,
-                project_id: r.project_id,
                 chunk_index: r.chunk_index,
                 content: r.content,
                 embedding: r.embedding ? `[${r.embedding.join(",")}]` : null,
