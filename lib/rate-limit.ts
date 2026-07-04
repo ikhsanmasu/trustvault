@@ -13,7 +13,8 @@ export type PlanType = "free" | "pro" | "enterprise";
 
 export interface PlanLimits {
   maxDocs: number;
-  maxFileSize: number;   // bytes
+  maxFileSize: number;   // bytes, per-file
+  maxStorage: number;    // bytes, total storage
   maxLlmCalls: number;
 }
 
@@ -21,17 +22,20 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
   free: {
     maxDocs: 10,
-    maxFileSize: 50 * 1024 * 1024,   // 50 MB
+    maxFileSize: 50 * 1024 * 1024,      // 50 MB per file
+    maxStorage: 100 * 1024 * 1024,       // 100 MB total
     maxLlmCalls: 50,
   },
   pro: {
     maxDocs: Infinity,
-    maxFileSize: 100 * 1024 * 1024,  // 100 MB
+    maxFileSize: 100 * 1024 * 1024,     // 100 MB per file
+    maxStorage: 5 * 1024 * 1024 * 1024, // 5 GB total
     maxLlmCalls: 500,
   },
   enterprise: {
     maxDocs: Infinity,
     maxFileSize: Infinity,
+    maxStorage: Infinity,
     maxLlmCalls: Infinity,
   },
 };

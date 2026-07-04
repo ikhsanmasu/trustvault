@@ -50,7 +50,7 @@ export async function GET(): Promise<
       llm_calls_used: Number(tenant.usage_llm_calls ?? 0),
       llm_calls_limit: isFinite(limits.maxLlmCalls) ? limits.maxLlmCalls : null,
       storage_bytes_used: Number(tenant.usage_storage_bytes ?? 0),
-      storage_bytes_limit: null, // No per-plan storage cap in P17
+      storage_bytes_limit: isFinite(limits.maxStorage) ? limits.maxStorage : null,
       usage_reset_at: tenant.usage_reset_at ?? null,
     },
   });
