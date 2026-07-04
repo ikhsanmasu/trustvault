@@ -24,7 +24,7 @@ interface UseBulkUploadReturn {
   removeFile: (index: number) => void;
   updateFileName: (index: number, name: string) => void;
   clearFiles: () => void;
-  uploadAll: () => Promise<BulkUploadResult | null>;
+  uploadAll: (description?: string) => Promise<BulkUploadResult | null>;
   status: UploadStatus;
   result: BulkUploadResult | null;
   error: string | null;
@@ -73,7 +73,7 @@ export function useBulkUpload(projectId: string = ""): UseBulkUploadReturn {
     setError(null);
   }, []);
 
-  const uploadAll = useCallback(async (): Promise<BulkUploadResult | null> => {
+  const uploadAll = useCallback(async (description?: string): Promise<BulkUploadResult | null> => {
     if (files.length === 0) {
       setError("No files to upload.");
       return null;
@@ -90,6 +90,7 @@ export function useBulkUpload(projectId: string = ""): UseBulkUploadReturn {
       const response = await bulkUploadDocuments(
         files.map((f) => f.file),
         files.map((f) => f.name),
+        description,
       );
       setResult(response);
       setStatus("done");

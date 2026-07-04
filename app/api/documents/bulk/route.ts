@@ -94,7 +94,14 @@ export async function POST(
     );
   }
 
-  // -- 8. Parse names (JSON array, optional) --------------------------------
+  // -- 8. Parse description (optional, shared across all files) ----------------
+  const descriptionRaw = formData.get("description");
+  const sharedDescription: string | undefined =
+    typeof descriptionRaw === "string" && descriptionRaw.trim().length > 0
+      ? descriptionRaw.trim().slice(0, 1000)
+      : undefined;
+
+  // -- 9. Parse names (JSON array, optional) --------------------------------
   let providedNames: string[] = [];
   const namesRaw = formData.get("names");
   if (namesRaw && typeof namesRaw === "string" && namesRaw.trim().length > 0) {
@@ -278,6 +285,7 @@ export async function POST(
           file_type: mimeType,
           tenant_id: tenantId,
           uploaded_by: user.id,
+          ...(sharedDescription ? { description: sharedDescription } : {}),
         })
         .select("*")
         .single();
