@@ -119,7 +119,6 @@ export default function VaultPage() {
   // Fetch document labels for visible docs
   useEffect(() => {
     if (visibleDocs.length === 0) return;
-    // Fetch labels for all visible docs in parallel
     Promise.all(visibleDocs.map(d =>
       fetch(`/api/documents/${d.id}/labels`).then(r => r.json()).then(data => ({ docId: d.id, labels: data.labels as { id: string }[] })).catch(() => ({ docId: d.id, labels: [] }))
     )).then(results => {
@@ -128,6 +127,7 @@ export default function VaultPage() {
       setDocLabels(map);
     });
   }, [documents]);
+
 
   // Filter by label
   const labelFilteredDocs = selectedLabelId
@@ -566,6 +566,9 @@ export default function VaultPage() {
                   </th>
                   <th className="hidden lg:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
                     Labels
+                  </th>
+                  <th className="hidden xl:table-cell px-4 py-3.5 text-center text-xs font-semibold text-muted-foreground tracking-wide uppercase" style={{ width: 100 }}>
+                    Status
                   </th>
                   <th className="hidden md:table-cell px-4 py-3.5 text-right text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_size_bytes")}>
                     Size <span className="ml-0.5">{sortIndicator("file_size_bytes")}</span>
