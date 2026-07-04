@@ -12,11 +12,10 @@ import { uploadDocument, type Document, ApiClientError } from "@/lib/api-client"
 import { formatBytes, formatDate, truncateHash } from "@/lib/utils";
 
 interface UploadFormProps {
-  projectId?: string;
   onSuccess?: (document: Document) => void;
 }
 
-export default function UploadForm({ projectId = "", onSuccess }: UploadFormProps) {
+export default function UploadForm({ onSuccess }: UploadFormProps) {
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);

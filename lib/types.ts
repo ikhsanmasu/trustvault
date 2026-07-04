@@ -75,7 +75,6 @@ export interface Document {
   file_size_bytes: number;
   file_type: string;
   tenant_id: string;
-  project_id?: string | null;
   uploaded_by: string;
   created_at: string;
   deleted_at?: string | null;
@@ -151,7 +150,6 @@ export interface BulkUploadItem {
 }
 
 export interface BulkUploadResult {
-  project_id?: string | null;
   results: BulkUploadItem[];
   succeeded: number;
   failed: number;
@@ -275,7 +273,6 @@ export interface Citation {
 
 export interface ChatSession {
   id: string;
-  project_id?: string | null;
   user_id: string;
   title: string;
   created_at: string;
@@ -304,7 +301,6 @@ export interface IngestResponse {
 
 export interface ChatRequest {
   sessionId?: string;
-  projectId?: string;
   message: string;
 }
 
@@ -323,7 +319,6 @@ export interface GetSessionResponse {
 
 export interface SharedLink {
   id: string;
-  project_id?: string | null;
   document_ids: string[];
   token: string;
   created_by: string;
@@ -336,7 +331,6 @@ export interface SharedLink {
 }
 
 export interface CreateShareRequest {
-  projectId?: string | null;
   documentIds: string[];
   allowDownload: boolean;
   allowChat: boolean;

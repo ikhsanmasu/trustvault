@@ -9,7 +9,6 @@ import {
 } from "@/lib/api-client";
 
 export interface UseDocumentsParams {
-  projectId?: string;
   fileType?: string;
   limit?: number;
   includeDeleted?: boolean;
@@ -28,7 +27,6 @@ interface UseDocumentsReturn {
 }
 
 export function useDocuments({
-  projectId,
   fileType: initialFileType = "",
   limit = 50,
   includeDeleted = true,
@@ -80,7 +78,7 @@ export function useDocuments({
     } finally {
       setIsLoading(false);
     }
-  }, [projectId, fileType, debouncedSearch, limit]);
+  }, [fileType, debouncedSearch, limit]);
 
   useEffect(() => {
     fetchDocuments();

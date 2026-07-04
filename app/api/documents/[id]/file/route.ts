@@ -31,7 +31,6 @@ export async function GET(
     return NextResponse.json({ error: "This document has been deleted", code: "GONE" }, { status: 410 });
   }
 
-  // P11: verify tenant access (handle null project_id gracefully)
   const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId || doc.tenant_id !== tenantId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
