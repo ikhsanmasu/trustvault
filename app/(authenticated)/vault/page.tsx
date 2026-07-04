@@ -849,7 +849,7 @@ export default function VaultPage() {
           projectId={shareDoc.project_id ?? ""}
           documents={visibleDocs}
           preselectedIds={bulkShareIds.length > 0 ? bulkShareIds : [shareDoc.id]}
-          onCreated={() => { setShareDoc(null); setBulkShareIds([]); setSelectedIds(new Set()); refresh(); }}
+          onCreated={() => { setBulkShareIds([]); setSelectedIds(new Set()); refresh(); }}
         />
       )}
       <UploadModal
