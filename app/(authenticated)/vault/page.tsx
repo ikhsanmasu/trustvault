@@ -561,6 +561,9 @@ export default function VaultPage() {
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("name")}>
                     Name <span className="ml-0.5">{sortIndicator("name")}</span>
                   </th>
+                  <th className="hidden lg:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                    Description
+                  </th>
                   <th className="hidden sm:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_type")}>
                     Type <span className="ml-0.5">{sortIndicator("file_type")}</span>
                   </th>
@@ -611,6 +614,15 @@ export default function VaultPage() {
                             {doc.name}
                           </span>
                         </div>
+                      </td>
+                      <td className="hidden lg:table-cell px-4 py-3.5">
+                        {doc.description ? (
+                          <span className="text-sm text-muted-foreground truncate block max-w-[200px]" title={doc.description}>
+                            {doc.description}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/50 italic">No description</span>
+                        )}
                       </td>
                       <td className="hidden sm:table-cell px-4 py-3.5">
                         <Badge
