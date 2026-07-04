@@ -107,6 +107,15 @@ export default function PublicSharePage() {
   const chat = useShareChat(token);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [infoDocId, setInfoDocId] = useState<string | null>(null);
+
+  // Close info popover on outside click
+  useEffect(() => {
+    if (!infoDocId) return;
+    const handler = () => setInfoDocId(null);
+    document.addEventListener("click", handler, { once: true });
+    return () => document.removeEventListener("click", handler);
+  }, [infoDocId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -167,12 +176,17 @@ export default function PublicSharePage() {
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
+              <a
+                href="/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
                 <IconBrand className="h-6 w-6" />
                 <span className="text-xs font-semibold text-secondary uppercase tracking-widest">
                   InTrustVault
                 </span>
-              </div>
+              </a>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground text-balance">
                 {share.title || "Shared Documents"}
               </h1>
@@ -239,7 +253,7 @@ export default function PublicSharePage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 mt-2 ml-[42px]">
+                    <div className="flex items-center gap-1 mt-2 ml-[42px]">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -265,6 +279,49 @@ export default function PublicSharePage() {
                           Download
                         </Button>
                       )}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setInfoDocId(infoDocId === doc.id ? null : doc.id)}
+                          className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          title="Document info"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        </button>
+                        {infoDocId === doc.id && (
+                          <div className="absolute bottom-full left-0 mb-2 z-40 w-72 rounded-xl border border-border bg-card shadow-elevation-3 p-4 text-left">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-semibold">Document Info</span>
+                              <button onClick={() => setInfoDocId(null)} className="text-muted-foreground hover:text-foreground">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
+                            </div>
+                            <div className="space-y-1.5 text-xs">
+                              {doc.original_filename && doc.original_filename !== doc.name && (
+                                <div><span className="text-muted-foreground">File:</span> <span className="font-mono text-[11px]">{doc.original_filename}</span></div>
+                              )}
+                              <div><span className="text-muted-foreground">Type:</span> {getFileTypeLabel(doc.file_type)}</div>
+                              <div><span className="text-muted-foreground">Size:</span> {formatBytes(doc.file_size_bytes)}</div>
+                              <div><span className="text-muted-foreground">Uploaded:</span> {formatDate(doc.created_at)}</div>
+                              <div className="pt-1 border-t border-border/50">
+                                <div className="text-muted-foreground mb-0.5">Binary Hash:</div>
+                                <code className="text-[10px] font-mono break-all text-muted-foreground/80">{doc.binary_hash}</code>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground mb-0.5">Text Hash:</div>
+                                <code className="text-[10px] font-mono break-all text-muted-foreground/80">{doc.text_hash}</code>
+                              </div>
+                              {doc.fingerprint && (
+                                <div className="pt-1 border-t border-border/50">
+                                  <span className="text-muted-foreground">Blockchain:</span>{" "}
+                                  <span className="text-emerald-600 font-medium">{doc.chain}</span>
+                                  <div className="text-[10px] font-mono text-muted-foreground/70 truncate mt-0.5">{doc.tx_hash}</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -372,6 +429,49 @@ export default function PublicSharePage() {
                       Download
                     </Button>
                   )}
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setInfoDocId(infoDocId === doc.id ? null : doc.id)}
+                      className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="Document info"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    </button>
+                    {infoDocId === doc.id && (
+                      <div className="absolute bottom-full right-0 mb-2 z-40 w-72 rounded-xl border border-border bg-card shadow-elevation-3 p-4 text-left">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold">Document Info</span>
+                          <button onClick={() => setInfoDocId(null)} className="text-muted-foreground hover:text-foreground">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          {doc.original_filename && doc.original_filename !== doc.name && (
+                            <div><span className="text-muted-foreground">File:</span> <span className="font-mono text-[11px]">{doc.original_filename}</span></div>
+                          )}
+                          <div><span className="text-muted-foreground">Type:</span> {getFileTypeLabel(doc.file_type)}</div>
+                          <div><span className="text-muted-foreground">Size:</span> {formatBytes(doc.file_size_bytes)}</div>
+                          <div><span className="text-muted-foreground">Uploaded:</span> {formatDate(doc.created_at)}</div>
+                          <div className="pt-1 border-t border-border/50">
+                            <div className="text-muted-foreground mb-0.5">Binary Hash:</div>
+                            <code className="text-[10px] font-mono break-all text-muted-foreground/80">{doc.binary_hash}</code>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground mb-0.5">Text Hash:</div>
+                            <code className="text-[10px] font-mono break-all text-muted-foreground/80">{doc.text_hash}</code>
+                          </div>
+                          {doc.fingerprint && (
+                            <div className="pt-1 border-t border-border/50">
+                              <span className="text-muted-foreground">Blockchain:</span>{" "}
+                              <span className="text-emerald-600 font-medium">{doc.chain}</span>
+                              <div className="text-[10px] font-mono text-muted-foreground/70 truncate mt-0.5">{doc.tx_hash}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
