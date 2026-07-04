@@ -13,6 +13,7 @@ import { ChatInput } from "@/components/chat/chat-input";
 import { IconBrand, IconDocument, IconDownload, IconFile, IconLock, IconShield, IconSparkle } from "@/components/icons";
 import { formatBytes, formatDate, cn } from "@/lib/utils";
 import { getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
+import { buildExplorerUrl } from "@/lib/explorers";
 import type { Document } from "@/lib/api-client";
 import type { ChatMessage } from "@/lib/ai-api-client";
 
@@ -222,11 +223,19 @@ export default function PublicSharePage() {
                           <Badge variant={getFileTypeVariant(doc.file_type)} className="text-[10px] px-1 py-0 font-normal">
                             {getFileTypeLabel(doc.file_type)}
                           </Badge>
-                          {doc.fingerprint && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium" title={`Anchored on ${doc.chain ?? "blockchain"}`}>
-                              <IconShield className="h-3 w-3" />
-                            </span>
-                          )}
+                          {doc.fingerprint && (() => {
+                            const explorerUrl = buildExplorerUrl(doc.chain, doc.tx_hash);
+                            const shield = (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium" title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}>
+                                <IconShield className="h-3 w-3" />
+                              </span>
+                            );
+                            return explorerUrl ? (
+                              <a href={explorerUrl} target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
+                                {shield}
+                              </a>
+                            ) : shield;
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -235,7 +244,7 @@ export default function PublicSharePage() {
                         variant="ghost"
                         size="sm"
                         className="h-7 rounded-lg text-[11px]"
-                        onClick={() => window.open(`/api/share/${token}/download/${doc.id}`, "_blank")}
+                        onClick={() => window.open(`/api/share/${token}/documents/${doc.id}/file`, "_blank")}
                       >
                         <IconFile className="h-3 w-3 mr-1" />
                         View
@@ -247,7 +256,7 @@ export default function PublicSharePage() {
                           className="h-7 rounded-lg text-[11px]"
                           onClick={() => {
                             const a = document.createElement("a");
-                            a.href = `/api/share/${token}/download/${doc.id}`;
+                            a.href = `/api/share/${token}/documents/${doc.id}/file`;
                             a.download = doc.name;
                             a.click();
                           }}
@@ -323,18 +332,26 @@ export default function PublicSharePage() {
                         {getFileTypeLabel(doc.file_type)}
                       </Badge>
                       <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(doc.file_size_bytes)}</span>
-                      {doc.fingerprint && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium" title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}>
-                          <IconShield className="h-3 w-3" />
-                        </span>
-                      )}
+                      {doc.fingerprint && (() => {
+                        const explorerUrl = buildExplorerUrl(doc.chain, doc.tx_hash);
+                        const shield = (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium" title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}>
+                            <IconShield className="h-3 w-3" />
+                          </span>
+                        );
+                        return explorerUrl ? (
+                          <a href={explorerUrl} target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
+                            {shield}
+                          </a>
+                        ) : shield;
+                      })()}
                     </div>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="shrink-0 rounded-lg text-xs"
-                    onClick={() => window.open(`/api/share/${token}/download/${doc.id}`, "_blank")}
+                    onClick={() => window.open(`/api/share/${token}/documents/${doc.id}/file`, "_blank")}
                   >
                     <IconFile className="h-3.5 w-3.5 mr-1.5" />
                     View
@@ -346,7 +363,7 @@ export default function PublicSharePage() {
                       className="shrink-0 rounded-lg text-xs"
                       onClick={() => {
                         const a = document.createElement("a");
-                        a.href = `/api/share/${token}/download/${doc.id}`;
+                        a.href = `/api/share/${token}/documents/${doc.id}/file`;
                         a.download = doc.name;
                         a.click();
                       }}
