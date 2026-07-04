@@ -21,12 +21,12 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
   free: {
     maxDocs: 10,
-    maxFileSize: 5 * 1024 * 1024,   // 5 MB
+    maxFileSize: 50 * 1024 * 1024,   // 50 MB
     maxLlmCalls: 50,
   },
   pro: {
     maxDocs: Infinity,
-    maxFileSize: 20 * 1024 * 1024,  // 20 MB
+    maxFileSize: 100 * 1024 * 1024,  // 100 MB
     maxLlmCalls: 500,
   },
   enterprise: {

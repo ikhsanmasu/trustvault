@@ -80,8 +80,8 @@ export async function PATCH(
 
   const action = body.action === "restore" ? "restore" : body.action === "move" ? "move" : body.action === "edit" ? "edit" : "delete";
 
-  // -- P12: Verify document exists and user has tenant-level access ----------
-  const { data: doc } = await supabase.from("documents").select("project_id, tenant_id").eq("id", id).single();
+  // -- Verify document exists and user has tenant-level access --------------
+  const { data: doc } = await supabase.from("documents").select("tenant_id, fingerprint, storage_path").eq("id", id).single();
   if (!doc) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
   // -- P14: Verify tenant-level RBAC (require editor+) ------------------------
@@ -140,14 +140,26 @@ export async function PATCH(
   }
 
   if (action === "delete") {
-    // Delete the actual file from storage, keep the DB row with hashes
-    const { data: docFull } = await supabase.from("documents").select("storage_path").eq("id", id).single();
-    if (docFull?.storage_path) {
-      // Use service client to bypass RLS on storage
-      await createServiceClient().storage.from("pdf-uploads").remove([docFull.storage_path]);
+    const isAnchored = !!doc.fingerprint;
+
+    // Remove file from storage always
+    if (doc.storage_path) {
+      await createServiceClient().storage.from("pdf-uploads").remove([doc.storage_path]);
     }
+
+    if (!isAnchored) {
+      // Not anchored: hard delete — remove DB row entirely
+      const { error: delErr } = await supabase.from("documents").delete().eq("id", id);
+      if (delErr) return NextResponse.json({ error: "Delete failed", code: "DB_ERROR" }, { status: 500 });
+      return NextResponse.json({ document: { id, deleted: true } as unknown as Document });
+    }
+
+    // Anchored: soft delete — keep hashes + blockchain info, gray out
     const deletedAt = new Date().toISOString();
-    const { data: updated, error: updErr } = await supabase.from("documents").update({ deleted_at: deletedAt, deleted_by: user.id, extracted_text: "", file_size_bytes: 0 }).eq("id", id).select("*").single();
+    const { data: updated, error: updErr } = await supabase.from("documents").update({
+      deleted_at: deletedAt, deleted_by: user.id,
+      extracted_text: "", file_size_bytes: 0, storage_path: "",
+    }).eq("id", id).select("*").single();
     if (updErr || !updated) return NextResponse.json({ error: "Update failed", code: "DB_ERROR" }, { status: 500 });
     return NextResponse.json({ document: updated as unknown as Document });
   }
