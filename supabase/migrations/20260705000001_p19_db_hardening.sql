@@ -102,12 +102,12 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'agent_channels_agent_channel_unique'
   ) THEN
-    -- Deduplicate existing rows before adding unique constraint
+    -- Deduplicate existing rows: keep the earliest-created row per (agent_id, channel_type)
     DELETE FROM public.agent_channels a
     WHERE a.id NOT IN (
-      SELECT MIN(id) FROM public.agent_channels
-      WHERE agent_id IS NOT NULL
-      GROUP BY agent_id, channel_type
+      SELECT DISTINCT ON (agent_id, channel_type) id
+      FROM public.agent_channels
+      ORDER BY agent_id, channel_type, created_at ASC
     );
     ALTER TABLE public.agent_channels
       ADD CONSTRAINT agent_channels_agent_channel_unique UNIQUE (agent_id, channel_type);
