@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useRef, useEffect, useState, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { useDocuments } from "@/hooks/use-documents";
@@ -321,6 +321,14 @@ function KnowledgeBasePanel({
 // ---- Page -------------------------------------------------------------------
 
 export default function AssistantPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Skeleton className="h-8 w-48" /></div>}>
+      <AssistantContent />
+    </Suspense>
+  );
+}
+
+function AssistantContent() {
   const router = useRouter();
   const { user, isLoading: isAuthLoading } = useAuthContext();
 
@@ -346,7 +354,12 @@ export default function AssistantPage() {
 
   // ---- Knowledge Base state -------------------------------------------------
 
-  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(() => new Set());
+  const searchParams = useSearchParams();
+  const urlDocIds = searchParams.get("docs")?.split(",").filter(Boolean) ?? [];
+
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(
+    () => new Set(urlDocIds),
+  );
   const [docSearch, setDocSearch] = useState("");
   const [customPrompt, setCustomPrompt] = useState(() => loadPrompt());
   const [showKnowledgePanel, setShowKnowledgePanel] = useState(true);

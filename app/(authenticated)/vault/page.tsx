@@ -497,7 +497,10 @@ export default function VaultPage() {
                 <IconShare className="h-4 w-4 mr-1.5" /> Share
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={() => router.push("/assistant")}>
+            <Button size="sm" variant="outline" onClick={() => {
+              const ids = Array.from(selectedIds);
+              router.push(ids.length > 0 ? `/assistant?docs=${ids.join(",")}` : "/assistant");
+            }}>
               <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Ask AI
             </Button>
@@ -708,6 +711,15 @@ export default function VaultPage() {
                                   >
                                     <IconShare className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
                                     Share
+                                  </button>
+                                  {/* Ask AI */}
+                                  <button
+                                    type="button"
+                                    onClick={() => { setActionDropdownDocId(null); router.push(`/assistant?docs=${doc.id}`); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                                  >
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    Ask AI
                                   </button>
                                   {/* Create Agent */}
                                   <button
