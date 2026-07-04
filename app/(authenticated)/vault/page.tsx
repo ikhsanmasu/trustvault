@@ -536,8 +536,7 @@ export default function VaultPage() {
         )}
 
         {/* ---- Table view ----------------------------------------------------- */}
-        <div className="overflow-hidden rounded-2xl border bg-card shadow-elevation-1">
-          <div className="overflow-x-auto">
+        <div className="rounded-2xl border bg-card shadow-elevation-1">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
@@ -754,7 +753,6 @@ export default function VaultPage() {
                 })}
               </tbody>
             </table>
-          </div>
         </div>
         </>
       )}

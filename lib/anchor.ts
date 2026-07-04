@@ -20,6 +20,7 @@ import { privateKeyToAccount } from "viem/accounts";
 const CHAIN_ID_TO_NAME: Record<number, string> = {
   31337: "anvil",
   11155111: "sepolia",
+  84532: "base-sepolia",
   8453: "base",
   10: "optimism",
   1: "mainnet",
