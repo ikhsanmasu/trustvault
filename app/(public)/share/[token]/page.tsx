@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ChatMessageBubble, StreamingBubble } from "@/components/chat/chat-message";
 import { ChatInput } from "@/components/chat/chat-input";
-import { IconBrand, IconDocument, IconDownload, IconLock, IconSparkle } from "@/components/icons";
+import { IconBrand, IconDocument, IconDownload, IconFile, IconLock, IconShield, IconSparkle } from "@/components/icons";
 import { formatBytes, formatDate, cn } from "@/lib/utils";
 import { getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import type { Document } from "@/lib/api-client";
@@ -194,124 +194,169 @@ export default function PublicSharePage() {
       </header>
 
       {/* Content */}
-      <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-        {/* Documents section */}
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">
-            Documents
-          </h2>
-          <div className="space-y-2">
-            {documents.map((doc: Document) => (
-              <div
-                key={doc.id}
-                className={cn(
-                  "flex items-center gap-4 rounded-2xl border bg-card px-4 py-3.5",
-                  "border-l-4 border-l-primary/60",
-                  "shadow-elevation-1 transition-all duration-200 hover:shadow-elevation-2",
-                )}
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
-                  <IconDocument className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">
-                    {doc.name}
-                  </p>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <Badge
-                      variant={getFileTypeVariant(doc.file_type)}
-                      className="text-[10px] px-1.5 py-0 font-normal"
-                    >
-                      {getFileTypeLabel(doc.file_type)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {formatBytes(doc.file_size_bytes)}
-                    </span>
-                  </div>
-                </div>
-
-                {share.allow_download && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 rounded-lg text-xs"
-                    onClick={() => {
-                      window.open(
-                        `/api/share/${token}/download/${doc.id}`,
-                        "_blank",
-                      );
-                    }}
-                  >
-                    <IconDownload className="h-3.5 w-3.5 mr-1.5" />
-                    Download
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* AI Chat section */}
-        {showChat && (
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary/10 text-secondary">
-                <IconSparkle className="h-3.5 w-3.5" />
-              </div>
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                AI Chat
+      <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6">
+        {showChat ? (
+          /* Split layout: documents left, chat right */
+          <div className="flex gap-6 h-[calc(100vh-14rem)] min-h-[500px]">
+            {/* Documents panel */}
+            <div className="w-[320px] shrink-0 flex flex-col min-h-0">
+              <h2 className="text-sm font-semibold tracking-tight text-foreground mb-3 shrink-0">
+                Documents
               </h2>
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 font-normal"
-              >
-                Beta
-              </Badge>
-              <p className="text-xs text-muted-foreground ml-auto">
-                Ask questions about the shared documents
-              </p>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {documents.map((doc: Document) => (
+                  <div
+                    key={doc.id}
+                    className={cn(
+                      "rounded-xl border bg-card px-3 py-3",
+                      "shadow-elevation-1 transition-all duration-200 hover:shadow-elevation-2",
+                    )}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground mt-0.5">
+                        <IconDocument className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{doc.name}</p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <Badge variant={getFileTypeVariant(doc.file_type)} className="text-[10px] px-1 py-0 font-normal">
+                            {getFileTypeLabel(doc.file_type)}
+                          </Badge>
+                          {doc.fingerprint && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium" title={`Anchored on ${doc.chain ?? "blockchain"}`}>
+                              <IconShield className="h-3 w-3" />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2 ml-[42px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 rounded-lg text-[11px]"
+                        onClick={() => window.open(`/api/share/${token}/download/${doc.id}`, "_blank")}
+                      >
+                        <IconFile className="h-3 w-3 mr-1" />
+                        View
+                      </Button>
+                      {share.allow_download && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 rounded-lg text-[11px]"
+                          onClick={() => {
+                            const a = document.createElement("a");
+                            a.href = `/api/share/${token}/download/${doc.id}`;
+                            a.download = doc.name;
+                            a.click();
+                          }}
+                        >
+                          <IconDownload className="h-3 w-3 mr-1" />
+                          Download
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="rounded-2xl border bg-card shadow-elevation-1 overflow-hidden">
-              {/* Chat messages area */}
-              <div className="h-[400px] overflow-y-auto p-4 space-y-4">
+            {/* Chat panel */}
+            <div className="flex-1 flex flex-col min-w-0 rounded-2xl border bg-card shadow-elevation-1 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary/10 text-secondary">
+                  <IconSparkle className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-sm font-semibold">AI Chat</span>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">Beta</Badge>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {chat.messages.length === 0 && !chat.isStreaming && (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/30 mb-3">
                       <IconSparkle className="h-6 w-6 text-muted-foreground/30" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Ask a question about these documents
-                    </p>
-                    <p className="text-xs text-muted-foreground/50 mt-1">
-                      The AI will search the documents for relevant information
-                    </p>
+                    <p className="text-sm text-muted-foreground">Ask a question about these documents</p>
+                    <p className="text-xs text-muted-foreground/50 mt-1">The AI will search the documents for relevant information</p>
                   </div>
                 )}
-
                 {chat.messages.map((msg) => (
                   <ChatMessageBubble key={msg.id} message={msg} />
                 ))}
-
-                {chat.isStreaming && (
-                  <StreamingBubble content={chat.streamContent} />
-                )}
-
+                {chat.isStreaming && <StreamingBubble content={chat.streamContent} />}
                 {chat.error && (
                   <Alert variant="destructive" className="animate-fade-in">
                     <AlertDescription>{chat.error}</AlertDescription>
                   </Alert>
                 )}
-
                 <div ref={chatEndRef} />
               </div>
-
-              {/* Chat input */}
               <ChatInput
                 onSend={chat.sendMessage}
                 isStreaming={chat.isStreaming}
                 placeholder="Ask a question about the shared documents..."
               />
+            </div>
+          </div>
+        ) : (
+          /* Full-width documents when no chat */
+          <section>
+            <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">Documents</h2>
+            <div className="space-y-2">
+              {documents.map((doc: Document) => (
+                <div
+                  key={doc.id}
+                  className={cn(
+                    "flex items-center gap-4 rounded-2xl border bg-card px-4 py-3.5",
+                    "border-l-4 border-l-primary/60",
+                    "shadow-elevation-1 transition-all duration-200 hover:shadow-elevation-2",
+                  )}
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
+                    <IconDocument className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{doc.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <Badge variant={getFileTypeVariant(doc.file_type)} className="text-[10px] px-1.5 py-0 font-normal">
+                        {getFileTypeLabel(doc.file_type)}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(doc.file_size_bytes)}</span>
+                      {doc.fingerprint && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium" title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}>
+                          <IconShield className="h-3 w-3" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 rounded-lg text-xs"
+                    onClick={() => window.open(`/api/share/${token}/download/${doc.id}`, "_blank")}
+                  >
+                    <IconFile className="h-3.5 w-3.5 mr-1.5" />
+                    View
+                  </Button>
+                  {share.allow_download && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 rounded-lg text-xs"
+                      onClick={() => {
+                        const a = document.createElement("a");
+                        a.href = `/api/share/${token}/download/${doc.id}`;
+                        a.download = doc.name;
+                        a.click();
+                      }}
+                    >
+                      <IconDownload className="h-3.5 w-3.5 mr-1.5" />
+                      Download
+                    </Button>
+                  )}
+                </div>
+              ))}
             </div>
           </section>
         )}
