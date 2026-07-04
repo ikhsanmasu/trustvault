@@ -142,7 +142,7 @@ export async function GET(
   return new NextResponse(blob, {
     headers: {
       "Content-Type": doc.file_type || "application/octet-stream",
-      "Content-Disposition": `inline; filename="${doc.name}"`,
+      "Content-Disposition": `attachment; filename="${doc.name}"`,
       "Cache-Control": "private, max-age=300",
     },
   });

@@ -83,7 +83,7 @@ export async function POST(
   const serviceClient = createServiceClient();
   const { data: share, error: shareError } = await serviceClient
     .from("shared_links")
-    .select("document_ids, is_active, allow_chat, expires_at, project_id")
+    .select("document_ids, is_active, allow_chat, expires_at")
     .eq("token", token)
     .single();
 
@@ -222,6 +222,32 @@ export async function POST(
               .filter((s): s is NonNullable<typeof s> => s !== null)
               .sort((a, b) => b.similarity - a.similarity)
               .slice(0, MAX_RETRIEVED_CHUNKS);
+          }
+        }
+
+        // 4b-b. Fallback: when no chunks found, use full extracted_text
+        if (scored.length === 0 && capturedDocumentIds.length > 0) {
+          const sClient = createServiceClient();
+          const { data: fallbackDocs } = await sClient
+            .from("documents")
+            .select("id, name, extracted_text")
+            .in("id", capturedDocumentIds)
+            .limit(MAX_RETRIEVED_CHUNKS);
+
+          if (fallbackDocs && fallbackDocs.length > 0) {
+            let chunkIdx = 0;
+            for (const doc of fallbackDocs) {
+              const text = (doc.extracted_text as string) ?? "";
+              if (text.trim().length === 0) continue;
+              const snippet = text.slice(0, 4000);
+              scored.push({
+                chunk_id: `fallback-${doc.id}`,
+                document_id: doc.id as string,
+                chunk_index: chunkIdx++,
+                content: snippet,
+                similarity: 0,
+              });
+            }
           }
         }
 
