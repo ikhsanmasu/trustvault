@@ -159,23 +159,20 @@ class EvmAnchorService implements AnchorService {
       throw new Error(`Anchor transaction failed: ${msg}`);
     }
 
-    // 3. Wait for receipt (120s timeout).
-    let receipt;
+    // 3. Wait for receipt (8s timeout for Vercel — rest filled by verify)
+    let anchoredAt = 0;
     try {
-      receipt = await this.publicClient.waitForTransactionReceipt({
+      const receipt = await this.publicClient.waitForTransactionReceipt({
         hash: txHash,
-        timeout: 120_000,
+        timeout: 8_000,
       });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Receipt wait failed";
-      throw new Error(`Anchor transaction timed out: ${msg}`);
+      const block = await this.publicClient.getBlock({
+        blockHash: receipt.blockHash,
+      });
+      anchoredAt = Number(block.timestamp);
+    } catch {
+      // Receipt not confirmed yet — DB gets txHash now, timestamp later via verify
     }
-
-    // 4. Fetch the block to get its timestamp.
-    const block = await this.publicClient.getBlock({
-      blockHash: receipt.blockHash,
-    });
-    const anchoredAt = Number(block.timestamp);
 
     return { txHash, anchoredAt };
   }
