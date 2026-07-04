@@ -58,7 +58,7 @@ export const DocumentRowSchema = z.object({
   file_size_bytes: z.number().int().nonnegative(),
   file_type: z.string(),
   tenant_id: uuidSchema,
-  project_id: uuidSchema.nullable(),
+  project_id: uuidSchema.nullable().optional(), // P12: column dropped, may not exist in DB rows
   uploaded_by: uuidSchema,
   created_at: isoDateSchema,
   deleted_at: nullableIsoDate.optional(),
@@ -117,7 +117,7 @@ export type ChatMessageRow = z.output<typeof ChatMessageRowSchema>;
 
 export const SharedLinkRowSchema = z.object({
   id: uuidSchema,
-  project_id: uuidSchema.nullable(),
+  project_id: uuidSchema.nullable().optional(), // P12: column dropped
   document_ids: z.array(z.string().uuid()),
   token: z.string().length(32),
   created_by: uuidSchema,
