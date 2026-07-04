@@ -5,9 +5,12 @@ import {
   buildRAGPrompt,
   chatCompletionStream,
   extractCitations,
+  cosineSimilarity,
+  parseEmbedding,
   ChatMessage as ChatMessageInput,
   RetrievalResult,
 } from "@/lib/ai-assistant";
+import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
 import type {
   ErrorResponse,
   PublicChatRequest,
@@ -24,41 +27,6 @@ const MAX_HISTORY_MESSAGES = 10;
 
 function isValidToken(token: string): boolean {
   return /^[0-9a-f]{32}$/i.test(token);
-}
-
-/**
- * Computes cosine similarity between two vectors of equal length.
- * Returns a value between -1 (opposite) and 1 (identical).
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
-  if (magnitude === 0) return 0;
-  return dotProduct / magnitude;
-}
-
-/**
- * Parses an embedding value from the DB (may be string or array) into a
- * number[] or null.
- */
-function parseEmbedding(raw: unknown): number[] | null {
-  if (Array.isArray(raw)) return raw as number[];
-  if (typeof raw === "string") {
-    try {
-      return JSON.parse(raw) as number[];
-    } catch {
-      return null;
-    }
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,10 +139,32 @@ export async function POST(
     }
   }
 
+  // -- 3a. Resolve tenant_id for rate limiting --------------------------------
+  const { data: firstDoc } = await serviceClient
+    .from("documents")
+    .select("tenant_id")
+    .in("id", sharedDocumentIds)
+    .limit(1)
+    .single();
+
+  const tenantId = (firstDoc?.tenant_id as string) ?? null;
+
+  // -- 3b. Check LLM usage limit (protect tenant from cost explosion) ----------
+  if (tenantId) {
+    const llmCheck = await checkLLMLimit(serviceClient, tenantId);
+    if (!llmCheck.allowed) {
+      return NextResponse.json(
+        { error: llmCheck.reason ?? "LLM call limit reached", code: "PLAN_LIMIT_REACHED" },
+        { status: 403 },
+      );
+    }
+  }
+
   // Capture for closure
   const capturedDocumentIds = sharedDocumentIds;
   const capturedMessage = message;
   const capturedHistory = chatHistory;
+  const capturedTenantId = tenantId;
 
   // -- 4. Build and return SSE stream ---------------------------------------
   const stream = new ReadableStream({
@@ -293,6 +283,14 @@ export async function POST(
 
             // Send citations event
             send("citations", { citations });
+
+            // Increment LLM usage for the tenant
+            if (capturedTenantId) {
+              incrementUsage(serviceClient, capturedTenantId, "llm_calls", {
+                endpoint: "share/chat",
+                tokens: 0,
+              }).catch(() => { /* best-effort */ });
+            }
 
             // Send done event
             send("done", { complete: true });

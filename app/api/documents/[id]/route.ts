@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
+import { parseDocument } from "@/lib/db-schemas";
 import type {
   GetDocumentResponse,
   ErrorResponse,
   Document,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Validates that a string is a properly formatted UUID (v4/hex). */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // GET /api/documents/:id (P2: auth required, RLS enforces access)
@@ -30,7 +29,7 @@ export async function GET(
   const { id } = await params;
 
   // ── 2. Validate UUID format ────────────────────────────────────────────
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json(
       { error: "Invalid document ID format", code: "INVALID_ID" },
       { status: 400 },
@@ -52,7 +51,7 @@ export async function GET(
   }
 
   return NextResponse.json({
-    document: data as unknown as Document,
+    document: parseDocument(data) as unknown as Document,
   });
 }
 
@@ -69,7 +68,7 @@ export async function PATCH(
   const { supabase, user } = auth;
 
   const { id } = await params;
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid document ID", code: "INVALID_ID" }, { status: 400 });
   }
 
@@ -113,7 +112,7 @@ export async function PATCH(
     if (body.description !== undefined) updates.description = body.description.slice(0, 1000);
     if (body.notes !== undefined) updates.notes = body.notes.slice(0, 5000);
     if (body.project_id) {
-      if (!UUID_RE.test(body.project_id)) {
+      if (!isValidUUID(body.project_id)) {
         return NextResponse.json({ error: "Invalid project_id", code: "INVALID_PROJECT_ID" }, { status: 400 });
       }
       const { data: tp } = await supabase.from("projects").select("id, tenant_id").eq("id", body.project_id).single();
@@ -128,13 +127,13 @@ export async function PATCH(
     }
     const { data: updated, error: updErr } = await supabase.from("documents").update(updates).eq("id", id).select("*").single();
     if (updErr || !updated) return NextResponse.json({ error: "Update failed", code: "DB_ERROR" }, { status: 500 });
-    return NextResponse.json({ document: updated as unknown as Document });
+    return NextResponse.json({ document: parseDocument(updated) as unknown as Document });
   }
 
   // ---- Move: change document's project ----
   if (action === "move") {
     const targetProjectId = body.project_id;
-    if (!targetProjectId || !UUID_RE.test(targetProjectId)) {
+    if (!targetProjectId || !isValidUUID(targetProjectId)) {
       return NextResponse.json({ error: "Invalid project_id", code: "INVALID_PROJECT_ID" }, { status: 400 });
     }
     // Verify target project exists in same tenant
@@ -146,7 +145,7 @@ export async function PATCH(
     await supabase.from("document_chunks").update({ project_id: targetProjectId }).eq("document_id", id);
     const { data: updated, error: updErr } = await supabase.from("documents").update({ project_id: targetProjectId }).eq("id", id).select("*").single();
     if (updErr || !updated) return NextResponse.json({ error: "Update failed", code: "DB_ERROR" }, { status: 500 });
-    return NextResponse.json({ document: updated as unknown as Document });
+    return NextResponse.json({ document: parseDocument(updated) as unknown as Document });
   }
 
   if (action === "delete") {
@@ -171,11 +170,11 @@ export async function PATCH(
       extracted_text: "", file_size_bytes: 0, storage_path: "",
     }).eq("id", id).select("*").single();
     if (updErr || !updated) return NextResponse.json({ error: "Update failed", code: "DB_ERROR" }, { status: 500 });
-    return NextResponse.json({ document: updated as unknown as Document });
+    return NextResponse.json({ document: parseDocument(updated) as unknown as Document });
   }
 
   // Restore: can't recover file, just mark as active
   const { data: updated, error: updErr } = await supabase.from("documents").update({ deleted_at: null, deleted_by: null }).eq("id", id).select("*").single();
   if (updErr || !updated) return NextResponse.json({ error: "Update failed", code: "DB_ERROR" }, { status: 500 });
-  return NextResponse.json({ document: updated as unknown as Document });
+  return NextResponse.json({ document: parseDocument(updated) as unknown as Document });
 }

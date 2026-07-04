@@ -95,7 +95,11 @@ The route handler calls `requireAuth()` as its first operation. If `user` is nul
 3. **Helper functions:** `get_user_tenant_id()` returns the current user's tenant_id. Role lookups use `profiles.role` directly.
 4. **Service role bypass:** The `SUPABASE_SERVICE_ROLE_KEY` bypasses all RLS. This is intentional for admin operations (profile creation trigger, migration backfills). Application code must restrict service-role usage to those cases only.
 
-### 3b. Policy Coverage Matrix
+### 3b. RLS Status (P19 Update)
+
+**All RLS policies are now properly restrictive** (P19 migration: `20260705000001_p19_db_hardening.sql`). Any policy previously using `USING (true)` as a Cloud compatibility workaround has been replaced with proper tenant-scoped checks.
+
+### 3c. Policy Coverage Matrix
 
 | Table | Operation | Policy Name | Who can do this |
 |---|---|---|---|
@@ -249,18 +253,28 @@ All queries use the Supabase JS client's parameterised methods. No raw SQL strin
 
 ---
 
-## 9. Rate Limiting (P2 Guidance)
+## 9. Rate Limiting (P17 — Updated)
 
-P2 does not implement application-level rate limiting. This is deferred to the deployment layer. Recommendations for the `deployment` agent:
+**P17 added application-level rate limiting** in addition to deployment-layer controls.
+
+### In-Application Rate Limiting (P17)
+
+| Mechanism | Location | Scope |
+|---|---|---|
+| `checkLLMLimit()` | `lib/rate-limit.ts` | Per-tenant LLM call cap based on plan (free: 50/mo, pro: 500/mo, enterprise: unlimited) |
+| `checkUploadLimit()` | `lib/rate-limit.ts` | Per-tenant document count + file size cap based on plan |
+| `checkWebhookRateLimit()` | `lib/rate-limit.ts` | Per-agent webhook rate cap (30 req/min) — protects against webhook abuse |
+| `incrementUsage()` | `lib/rate-limit.ts` | Atomic RPC-based usage counter increment (idempotent, retryable) |
+
+### Deployment-Layer Recommendations (unchanged)
 
 | Endpoint group | Suggested limit | Rationale |
 |---|---|---|
-| `/api/auth/*` | 20 req/min per IP | Supabase Auth handles brute-force internally; this is a secondary layer |
-| `/api/documents/bulk` | 5 req/min per user | Bulk uploads are expensive (multiple Storage + DB writes) |
-| `/api/compare` | 10 req/min per user | Each compare may trigger a paid AI API call |
+| `/api/auth/*` | 20 req/min per IP | Supabase Auth handles brute-force internally; secondary layer |
+| `/api/documents/bulk` | 5 req/min per user | Bulk uploads are expensive |
 | `/api/*` (general) | 60 req/min per IP | General baseline |
 
-These limits can be implemented via Vercel WAF rules or a reverse proxy. They are not enforced in application code for P2.
+**Updated:** Rate limiting is now enforced in application code for LLM calls, uploads, and webhooks. Deployment-layer limits remain as defense-in-depth.
 
 ---
 
@@ -333,7 +347,14 @@ The P2 security audit must verify:
 
 ---
 
-## 14. P5 Blockchain Anchoring Security
+## 14. Storage Security (P3 Update)
+
+The storage bucket `pdf-uploads` now accepts **14 MIME types** (P3 multi-format support), not just PDF:
+`text/plain`, `text/csv`, `text/html`, `text/markdown`, `text/xml`, `application/json`, `application/xml`, `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/vnd.ms-excel`, `application/msword`, `application/rtf`, `application/vnd.oasis.opendocument.text`.
+
+Storage access is **server-side only** via route handlers. The route handler enforces tenant membership before serving any file. Storage RLS policies require `auth.role() = 'authenticated'` after P19 hardening.
+
+## 15. P5 Blockchain Anchoring Security
 
 ### 14a. Threat Model (P5 Additions)
 
@@ -729,7 +750,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 Example output: `dGhpcyBpcyBhIDMyIGJ5dGUgZW5jcnlwdGlvbiBrZXk=` (44 characters, base64-encoded 32 bytes).
 
-**Dev fallback:** If `AGENT_CHANNEL_ENCRYPTION_KEY` is not set in development, the `channel-encryption.ts` module logs a warning and uses a hardcoded dev key. This dev key is documented in the code with a comment: `// DEV ONLY -- NEVER USE IN PRODUCTION`. The warning is emitted once at module load time. Production deployment MUST set this env var.
+**Dev fallback:** If `AGENT_CHANNEL_ENCRYPTION_KEY` is not set in development, a per-process random key is generated via `crypto.randomBytes(32)`. This key is ephemeral — it changes on every server restart, invalidating previously encrypted channel configs. This is an acceptable tradeoff for local development (encrypted configs are typically reconfigured after restart). Production deployment MUST set this env var to a persistent value.
 
 ### 16c. Webhook Security
 

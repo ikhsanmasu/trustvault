@@ -639,3 +639,42 @@ export async function ingestDocument(
 
   return records;
 }
+
+// ---------------------------------------------------------------------------
+// Shared ML helpers (used by agent-channel, assistant/chat, share/chat)
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes cosine similarity between two vectors of equal length.
+ * Returns a value between -1 (opposite) and 1 (identical).
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+  if (magnitude === 0) return 0;
+  return dotProduct / magnitude;
+}
+
+/**
+ * Parses an embedding value from the DB (may be string or array) into a
+ * number[] or null.
+ */
+export function parseEmbedding(raw: unknown): number[] | null {
+  if (Array.isArray(raw)) return raw as number[];
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as number[];
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}

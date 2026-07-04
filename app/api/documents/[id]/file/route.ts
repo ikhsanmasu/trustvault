@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getUserTenantId } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils';
 
 export async function GET(
   _request: NextRequest,
@@ -13,7 +12,7 @@ export async function GET(
   const { supabase, user } = auth;
 
   const { id } = await params;
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
 

@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/client";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidToken(token: string): boolean {
   return /^[0-9a-f]{32}$/i.test(token);
@@ -55,7 +53,7 @@ export async function GET(
   }
 
   // Validate document ID format
-  if (!UUID_RE.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json(
       { error: "Invalid document ID", code: "INVALID_ID" },
       { status: 400 },

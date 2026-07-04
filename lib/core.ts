@@ -12,6 +12,9 @@ export { computeFingerprint } from "./anchor";
 /** Maximum characters of document text embedded in the AI prompt before truncation. */
 const MAX_TEXT_LENGTH = 40_000;
 
+/** Maximum file size (bytes) accepted for text extraction. Larger files are rejected. */
+const MAX_EXTRACTION_SIZE = 50 * 1024 * 1024; // 50 MB
+
 /** Marker appended to truncated text so the AI knows it was cut off. */
 const TRUNCATION_MARKER = "\n[TRUNCATED]";
 
@@ -125,6 +128,11 @@ export async function extractFileText(
   buffer: Buffer,
   mimeType: string,
 ): Promise<string> {
+  // -- Guard: reject files larger than MAX_EXTRACTION_SIZE -----------------
+  if (buffer.length > MAX_EXTRACTION_SIZE) {
+    return "";
+  }
+
   try {
     switch (mimeType) {
       // -- text-based: decode as UTF-8 ---------------------------------------

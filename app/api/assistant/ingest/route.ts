@@ -6,13 +6,11 @@ import type {
   IngestResponse,
   ErrorResponse,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_DOCUMENT_IDS = 50;
 
@@ -69,7 +67,7 @@ export async function POST(
   }
 
   for (let i = 0; i < documentIds.length; i++) {
-    if (typeof documentIds[i] !== "string" || !UUID_RE.test(documentIds[i])) {
+    if (typeof documentIds[i] !== "string" || !isValidUUID(documentIds[i])) {
       return NextResponse.json(
         {
           error: `Invalid UUID in documentIds at index ${i}: ${String(documentIds[i])}`,

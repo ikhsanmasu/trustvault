@@ -14,6 +14,7 @@ import {
 } from "@/lib/supabase/auth";
 import { ingestDocument } from "@/lib/ai-assistant";
 import { checkUploadLimit, incrementUsage } from "@/lib/rate-limit";
+import { parseDocument } from "@/lib/db-schemas";
 import type {
   UploadResponse,
   ListDocumentsResponse,
@@ -247,7 +248,7 @@ export async function POST(
   }
 
   return NextResponse.json(
-    { document: document as unknown as Document, ingestion },
+    { document: parseDocument(document) as unknown as UploadResponse["document"], ingestion },
     { status: 201 },
   );
 }
@@ -334,7 +335,7 @@ export async function GET(
   }
 
   return NextResponse.json({
-    documents: (data ?? []) as unknown as Document[],
+    documents: (data ?? []).map(d => parseDocument(d)) as unknown as Document[],
     total: count ?? 0,
   });
 }

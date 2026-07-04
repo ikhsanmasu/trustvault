@@ -5,6 +5,8 @@ import {
   buildRAGPrompt,
   chatCompletionStream,
   extractCitations,
+  cosineSimilarity,
+  parseEmbedding,
   ChatMessage as ChatMessageInput,
 } from "@/lib/ai-assistant";
 import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
@@ -12,51 +14,14 @@ import type {
   ErrorResponse,
   Citation,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_RETRIEVED_CHUNKS = 5;
-
-/**
- * Computes cosine similarity between two vectors of equal length.
- * Returns a value between -1 (opposite) and 1 (identical).
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
-  if (magnitude === 0) return 0;
-  return dotProduct / magnitude;
-}
-
-/**
- * Parses an embedding value from the DB (may be string or array) into a
- * number[] or null.
- */
-function parseEmbedding(raw: unknown): number[] | null {
-  if (Array.isArray(raw)) return raw as number[];
-  if (typeof raw === "string") {
-    try {
-      return JSON.parse(raw) as number[];
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
 
 // ---------------------------------------------------------------------------
 // POST /api/assistant/chat (SSE streaming)
@@ -131,7 +96,7 @@ export async function POST(
 
   // Validate sessionId if provided
   if (sessionId !== undefined && sessionId !== null) {
-    if (typeof sessionId !== "string" || !UUID_RE.test(sessionId)) {
+    if (typeof sessionId !== "string" || !isValidUUID(sessionId)) {
       return NextResponse.json(
         {
           error: `sessionId must be a valid UUID`,

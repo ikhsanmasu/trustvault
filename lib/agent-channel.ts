@@ -15,6 +15,8 @@ import {
   chatCompletionStream,
   chatCompletion,
   extractCitations,
+  cosineSimilarity,
+  parseEmbedding,
   type RetrievalResult,
   type ChatMessage,
 } from "@/lib/ai-assistant";
@@ -49,17 +51,30 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96 bits recommended for GCM
 const AUTH_TAG_LENGTH = 16; // 128 bits
 
+// Per-process random dev key — regenerated on every server restart.
+// This avoids the security risk of a hardcoded fallback key shared across
+// all dev instances, at the cost of invalidating encrypted channel configs
+// on restart (acceptable for local development).
+let _devKey: Buffer | null = null;
+function getDevKey(): Buffer {
+  if (!_devKey) {
+    _devKey = crypto.randomBytes(32);
+    console.warn(
+      "[agent-channel] AGENT_CHANNEL_ENCRYPTION_KEY not set — using per-process random dev key. " +
+      "Encrypted channel configs will be invalid after restart. " +
+      "Set AGENT_CHANNEL_ENCRYPTION_KEY in .env.local for persistent keys.",
+    );
+  }
+  return _devKey;
+}
+
 function getEncryptionKey(): Buffer {
   const keyB64 = process.env.AGENT_CHANNEL_ENCRYPTION_KEY;
   if (!keyB64) {
-    // Dev fallback: use a fixed dev key (NOT for production!)
     if (process.env.NODE_ENV === "production") {
       throw new Error("AGENT_CHANNEL_ENCRYPTION_KEY is not set");
     }
-    console.warn(
-      "[agent-channel] AGENT_CHANNEL_ENCRYPTION_KEY not set — using dev fallback key. DO NOT use in production.",
-    );
-    return crypto.scryptSync("trustvault-p16-dev-fallback-key", "salt", 32);
+    return getDevKey();
   }
   return Buffer.from(keyB64, "base64");
 }
@@ -309,39 +324,6 @@ export function getTelegramBotToken(agentId: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 const MAX_RETRIEVED_CHUNKS = 5;
-
-/**
- * Parses an embedding value from the DB (may be string or array).
- */
-function parseEmbedding(raw: unknown): number[] | null {
-  if (Array.isArray(raw)) return raw as number[];
-  if (typeof raw === "string") {
-    try {
-      return JSON.parse(raw) as number[];
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-/**
- * Computes cosine similarity between two vectors of equal length.
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
-  if (magnitude === 0) return 0;
-  return dotProduct / magnitude;
-}
 
 /**
  * Retrieves relevant document chunks scoped to an agent's knowledge-base documents.

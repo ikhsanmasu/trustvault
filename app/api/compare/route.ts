@@ -11,29 +11,36 @@ import {
 } from "@/lib/core";
 import { requireAuth } from "@/lib/supabase/auth";
 import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
+import { safeError } from "@/lib/utils";
+import { parseDocument } from "@/lib/db-schemas";
 import type {
   CompareRequest,
   CompareResponse,
   ErrorResponse,
   Document,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /** Loosely validates that a string looks like a UUID. */
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
-// DeepSeek client (pointed at DeepSeek base URL)
+// DeepSeek client (lazily initialized on first use)
 // ---------------------------------------------------------------------------
 
-const deepseek = new OpenAI({
-  baseURL: "https://api.deepseek.com",
-  apiKey: process.env.DEEPSEEK_API_KEY,
-});
+let _deepseek: OpenAI | null = null;
+function getDeepSeekClient(): OpenAI {
+  if (!_deepseek) {
+    _deepseek = new OpenAI({
+      baseURL: "https://api.deepseek.com",
+      apiKey: process.env.DEEPSEEK_API_KEY,
+    });
+  }
+  return _deepseek;
+}
 
 // ---------------------------------------------------------------------------
 // AI call helper — shared by both compare flows
@@ -49,7 +56,7 @@ async function callAICompare(
 
   let completion: OpenAI.Chat.Completions.ChatCompletion;
   try {
-    completion = await deepseek.chat.completions.create({
+    completion = await getDeepSeekClient().chat.completions.create({
       model: "deepseek-chat",
       response_format: { type: "json_object" },
       messages: [
@@ -58,10 +65,8 @@ async function callAICompare(
       ],
     });
   } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "DeepSeek API request failed";
     return NextResponse.json(
-      { error: message, code: "AI_API_ERROR" },
+      { error: safeError("AI service unavailable", err), code: "AI_API_ERROR" },
       { status: 500 },
     );
   }
@@ -104,10 +109,8 @@ async function callAICompare(
         { status: 500 },
       );
     }
-    const message =
-      err instanceof Error ? err.message : "Unexpected error in AI response";
     return NextResponse.json(
-      { error: message, code: "AI_API_ERROR" },
+      { error: safeError("AI service error", err), code: "AI_API_ERROR" },
       { status: 500 },
     );
   }
@@ -155,7 +158,7 @@ export async function POST(
     const { docAId, docBId } = body;
 
     // -- Validate docAId ---------------------------------------------------
-    if (!docAId || typeof docAId !== "string" || !UUID_RE.test(docAId)) {
+    if (!docAId || typeof docAId !== "string" || !isValidUUID(docAId)) {
       return NextResponse.json(
         { error: "docAId must be a valid UUID", code: "INVALID_DOC_A_ID" },
         { status: 400 },
@@ -163,7 +166,7 @@ export async function POST(
     }
 
     // -- Validate docBId ---------------------------------------------------
-    if (!docBId || typeof docBId !== "string" || !UUID_RE.test(docBId)) {
+    if (!docBId || typeof docBId !== "string" || !isValidUUID(docBId)) {
       return NextResponse.json(
         { error: "docBId must be a valid UUID", code: "INVALID_DOC_B_ID" },
         { status: 400 },
@@ -194,7 +197,7 @@ export async function POST(
         { status: 404 },
       );
     }
-    const docA = rowA as unknown as Document;
+    const docA = parseDocument(rowA);
 
     // -- Fetch document B (user-scoped, RLS-enforced) -----------------------
     const { data: rowB, error: errorB } = await supabase
@@ -212,7 +215,7 @@ export async function POST(
         { status: 404 },
       );
     }
-    const docB = rowB as unknown as Document;
+    const docB = parseDocument(rowB);
 
     // -- Step 1: Binary hash ------------------------------------------------
     if (docA.binary_hash === docB.binary_hash) {
@@ -282,7 +285,7 @@ export async function POST(
     if (
       !docIdRaw ||
       typeof docIdRaw !== "string" ||
-      !UUID_RE.test(docIdRaw.trim())
+      !isValidUUID(docIdRaw.trim())
     ) {
       return NextResponse.json(
         {
@@ -337,7 +340,7 @@ export async function POST(
         { status: 404 },
       );
     }
-    const storedDoc = row as unknown as Document;
+    const storedDoc = parseDocument(row);
 
     // -- Process the ephemeral file (in-memory only, never persisted) -------
     const raw = await file.arrayBuffer();

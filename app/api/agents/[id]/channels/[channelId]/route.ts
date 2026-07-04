@@ -10,9 +10,7 @@ import {
   setTelegramDisconnected,
   decryptChannelConfig,
 } from "@/lib/agent-channel";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils';
 
 export async function DELETE(
   _request: NextRequest,
@@ -26,13 +24,13 @@ export async function DELETE(
   const { user, supabase } = auth;
 
   // -- 2. Validate UUIDs ----------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },
     );
   }
-  if (!UUID_RE.test(channelId)) {
+  if (!isValidUUID(channelId)) {
     return NextResponse.json(
       { error: "Invalid channel ID", code: "INVALID_CHANNEL_ID" },
       { status: 400 },

@@ -1,6 +1,8 @@
 import { type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
+import { setMonitoringUser, captureError } from "@/lib/monitoring";
+import { apiError } from "@/lib/utils";
 import type { ErrorResponse, Role, TenantRole } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -61,12 +63,15 @@ export async function requireAuth(): Promise<AuthResult> {
   if (error || !user) {
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: "Authentication required", code: "UNAUTHORIZED" },
-        { status: 401 },
-      ),
+      response: apiError("Authentication required", "UNAUTHORIZED", 401) as NextResponse<ErrorResponse>,
     };
   }
+
+  // Attach user context for error monitoring
+  setMonitoringUser({
+    id: user.id,
+    email: user.email,
+  });
 
   return { ok: true, user, supabase };
 }
@@ -104,20 +109,14 @@ export async function requireProjectRole(
     // Return 403 to avoid leaking whether the project exists (per api-spec).
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: "You do not have access to this project", code: "FORBIDDEN" },
-        { status: 403 },
-      ),
+      response: apiError("You do not have access to this project", "FORBIDDEN", 403) as NextResponse<ErrorResponse>,
     };
   }
 
   if (!allowedRoles.includes(member.role as Role)) {
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: "Insufficient permissions for this operation", code: "FORBIDDEN" },
-        { status: 403 },
-      ),
+      response: apiError("Insufficient permissions for this operation", "FORBIDDEN", 403) as NextResponse<ErrorResponse>,
     };
   }
 
@@ -211,7 +210,12 @@ export async function requireTenantRole(
     if (basicErr || !basic) {
       return { ok: false, response: NextResponse.json({ error: "You do not have access to this tenant", code: "FORBIDDEN" }, { status: 403 }) };
     }
-    return { ok: true, role: "owner", tenantId: basic.tenant_id as string };
+    // Role column missing (migration not applied) — default to viewer (least privilege).
+    // The tenant creator should run the P14 migration so roles are properly assigned.
+    console.warn(
+      `[auth] Role column missing from profiles table — defaulting user ${userId} to "viewer". Run the P14 tenant RBAC migration.`,
+    );
+    return { ok: true, role: "viewer", tenantId: basic.tenant_id as string };
   }
 
   // Profile not found at all
@@ -219,8 +223,8 @@ export async function requireTenantRole(
     return { ok: false, response: NextResponse.json({ error: "You do not have access to this tenant", code: "FORBIDDEN" }, { status: 403 }) };
   }
 
-  // Profile found — use role, default NULL to owner
-  const role: TenantRole = (profile.role ?? "owner") as TenantRole;
+  // Profile found — use role, default NULL to viewer (least privilege)
+  const role: TenantRole = (profile.role ?? "viewer") as TenantRole;
 
   // 2. Check the user's role against the allowed roles
   if (!allowedRoles.includes(role)) {

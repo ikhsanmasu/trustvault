@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
+import { sendEmail, buildInvitationEmail } from "@/lib/email";
 import type {
   InviteResponse,
   ErrorResponse,
@@ -169,19 +170,32 @@ export async function POST(
     );
   }
 
-  // -- 12. Send email / log token in dev mode --------------------------------
+  // -- 12. Send invitation email ---------------------------------------------
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     `https://${request.headers.get("host") ?? "localhost:3000"}`;
   const joinLink = `${appUrl}/join?token=${token}`;
 
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `[invite] Invitation created — join link: ${joinLink}`,
-    );
-  }
-  // TODO: Production — integrate with an email service (SendGrid, Resend, etc.)
-  // to deliver the joinLink to the invitee's email address.
+  // Get inviter name for the email
+  const inviterName = user.email ?? "Someone";
+  const { data: tenantRow } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", tenantId)
+    .single();
+  const tenantName = (tenantRow?.name as string) ?? "a workspace";
+
+  const emailTemplate = buildInvitationEmail({
+    inviterName,
+    tenantName,
+    role: body.role,
+    acceptUrl: joinLink,
+  });
+
+  // Fire-and-forget: don't block the response on email delivery
+  sendEmail({ ...emailTemplate, to: normalizedEmail }).catch((err) => {
+    console.error("[invite] Failed to send invitation email:", err);
+  });
 
   // -- 13. Return 201 (token is NOT returned in the response) ----------------
   const invitationResponse: Invitation = {

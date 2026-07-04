@@ -9,14 +9,15 @@
 //        Compares hub.verify_token with the stored accessToken.
 //        Returns 200 with hub.challenge if valid.
 //
-// POST — Receives message notifications from Meta. Extracts text and sender
-//        phone number, runs the agent's RAG pipeline, and sends a reply
-//        via the Meta sendMessage API.
+// POST — Receives message notifications from Meta. Verifies HMAC-SHA256
+//        signature, extracts text and sender, runs agent RAG pipeline.
 // ---------------------------------------------------------------------------
 
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { WebhookResponse, ErrorResponse } from "@/lib/types";
 import { createServiceClient } from "@/lib/supabase/client";
+import { checkWebhookRateLimit } from "@/lib/rate-limit";
 import {
   decryptChannelConfig,
   sendWhatsAppMessage,
@@ -24,9 +25,7 @@ import {
   findOrCreateChannelSession,
   type WhatsAppPlainConfig,
 } from "@/lib/agent-channel";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // GET — Meta webhook verification
@@ -39,7 +38,7 @@ export async function GET(
   const { agentId } = await params;
 
   // Validate agentId
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return new NextResponse("Invalid agent ID", { status: 400 });
   }
 
@@ -129,14 +128,51 @@ export async function POST(
   const { agentId } = await params;
 
   // -- 1. Validate agentId --------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },
     );
   }
 
-  // -- 2. Parse webhook body ------------------------------------------------
+  // -- 2. Rate limit check --------------------------------------------------
+  const rateLimit = checkWebhookRateLimit(agentId, 30, 60_000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests", code: "RATE_LIMITED" },
+      {
+        status: 429,
+        headers: {
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(rateLimit.resetAt),
+          "Retry-After": String(rateLimit.resetAt - Math.ceil(Date.now() / 1000)),
+        },
+      },
+    );
+  }
+
+  // -- 3. Verify HMAC signature (Meta Cloud API) ----------------------------
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (appSecret) {
+    const rawBody = await request.clone().text();
+    const signature = request.headers.get("X-Hub-Signature-256");
+    const expectedSignature = `sha256=${crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
+
+    if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+      return NextResponse.json(
+        { error: "Invalid signature", code: "UNAUTHORIZED" },
+        { status: 401 },
+      );
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    console.error("[webhook:whatsapp] WHATSAPP_APP_SECRET not set — refusing webhook in production");
+    return NextResponse.json(
+      { error: "Webhook not configured", code: "CONFIG_ERROR" },
+      { status: 500 },
+    );
+  }
+
+  // -- 4. Parse webhook body ------------------------------------------------
   let body: MetaWebhookBody;
   try {
     body = (await request.json()) as MetaWebhookBody;

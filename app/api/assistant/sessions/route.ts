@@ -5,13 +5,11 @@ import type {
   ErrorResponse,
   ChatSession,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // GET /api/assistant/sessions
@@ -29,7 +27,7 @@ export async function GET(
 
   // -- 2. Parse optional project_id ------------------------------------------
   const projectIdRaw = searchParams.get("project_id")?.trim();
-  const projectId = projectIdRaw && UUID_RE.test(projectIdRaw) ? projectIdRaw : null;
+  const projectId = projectIdRaw && isValidUUID(projectIdRaw) ? projectIdRaw : null;
 
   // -- 3. Query sessions (all user sessions if no project filter) ------------
   let query = supabase

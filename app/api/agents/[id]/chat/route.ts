@@ -17,13 +17,11 @@ import {
   streamAgentChat,
 } from "@/lib/agent-channel";
 import { createServiceClient } from "@/lib/supabase/client";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_MESSAGE_LENGTH = 4000;
 
@@ -55,7 +53,7 @@ export async function POST(
   }
 
   // -- 2. Validate agentId --------------------------------------------------
-  if (!UUID_RE.test(agentId)) {
+  if (!isValidUUID(agentId)) {
     return NextResponse.json(
       { error: "Invalid agent ID", code: "INVALID_AGENT_ID" },
       { status: 400 },
@@ -109,7 +107,7 @@ export async function POST(
 
   // -- 6. Validate session_id if provided -----------------------------------
   if (session_id !== undefined && session_id !== null) {
-    if (typeof session_id !== "string" || !UUID_RE.test(session_id)) {
+    if (typeof session_id !== "string" || !isValidUUID(session_id)) {
       return NextResponse.json(
         { error: "session_id must be a valid UUID", code: "SESSION_NOT_FOUND" },
         { status: 404 },

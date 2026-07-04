@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase/auth";
 import { computeFingerprint, getPublicVerifier } from "@/lib/anchor";
+import { parseDocument } from "@/lib/db-schemas";
 import type {
   VerifyRequest,
   VerifyResponse,
   ErrorResponse,
   Document,
 } from "@/lib/types";
+import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // POST /api/verify
@@ -40,7 +39,7 @@ export async function POST(
 
   const { documentId } = body;
 
-  if (!documentId || typeof documentId !== "string" || !UUID_RE.test(documentId)) {
+  if (!documentId || typeof documentId !== "string" || !isValidUUID(documentId)) {
     return NextResponse.json(
       { error: "documentId must be a valid UUID", code: "INVALID_DOCUMENT_ID" },
       { status: 400 },
@@ -60,7 +59,7 @@ export async function POST(
       { status: 404 },
     );
   }
-  const doc = row as unknown as Document;
+  const doc = parseDocument(row);
 
   // -- 4. Recompute fingerprint from current DB hashes ----------------------
   const recomputedFingerprint = computeFingerprint(

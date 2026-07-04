@@ -25,6 +25,19 @@ jobs:
 
       - run: npm run test
 
+      - name: Security audit (npm audit)
+        run: npm audit --audit-level=high --production
+        continue-on-error: false
+
+      - name: Check for committed secrets
+        run: |
+          echo "Scanning for secrets in committed files..."
+          # Check for common secret patterns
+          ! git grep -nE "sk-[a-zA-Z0-9]{20,}" -- "*.ts" "*.tsx" || { echo "ERROR: Possible API key in source"; exit 1; }
+          ! git grep -nE "eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*" -- "*.ts" "*.tsx" || { echo "ERROR: Possible JWT in source"; exit 1; }
+          ! git grep -nE "0x[0-9a-fA-F]{64}" -- "*.ts" "*.tsx" || { echo "ERROR: Possible private key in source"; exit 1; }
+          echo "No committed secrets found"
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
