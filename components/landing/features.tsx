@@ -89,9 +89,9 @@ const features = [
     ),
   },
   {
-    title: "AI Agent Channels",
+    title: "AI Vault Assistant",
     description:
-      "Deploy intelligent chatbots trained on your documents. Connect via WhatsApp and Telegram so your team and customers get instant answers -- right where they already work.",
+      "Ask questions about your vault in natural language. The assistant retrieves the relevant passages, answers with citations, and never invents content that is not in your documents.",
     icon: (
       <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path

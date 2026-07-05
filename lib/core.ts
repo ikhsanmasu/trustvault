@@ -84,6 +84,94 @@ export function getFileExtension(mimeType: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Magic-byte (file signature) validation
+// ---------------------------------------------------------------------------
+
+/** ZIP local-file-header signature: PK\x03\x04 (DOCX, XLSX, ODT are ZIP archives). */
+const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+
+/** OLE Compound File signature (legacy .doc / .xls). */
+const OLE_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+
+/** RTF signature: `{\rtf`. */
+const RTF_SIGNATURE = Buffer.from("{\\rtf", "latin1");
+
+/** The PDF header must appear within the first 1024 bytes (per the PDF spec). */
+const PDF_HEADER_SCAN_WINDOW = 1024;
+
+/** NUL-byte scan window for text formats: binary payloads masquerading as text. */
+const TEXT_NUL_SCAN_WINDOW = 8 * 1024;
+
+function startsWith(buffer: Buffer, signature: Buffer): boolean {
+  return (
+    buffer.length >= signature.length &&
+    buffer.subarray(0, signature.length).equals(signature)
+  );
+}
+
+/**
+ * Validates that a file's leading bytes match its declared MIME type.
+ *
+ * The declared MIME type comes from the client and cannot be trusted on its
+ * own; this check rejects payloads whose content contradicts the declaration
+ * (e.g. an executable uploaded as `application/pdf`).
+ *
+ * Rules per format family:
+ * - PDF: `%PDF-` header within the first 1024 bytes (the spec allows a
+ *   preamble before the header).
+ * - DOCX / XLSX / ODT: ZIP local-file header (`PK\x03\x04`).
+ * - DOC / XLS: OLE compound-file header; ZIP and RTF are also accepted
+ *   because Word/Excel historically saved OOXML and RTF payloads under the
+ *   legacy extensions/MIME types.
+ * - RTF: `{\rtf` header.
+ * - Text formats (plain, csv, html, markdown, xml, json): no signature
+ *   exists, so only NUL bytes in the leading window are rejected (a NUL is
+ *   never valid in these formats and indicates a binary payload).
+ * - Unknown MIME types: rejected.
+ */
+export function validateFileSignature(
+  buffer: Buffer,
+  mimeType: string,
+): boolean {
+  if (buffer.length === 0) return false;
+
+  switch (mimeType) {
+    case "text/plain":
+    case "text/csv":
+    case "text/html":
+    case "text/markdown":
+    case "text/xml":
+    case "application/json":
+    case "application/xml":
+      return !buffer.subarray(0, TEXT_NUL_SCAN_WINDOW).includes(0x00);
+
+    case "application/pdf":
+      return buffer
+        .subarray(0, PDF_HEADER_SCAN_WINDOW)
+        .includes("%PDF-", 0, "latin1");
+
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+    case "application/vnd.oasis.opendocument.text":
+      return startsWith(buffer, ZIP_SIGNATURE);
+
+    case "application/msword":
+    case "application/vnd.ms-excel":
+      return (
+        startsWith(buffer, OLE_SIGNATURE) ||
+        startsWith(buffer, ZIP_SIGNATURE) ||
+        startsWith(buffer, RTF_SIGNATURE)
+      );
+
+    case "application/rtf":
+      return startsWith(buffer, RTF_SIGNATURE);
+
+    default:
+      return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Zod schema for AI response validation
 // ---------------------------------------------------------------------------
 
@@ -156,7 +244,7 @@ export async function extractFileText(
       // -- XLSX / XLS via SheetJS -------------------------------------------
       case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
       case "application/vnd.ms-excel":
-        return extractExcelText(buffer as unknown as Uint8Array);
+        return await extractExcelText(buffer);
 
       // -- RTF: best-effort control-word stripping ---------------------------
       case "application/rtf":
@@ -181,9 +269,11 @@ export async function extractFileText(
 
 async function extractPdfTextUnpdf(buffer: Buffer): Promise<string> {
   const { extractText } = await import("unpdf");
-  const result = await extractText(buffer.buffer as ArrayBuffer, {
-    mergePages: true,
-  });
+  // Copy into a standalone Uint8Array: `buffer.buffer` is the underlying
+  // ArrayBuffer, which may be larger than the Buffer view (Node pools small
+  // Buffers), so passing it directly would hand unpdf unrelated bytes.
+  const bytes = Uint8Array.from(buffer);
+  const result = await extractText(bytes, { mergePages: true });
   return result.text;
 }
 
@@ -197,9 +287,8 @@ async function extractDocxTextMammoth(buffer: Buffer): Promise<string> {
 
 // -- XLSX / XLS (SheetJS) ------------------------------------------------------
 
-function extractExcelText(buffer: Uint8Array): string {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const XLSX = require("xlsx") as typeof import("xlsx");
+async function extractExcelText(buffer: Buffer): Promise<string> {
+  const XLSX = await import("xlsx");
   const workbook = XLSX.read(buffer, { type: "buffer" });
   return workbook.SheetNames.map((name: string) => {
     const sheet = workbook.Sheets[name];

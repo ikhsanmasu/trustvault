@@ -130,63 +130,6 @@ export const SharedLinkRowSchema = z.object({
 
 export type SharedLinkRow = z.output<typeof SharedLinkRowSchema>;
 
-// ---- Agent ----------------------------------------------------------------
-
-export const AgentRowSchema = z.object({
-  id: uuidSchema,
-  tenant_id: uuidSchema,
-  name: z.string().min(1).max(255),
-  system_prompt: z.string().min(1),
-  created_by: uuidSchema,
-  is_active: z.boolean(),
-  created_at: isoDateSchema,
-  updated_at: isoDateSchema,
-});
-
-export type AgentRow = z.output<typeof AgentRowSchema>;
-
-// ---- Agent Channel --------------------------------------------------------
-
-export const AgentChannelRowSchema = z.object({
-  id: uuidSchema,
-  agent_id: uuidSchema,
-  channel_type: z.enum(["whatsapp", "telegram"]),
-  config: z.record(z.string(), z.unknown()),
-  is_active: z.boolean(),
-  created_at: isoDateSchema,
-});
-
-export type AgentChannelRow = z.output<typeof AgentChannelRowSchema>;
-
-// ---- Agent Session --------------------------------------------------------
-
-export const AgentSessionRowSchema = z.object({
-  id: uuidSchema,
-  agent_id: uuidSchema,
-  user_id: uuidSchema,
-  title: z.string(),
-  created_at: isoDateSchema,
-  updated_at: isoDateSchema,
-});
-
-export type AgentSessionRow = z.output<typeof AgentSessionRowSchema>;
-
-// ---- Agent Message --------------------------------------------------------
-
-export const AgentMessageRowSchema = z.object({
-  id: uuidSchema,
-  agent_id: uuidSchema,
-  session_id: uuidSchema,
-  role: z.enum(["user", "assistant"]),
-  content: z.string(),
-  channel: z.enum(["whatsapp", "telegram"]).nullable(),
-  external_user_id: z.string().nullable(),
-  citations: z.unknown().nullable(),
-  created_at: isoDateSchema,
-});
-
-export type AgentMessageRow = z.output<typeof AgentMessageRowSchema>;
-
 // ---- Invitation -----------------------------------------------------------
 
 export const InvitationRowSchema = z.object({
@@ -260,10 +203,6 @@ export const parseDocumentChunk = (row: unknown) => parseRow(DocumentChunkRowSch
 export const parseChatSession = (row: unknown) => parseRow(ChatSessionRowSchema, row, "ChatSession");
 export const parseChatMessage = (row: unknown) => parseRow(ChatMessageRowSchema, row, "ChatMessage");
 export const parseSharedLink = (row: unknown) => parseRow(SharedLinkRowSchema, row, "SharedLink");
-export const parseAgent = (row: unknown) => parseRow(AgentRowSchema, row, "Agent");
-export const parseAgentChannel = (row: unknown) => parseRow(AgentChannelRowSchema, row, "AgentChannel");
-export const parseAgentSession = (row: unknown) => parseRow(AgentSessionRowSchema, row, "AgentSession");
-export const parseAgentMessage = (row: unknown) => parseRow(AgentMessageRowSchema, row, "AgentMessage");
 export const parseInvitation = (row: unknown) => parseRow(InvitationRowSchema, row, "Invitation");
 export const parseLlmUsageLog = (row: unknown) => parseRow(LlmUsageLogRowSchema, row, "LlmUsageLog");
 export const parseLabel = (row: unknown) => parseRow(LabelRowSchema, row, "Label");

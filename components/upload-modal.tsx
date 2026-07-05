@@ -90,23 +90,34 @@ export function UploadModal({ open, onOpenChange, onSuccess }: Props) {
     }
   }, [open]);
 
-  // Attach labels after successful upload
+  // Attach labels after successful upload. The ref guards against re-firing
+  // when deps other than `done` change (e.g. label selection reset on reopen).
+  const labelsAttachedRef = useRef(false);
   useEffect(() => {
-    if (done && result && selectedLabelIds.size > 0) {
-      const docIds = result.results.filter(r => r.status === "ok").map(r => r.document?.id).filter(Boolean);
-      docIds.forEach(docId => {
-        fetch(`/api/documents/${docId}/labels`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ labelIds: Array.from(selectedLabelIds) }),
-        }).catch(() => {});
-      });
+    if (!done) {
+      labelsAttachedRef.current = false;
+      return;
     }
-  }, [done]);
+    if (labelsAttachedRef.current || !result || selectedLabelIds.size === 0) return;
+    labelsAttachedRef.current = true;
+
+    const docIds = result.results.filter(r => r.status === "ok").map(r => r.document?.id).filter(Boolean);
+    docIds.forEach(docId => {
+      fetch(`/api/documents/${docId}/labels`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ labelIds: Array.from(selectedLabelIds) }),
+      }).catch(() => {});
+    });
+  }, [done, result, selectedLabelIds]);
 
   function toggleLabel(id: string) {
     setSelectedLabelIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   }

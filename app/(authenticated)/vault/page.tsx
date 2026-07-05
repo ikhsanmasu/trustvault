@@ -16,8 +16,6 @@ import { AnchorModal } from "@/components/anchor-modal";
 import { ShareModal } from "@/components/share/share-modal";
 import { UploadModal } from "@/components/upload-modal";
 import { EditDocumentModal } from "@/components/edit-document-modal";
-import { AgentCreateModal } from "@/components/agent-create-modal";
-import { useCreateAgent } from "@/hooks/use-agents";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { VaultDocumentRow, getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import { useDocuments } from "@/hooks/use-documents";
@@ -63,7 +61,6 @@ export default function VaultPage() {
   const { user, isLoading: isAuthLoading } = useAuthContext();
   const { role: currentRole } = useProfile();
   const canEdit = isEditorOrAbove(currentRole);
-  const { create: createAgent, isCreating: creatingAgent } = useCreateAgent();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
@@ -98,7 +95,6 @@ export default function VaultPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
-  const [moveDocId, setMoveDocId] = useState<string | null>(null);
   const [actionDropdownDocId, setActionDropdownDocId] = useState<string | null>(null);
   const [editDocId, setEditDocId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -109,18 +105,18 @@ export default function VaultPage() {
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [docLabels, setDocLabels] = useState<Map<string, string[]>>(new Map());
   const [deleteLabelId, setDeleteLabelId] = useState<string | null>(null);
-  const [showAgentCreate, setShowAgentCreate] = useState(false);
-  const [agentPreselectedIds, setAgentPreselectedIds] = useState<string[]>([]);
 
   // Fetch labels
   useEffect(() => {
     fetch("/api/labels").then(r => r.json()).then(d => setLabels(d.labels ?? [])).catch(() => {});
   }, []);
 
-  // Fetch document labels for visible docs
+  // Fetch document labels. Keyed on the fetched document list (stable per
+  // fetch) rather than the sorted/filtered view, which is a new array every
+  // render and would refire this effect continuously.
   useEffect(() => {
-    if (visibleDocs.length === 0) return;
-    Promise.all(visibleDocs.map(d =>
+    if (documents.length === 0) return;
+    Promise.all(documents.map(d =>
       fetch(`/api/documents/${d.id}/labels`).then(r => r.json()).then(data => ({ docId: d.id, labels: data.labels as { id: string }[] })).catch(() => ({ docId: d.id, labels: [] }))
     )).then(results => {
       const map = new Map<string, string[]>();
@@ -505,10 +501,6 @@ export default function VaultPage() {
               <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Ask AI
             </Button>
-            <Button size="sm" variant="outline" onClick={() => { setAgentPreselectedIds(Array.from(selectedIds)); setShowAgentCreate(true); }}>
-              <svg className="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
-              Create Agent
-            </Button>
             {canEdit && (
               <Button
                 size="sm"
@@ -531,7 +523,7 @@ export default function VaultPage() {
             )}
             <button
               type="button"
-              onClick={() => { setSelectedIds(new Set()); setMoveDocId(null); }}
+              onClick={() => setSelectedIds(new Set())}
               className="ml-auto text-sm text-muted-foreground hover:text-foreground"
             >
               Clear selection
@@ -779,15 +771,6 @@ export default function VaultPage() {
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                                     Ask AI
                                   </button>
-                                  {/* Create Agent */}
-                                  <button
-                                    type="button"
-                                    onClick={() => { setActionDropdownDocId(null); setAgentPreselectedIds([doc.id]); setShowAgentCreate(true); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                                  >
-                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
-                                    Create Agent
-                                  </button>
                                   {/* Edit */}
                                   <button
                                     type="button"
@@ -856,14 +839,6 @@ export default function VaultPage() {
         open={showUpload}
         onOpenChange={setShowUpload}
         onSuccess={() => { setShowUpload(false); refresh(); }}
-      />
-      <AgentCreateModal
-        open={showAgentCreate}
-        onOpenChange={setShowAgentCreate}
-        onSubmit={async (data) => { await createAgent(data); }}
-        isSubmitting={creatingAgent}
-        documents={visibleDocs}
-        preselectedDocumentIds={agentPreselectedIds}
       />
       {/* ---- Edit Modal -------------------------------------------------------- */}
       {editDocId && (

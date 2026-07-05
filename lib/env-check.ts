@@ -26,10 +26,6 @@ const REQUIRED_VARS: EnvVarSpec[] = [
   { name: "DEEPSEEK_API_KEY", required: true, sensitive: true, example: "sk-..." },
   // OpenAI embeddings (P6+)
   { name: "OPENAI_API_KEY", required: true, sensitive: true, example: "sk-proj-..." },
-  // P16: Agent channel encryption
-  { name: "AGENT_CHANNEL_ENCRYPTION_KEY", required: false, sensitive: true, example: "<base64 32-byte key>" },
-  // P16: Telegram webhook security
-  { name: "TELEGRAM_WEBHOOK_SECRET", required: IS_PROD, sensitive: true, example: "<random-secret>" },
   // P5: Blockchain anchoring (optional, only if anchoring is used)
   { name: "ANCHOR_RPC_URL", required: false, sensitive: false, example: "http://127.0.0.1:8545" },
   { name: "ANCHOR_CHAIN_ID", required: false, sensitive: false, example: "31337" },
@@ -37,6 +33,8 @@ const REQUIRED_VARS: EnvVarSpec[] = [
   { name: "ANCHOR_PRIVATE_KEY", required: false, sensitive: true, example: "0x..." },
   // P17: Email delivery (only required if sending invitations)
   { name: "RESEND_API_KEY", required: false, sensitive: true, example: "re_..." },
+  // P22: Vercel cron authentication (monthly usage reset)
+  { name: "CRON_SECRET", required: IS_PROD, sensitive: true, example: "<random-secret>" },
 ];
 
 export function validateEnvironment(): { ok: boolean; errors: string[]; warnings: string[] } {

@@ -11,7 +11,7 @@ import { useCompareFile } from "@/hooks/use-compare-file";
 import type { Document } from "@/lib/api-client";
 import { getFileTypeLabel } from "@/components/vault-document-row";
 import { formatBytes, formatDate, cn } from "@/lib/utils";
-import { IconUpload, IconDocument, IconSpinner, IconCheck, IconX, IconAlertTriangle, IconChevronDown, IconFile } from "@/components/icons";
+import { IconUpload, IconDocument, IconSpinner, IconCheck, IconX, IconAlertTriangle, IconFile } from "@/components/icons";
 
 // ---- Helpers ----------------------------------------------------------------
 

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
-// ---- Generic session shape for cross-page reuse (P6 assistant + P16 agents) --
+// ---- Generic session shape for cross-page reuse (P6 assistant) ----------
 
 export interface SessionLike {
   id: string;

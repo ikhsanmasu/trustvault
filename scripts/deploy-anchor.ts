@@ -84,13 +84,14 @@ async function main() {
   console.log(`Deployed at: ${receipt.contractAddress}`);
   console.log(`Block: ${receipt.blockNumber}`);
 
-  // Write to file for docker-compose automation
-  const addrFile = process.env.ANCHOR_ADDR_FILE || "/tmp/deploy-output.txt";
-  try {
-    const { writeFileSync } = await import("node:fs");
-    writeFileSync(addrFile, receipt.contractAddress!);
-    console.log(`Address written to ${addrFile}`);
-  } catch { /* ignore */ }
+  // Optionally persist the address for scripted setups
+  if (process.env.ANCHOR_ADDR_FILE) {
+    try {
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(process.env.ANCHOR_ADDR_FILE, receipt.contractAddress!);
+      console.log(`Address written to ${process.env.ANCHOR_ADDR_FILE}`);
+    } catch { /* ignore */ }
+  }
 
   console.log("");
   console.log("Add this to your .env.local:");

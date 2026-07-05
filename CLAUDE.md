@@ -3,21 +3,24 @@
 ## What this is
 Document-integrity tool: upload → layered hashing → store → compare → AI assesses the
 MATERIALITY of changes (not forgery detection).
-→ See `docs/vision.md` (why/what) and `docs/roadmap.md` (phases). **Current phase: P1.**
+→ See `docs/vision.md` (why/what) and `docs/roadmap.md` (phases). **Current state: P1–P6 core complete + P7–P22 hardening; see the roadmap log.**
 
 ## Stack
 - Framework: **Next.js (App Router) + React + TypeScript** — frontend + API route handlers in one app
 - Styling: **Tailwind CSS + shadcn/ui**
 - DB + Storage: **Supabase (Postgres + Storage)**; local via CLI for dev
-- Auth (P2): **Supabase Auth + Row Level Security (RLS)**
-- AI: **DeepSeek API** (direct call, OpenAI-compatible `chat/completions`, JSON mode) — model `deepseek-chat`
-- CI: **GitHub Actions** · Deploy: **Vercel**
+- Auth: **Supabase Auth + Row Level Security (RLS)** — multi-tenant with tenant-level RBAC
+- AI: **DeepSeek API** (OpenAI-compatible `chat/completions`, JSON mode, model `deepseek-chat`) + **OpenAI embeddings** (`text-embedding-3-small`, pgvector) for the vault assistant
+- Email (optional): **Resend** · Errors: **Sentry**
+- CI: **GitHub Actions** · Deploy: **Vercel + Supabase GitHub integration ONLY** (no Docker/Railway targets)
 
 ## Project layout
-- Pure logic → `lib/core.ts` (hashing, PDF text extraction, prompt/schema)
-- API route handlers → `app/api/**/route.ts`
+- Pure logic → `lib/core.ts` (hashing, multi-format text extraction, magic-byte validation, prompt/schema)
+- Upload pipeline → `lib/services/upload-service.ts` (single pipeline shared by single + bulk upload routes)
+- Quotas + rate limiting → `lib/rate-limit.ts` (atomic consumption via DB RPC; DB-backed fixed-window limiter for public endpoints)
+- API route handlers → `app/api/**/route.ts` (thin: auth/role checks + service calls)
 - UI → `app/**` (React + shadcn/ui)
-- Unit tests → `*.test.ts` (vitest)
+- Tests → `lib/*.test.ts` + `tests/{unit,integration,eval}/` (vitest)
 
 ## Core pipeline (architectural invariant — do not change without good reason)
 Binary hash (raw file) → Text hash (extracted text) → AI compare (ONLY when text differs)
@@ -80,9 +83,11 @@ P2 adds multi-tenancy and document organisation via labels. The hierarchy is
 tenant → document. Avoid single-user / flat-list assumptions; nullable `tenant_id`
 may be added early. Isolation will use Supabase RLS, so design tables with that in mind.
 
-## Do NOT build yet (gate)
-- Auth, multi-tenant, RBAC (P2) — unless told to move phases.
-- Blockchain anchoring (P4).
+## Do NOT build (gate)
+- Custom AI agents / WhatsApp / Telegram channels — built in P16, **deliberately removed in P22**
+  (off-vision scope creep). Do not re-add without an explicit product decision.
+- Payment processing — the pricing page exists but plan changes are manual until a billing
+  decision is made.
 
 ## Maintenance
 This file is living. When moving phases, condense old-phase detail and add the new phase. If a

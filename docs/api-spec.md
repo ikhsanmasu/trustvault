@@ -2,6 +2,14 @@
 
 This document is a **contract**. The `backend` agent implements exactly what is written here and the `frontend` agent calls exactly what is written here. Neither agent may silently change paths, field names, or types -- discrepancies must be flagged back to the architect.
 
+
+> **P22 NOTE (2026-07-05):** The custom AI agents + WhatsApp/Telegram channels
+> feature (P16) has been **removed** from the product. Any `/api/agents/*` or
+> `/api/webhook/*` endpoints, `agent_*` tables, and channel-related sections in
+> this document are historical and no longer exist in the codebase
+> (see `supabase/migrations/20260705000004_p22_drop_agents.sql`).
+> Deployment is consolidated on **Vercel + Supabase** only.
+
 ---
 
 ## Conventions (Updated for P2)

@@ -4,9 +4,8 @@
 import { describe, it, expect } from "vitest";
 import {
   PLAN_LIMITS,
-  checkWebhookRateLimit,
+  checkRateLimitInMemory,
   type PlanType,
-  type PlanLimits,
 } from "@/lib/rate-limit";
 
 describe("Rate Limiting — Plan Limits", () => {
@@ -55,9 +54,9 @@ describe("Rate Limiting — Plan Limits", () => {
   });
 });
 
-describe("Rate Limiting — checkWebhookRateLimit", () => {
+describe("Rate Limiting — checkRateLimitInMemory (fixed window)", () => {
   it("allows first request", () => {
-    const r = checkWebhookRateLimit("fresh-" + Date.now());
+    const r = checkRateLimitInMemory("fresh-" + Date.now());
     expect(r.allowed).toBe(true);
     expect(r.remaining).toBe(29);
     expect(r.resetAt).toBeGreaterThan(Date.now() / 1000);
@@ -65,34 +64,34 @@ describe("Rate Limiting — checkWebhookRateLimit", () => {
 
   it("remaining decreases with each request", () => {
     const id = "countdown-" + Date.now();
-    const r1 = checkWebhookRateLimit(id);
+    const r1 = checkRateLimitInMemory(id);
     expect(r1.remaining).toBe(29);
-    const r2 = checkWebhookRateLimit(id);
+    const r2 = checkRateLimitInMemory(id);
     expect(r2.remaining).toBe(28);
-    const r3 = checkWebhookRateLimit(id);
+    const r3 = checkRateLimitInMemory(id);
     expect(r3.remaining).toBe(27);
   });
 
   it("blocks after 30 requests and returns 0 remaining", () => {
     const id = "blocktest-" + Date.now();
     for (let i = 0; i < 30; i++) {
-      const r = checkWebhookRateLimit(id);
+      const r = checkRateLimitInMemory(id);
       expect(r.allowed).toBe(true);
     }
-    const blocked = checkWebhookRateLimit(id);
+    const blocked = checkRateLimitInMemory(id);
     expect(blocked.allowed).toBe(false);
     expect(blocked.remaining).toBe(0);
   });
 
   it("resetAt is a valid future timestamp", () => {
-    const r = checkWebhookRateLimit("timestamp-" + Date.now());
+    const r = checkRateLimitInMemory("timestamp-" + Date.now());
     expect(r.resetAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
     expect(r.resetAt).toBeLessThan(Math.floor(Date.now() / 1000) + 120);
   });
 
-  it("different agent IDs have separate limits", () => {
-    const a = checkWebhookRateLimit("agent-a-" + Date.now());
-    const b = checkWebhookRateLimit("agent-b-" + Date.now());
+  it("different keys have separate limits", () => {
+    const a = checkRateLimitInMemory("agent-a-" + Date.now());
+    const b = checkRateLimitInMemory("agent-b-" + Date.now());
     expect(a.remaining).toBe(29);
     expect(b.remaining).toBe(29);
   });

@@ -162,7 +162,7 @@ export async function POST(
 // ---------------------------------------------------------------------------
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
 ): Promise<NextResponse<ListSharesResponse | ErrorResponse>> {
   // -- 1. requireAuth -------------------------------------------------------
   const auth = await requireAuth();

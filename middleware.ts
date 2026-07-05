@@ -4,34 +4,30 @@ import { type NextRequest, NextResponse } from "next/server";
 /**
  * P2 middleware — refreshes the Supabase auth session cookie on every request.
  *
- * Security hardening (P19):
- * - Blocks path traversal attempts (../ etc.)
- * - Blocks requests with suspicious patterns
- * - Restricts HTTP methods on API routes to known safe verbs
+ * Security hardening (P19, tightened in P21):
+ * - Blocks path traversal and dotfile probes (.env, .git)
+ * - Restricts HTTP methods on API routes to known verbs
  * - Adds security headers on every response
+ *
+ * Deliberately NOT here (removed in P21 as ineffective pattern-blocking):
+ * - SQLi/XSS regexes on URLs — queries are parameterized and React escapes
+ *   output; URL regexes only produced false positives.
+ * - Scanner user-agent blocklists — trivially spoofed.
+ * - A blanket block on `/.` paths — it broke `/.well-known/` (ACME, security.txt).
  *
  * This middleware does NOT:
  * - Redirect unauthenticated users (route handlers return 401, UI handles auth)
  * - Check roles or permissions (route handlers enforce RBAC)
- * - Protect routes
  */
 
 // ── Blocked patterns ──────────────────────────────────────────────────────
 
-/** Patterns that indicate path traversal or reconnaissance attempts. */
+/** Path traversal and sensitive-dotfile probes. `/.well-known/` stays reachable. */
 const BLOCKED_PATH_PATTERNS = [
-  /\.\./,                    // path traversal: ../ or ..\
-  /%2e%2e/i,                 // URL-encoded ..
-  /\/\./,                     // hidden files: /.env, /.git
-  /\/wp-admin/i,              // WordPress scanning
-  /\/wp-login/i,
-  /\/\.env/i,                 // env file probing
-  /\/\.git/i,                 // git repo probing
-  /\/phpmyadmin/i,            // phpMyAdmin scanning
-  /\/adminer/i,
-  /\b(select|union|insert|drop|exec)\b.*\b(from|into|table|sp_)\b/i, // SQLi probes
-  /<script\b/i,               // XSS probes
-  /javascript:\b/i,           // XSS probes
+  /\.\./,        // path traversal: ../ or ..\
+  /%2e%2e/i,     // URL-encoded ..
+  /\/\.env/i,    // env file probing
+  /\/\.git/i,    // git repo probing
 ];
 
 /** API routes only accept these HTTP methods. */
@@ -42,25 +38,14 @@ const ALLOWED_API_METHODS = new Set(["GET", "POST", "PATCH", "PUT", "DELETE", "O
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ── 1. Block suspicious paths ─────────────────────────────────────────
+  // ── 1. Block path traversal / dotfile probes ──────────────────────────
   for (const pattern of BLOCKED_PATH_PATTERNS) {
     if (pattern.test(pathname) || pattern.test(request.url)) {
       return new NextResponse("Not Found", { status: 404 });
     }
   }
 
-  // ── 2. Block suspicious user-agent (common bot/scanner patterns) ──────
-  const ua = request.headers.get("user-agent") ?? "";
-  if (
-    ua.includes("nikto") ||
-    ua.includes("sqlmap") ||
-    ua.includes("nmap") ||
-    ua.includes("masscan")
-  ) {
-    return new NextResponse("Not Found", { status: 404 });
-  }
-
-  // ── 3. Restrict HTTP methods on API routes ────────────────────────────
+  // ── 2. Restrict HTTP methods on API routes ────────────────────────────
   if (pathname.startsWith("/api/")) {
     if (!ALLOWED_API_METHODS.has(request.method)) {
       return new NextResponse("Method Not Allowed", {
@@ -70,8 +55,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // ── 4. Session refresh ────────────────────────────────────────────────
-  let response = NextResponse.next({ request });
+  // ── 3. Session refresh ────────────────────────────────────────────────
+  const response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -84,26 +69,20 @@ export async function middleware(request: NextRequest) {
         setAll(
           cookiesToSet: { name: string; value: string; options: CookieOptions }[],
         ) {
-          cookiesToSet.forEach(
-            ({
-              name,
-              value,
-              options,
-            }: {
-              name: string;
-              value: string;
-              options: CookieOptions;
-            }) => response.cookies.set(name, value, options),
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
           );
         },
       },
     },
   );
 
-  // Refresh the session if a valid refresh token is in the cookie.
-  await supabase.auth.getSession();
+  // Refresh the session cookie. getUser() validates the token against the
+  // auth server (Supabase's recommended middleware pattern) instead of
+  // trusting the possibly-stale cookie contents like getSession() does.
+  await supabase.auth.getUser();
 
-  // ── 5. Security headers on every response ─────────────────────────────
+  // ── 4. Security headers on every response ─────────────────────────────
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");

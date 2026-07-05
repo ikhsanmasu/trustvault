@@ -326,8 +326,7 @@ describe("ai-api-client fetch behavior", () => {
       const result = await listSessions();
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch).toHaveBeenCalledWith(
-      );
+      expect(mockFetch).toHaveBeenCalledWith("/api/assistant/sessions");
       expect(result.sessions).toHaveLength(1);
     });
 
@@ -337,10 +336,8 @@ describe("ai-api-client fetch behavior", () => {
         json: vi.fn().mockResolvedValue({ sessions: [] }),
       } as unknown as Response);
 
-      // Should not crash — valid UUIDs don't have special chars, but defensive encode
       await listSessions();
-      expect(mockFetch).toHaveBeenCalledWith(
-      );
+      expect(mockFetch).toHaveBeenCalledWith("/api/assistant/sessions");
     });
 
     it("throws ApiClientError on non-OK response", async () => {

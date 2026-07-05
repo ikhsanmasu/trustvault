@@ -640,7 +640,7 @@ export async function ingestDocument(
 }
 
 // ---------------------------------------------------------------------------
-// Shared ML helpers (used by agent-channel, assistant/chat, share/chat)
+// Shared ML helpers (used by assistant/chat and share/chat)
 // ---------------------------------------------------------------------------
 
 /**

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   chunkText,
   estimateTokenCount,
@@ -14,7 +14,6 @@ import type { RetrievalResult, ChatMessage } from "./ai-assistant";
 // ---------------------------------------------------------------------------
 
 const EMBEDDING_DIM = 1536;
-const EMBEDDING_URL = "https://api.openai.com/v1/embeddings";
 
 function mockEmbeddingResponse(...embeddings: (number[] | null)[]) {
   return new Response(
