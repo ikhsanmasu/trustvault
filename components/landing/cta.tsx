@@ -34,13 +34,14 @@ export function CTA() {
           />
 
           <div className="relative text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-primary-foreground leading-[1.15]">
-              AI-powered integrity. Blockchain trust.
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-primary-foreground leading-[1.15] text-balance">
+              The next revision is already on its way.
+              <br className="hidden sm:block" />{" "}
+              <span className="text-secondary">Know if it matters.</span>
             </h2>
             <p className="mt-5 text-lg text-primary-foreground/65 leading-relaxed max-w-lg mx-auto">
-              Your documents deserve more than just storage. Get intelligent
-              insights, cryptographic verification, and answers grounded in
-              your own vault. Start free — no credit card required.
+              Upload your first document, set a verified baseline, and get a
+              materiality verdict on the next version — in minutes, for free.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center">
               <Link
@@ -50,7 +51,7 @@ export function CTA() {
                   "w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold shadow-xl shadow-secondary/10 h-12 px-8 text-base",
                 )}
               >
-                Get Started Free
+                Start verifying free
               </Link>
               <Link
                 href="/login"
@@ -59,13 +60,12 @@ export function CTA() {
                   "w-full sm:w-auto bg-primary-foreground/10 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20 hover:border-primary-foreground/50 h-12 px-8 text-base font-medium",
                 )}
               >
-                Sign In
+                Sign in
               </Link>
             </div>
 
-            {/* Trust note */}
             <p className="mt-8 text-sm text-primary-foreground/40">
-              Built on blockchain. Powered by AI. Trusted by teams.
+              Free plan · No credit card · Deterministic first, AI second
             </p>
           </div>
         </div>

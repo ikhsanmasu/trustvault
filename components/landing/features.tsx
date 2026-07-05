@@ -1,40 +1,11 @@
 const features = [
   {
-    title: "Secure Vault",
+    title: "AI materiality verdicts",
+    highlight: true,
     description:
-      "Your documents, encrypted and protected. Upload PDFs, contracts, spreadsheets, images, and more -- all stored safely in one place with end-to-end encryption.",
+      "When content changes, AI classifies every difference as material or cosmetic — with a confidence score and the exact clause cited. A changed payment amount gets flagged; a re-saved file does not.",
     icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-        />
-      </svg>
-    ),
-  },
-  {
-    title: "Blockchain Integrity",
-    description:
-      "Every document is cryptographically sealed on the blockchain. Immutable fingerprints create a tamper-evident record you can verify anytime -- proof that your files have never been altered.",
-    icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-        />
-      </svg>
-    ),
-  },
-  {
-    title: "AI Intelligence",
-    description:
-      "Ask questions directly to your documents. Our AI assistant reads, understands, and answers -- pulling insights, summaries, and answers from your entire vault in seconds.",
-    icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -45,25 +16,11 @@ const features = [
     ),
   },
   {
-    title: "Smart Sharing",
+    title: "Version history & compare",
     description:
-      "Share documents securely with public links. Set granular permissions -- allow viewing, downloading, or asking questions. You stay in control of who sees what.",
+      "Every upload becomes a tracked version. Compare any two side-by-side against the verified baseline and see precisely what changed — bytes, text, and meaning.",
     icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <circle cx="18" cy="5" r="3" strokeWidth={1.5} />
-        <circle cx="6" cy="12" r="3" strokeWidth={1.5} />
-        <circle cx="18" cy="19" r="3" strokeWidth={1.5} />
-        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" strokeWidth={1.5} />
-        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" strokeWidth={1.5} />
-      </svg>
-    ),
-  },
-  {
-    title: "Version Tracking",
-    description:
-      "Track every version of every document over time. Compare any two versions side-by-side, and let AI assess which changes are significant -- so you focus on what matters.",
-    icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -74,26 +31,41 @@ const features = [
     ),
   },
   {
-    title: "Team Ready",
+    title: "On-chain anchoring",
     description:
-      "Built for teams of any size. Role-based access control, multi-user collaboration, and tenant-level isolation keep everyone working securely -- together.",
+      "Anchor a document fingerprint to a public blockchain and verify it independently on any block explorer. Only the hash goes on-chain — never your content. No wallet required.",
     icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={1.5}
-          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
         />
       </svg>
     ),
   },
   {
-    title: "AI Vault Assistant",
+    title: "Encrypted vault",
     description:
-      "Ask questions about your vault in natural language. The assistant retrieves the relevant passages, answers with citations, and never invents content that is not in your documents.",
+      "Documents are encrypted in transit and at rest, validated on upload against forged file types, and isolated per tenant. 14 formats supported — PDFs, Word, spreadsheets, images, and more.",
     icon: (
-      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+        />
+      </svg>
+    ),
+  },
+  {
+    title: "Vault assistant with citations",
+    description:
+      "Ask questions across your vault in plain language. Answers are grounded in your own documents and come with citations to the source passage — so you can check every claim.",
+    icon: (
+      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -103,112 +75,72 @@ const features = [
       </svg>
     ),
   },
+  {
+    title: "Teams, roles & secure sharing",
+    description:
+      "Multi-tenant workspaces with role-based access control. Share documents through revocable links with granular permissions — view, download, or ask questions.",
+    icon: (
+      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+        />
+      </svg>
+    ),
+  },
 ];
 
 export function Features() {
   return (
     <section id="features" className="relative bg-background py-20 sm:py-28">
-      {/* Subtle top border decoration */}
-      <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 rounded-full bg-gradient-to-r from-transparent via-secondary/50 to-transparent"
-        aria-hidden="true"
-      />
-
       <div className="section-container">
         {/* Section header */}
         <div className="text-center max-w-2xl mx-auto">
-          <span className="text-base font-bold text-secondary uppercase tracking-widest">
+          <span className="text-sm font-bold text-secondary uppercase tracking-widest">
             Features
           </span>
-          <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            Everything your documents deserve
+          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-foreground text-balance">
+            Integrity you can prove. Judgment you can check.
           </h2>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Secure storage, blockchain proof, and AI-powered insights -- all in
-            one intelligent vault.
+            One vault that stores, fingerprints, and understands your critical
+            documents — built for teams where a missed change is expensive.
           </p>
         </div>
 
-        {/* Feature cards carousel */}
-        <div className="mt-16 carousel-wrapper">
-          <div className="carousel-track">
-            {features.map((feature) => (
+        {/* Feature grid */}
+        <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature) => (
+            <div
+              key={feature.title}
+              className={
+                feature.highlight
+                  ? "group relative rounded-2xl border border-secondary/40 bg-accent p-7 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-0.5"
+                  : "group relative rounded-2xl border border-border bg-card p-7 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-0.5 hover:border-secondary/25"
+              }
+            >
               <div
-                key={feature.title}
-                className="group relative shrink-0 rounded-2xl border border-border bg-card p-8 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-1 hover:border-secondary/25"
-                style={{ minWidth: 280, maxWidth: 380, width: 380 }}
+                className={
+                  feature.highlight
+                    ? "inline-flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-secondary-foreground"
+                    : "inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/5 text-primary transition-colors duration-300 group-hover:bg-secondary/10 group-hover:text-secondary"
+                }
               >
-                {/* Gold accent line on hover */}
-                <div className="absolute top-0 left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-secondary/0 to-transparent transition-all duration-300 group-hover:via-secondary/60" />
-
-                {/* Icon */}
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/5 text-primary group-hover:bg-secondary/10 group-hover:text-secondary transition-colors duration-300">
-                  {feature.icon}
-                </div>
-
-                {/* Title */}
-                <h3 className="mt-5 text-lg font-semibold text-foreground">
-                  {feature.title}
-                </h3>
-
-                {/* Description */}
-                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                  {feature.description}
-                </p>
+                {feature.icon}
               </div>
-            ))}
-            {/* Duplicate for seamless infinite loop */}
-            {features.map((feature) => (
-              <div
-                key={`dup-${feature.title}`}
-                className="group relative shrink-0 rounded-2xl border border-border bg-card p-8 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-1 hover:border-secondary/25"
-                style={{ minWidth: 280, maxWidth: 380, width: 380 }}
-              >
-                <div className="absolute top-0 left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-secondary/0 to-transparent transition-all duration-300 group-hover:via-secondary/60" />
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/5 text-primary group-hover:bg-secondary/10 group-hover:text-secondary transition-colors duration-300">
-                  {feature.icon}
-                </div>
-                <h3 className="mt-5 text-lg font-semibold text-foreground">
-                  {feature.title}
-                </h3>
-                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                  {feature.description}
-                </p>
-              </div>
-            ))}
-          </div>
+
+              <h3 className="mt-5 text-lg font-semibold text-foreground">
+                {feature.title}
+              </h3>
+              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                {feature.description}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes scroll {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-        .carousel-track {
-          display: flex;
-          gap: 1.5rem;
-          width: max-content;
-          animation: scroll 30s linear infinite;
-        }
-        .carousel-track:hover {
-          animation-play-state: paused;
-        }
-        .carousel-wrapper {
-          overflow: hidden;
-          mask-image: linear-gradient(
-            to right,
-            transparent,
-            black 5%,
-            black 95%,
-            transparent
-          );
-        }
-      `}</style>
     </section>
   );
 }
