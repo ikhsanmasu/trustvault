@@ -10,15 +10,16 @@ import { cn } from "@/lib/utils";
 interface ProgressProps {
   value?: number;   // 0–100
   className?: string;
+  indicatorClassName?: string;
 }
 
-export function Progress({ value = 0, className }: ProgressProps) {
+export function Progress({ value = 0, className, indicatorClassName }: ProgressProps) {
   const clamped = Math.max(0, Math.min(100, value));
 
   return (
     <div
       className={cn(
-        "relative h-3 w-full overflow-hidden rounded-full bg-secondary/40",
+        "relative h-3 w-full overflow-hidden rounded-full bg-muted",
         className,
       )}
       role="progressbar"
@@ -27,7 +28,10 @@ export function Progress({ value = 0, className }: ProgressProps) {
       aria-valuemax={100}
     >
       <div
-        className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+        className={cn(
+          "h-full rounded-full bg-primary transition-all duration-500 ease-out",
+          indicatorClassName,
+        )}
         style={{ width: `${clamped}%` }}
       />
     </div>

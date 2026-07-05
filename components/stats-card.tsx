@@ -13,23 +13,21 @@ interface StatsCardProps {
   icon: React.ReactNode;
   description?: string;
   trend?: TrendIndicator;
-  accentColor?: string;
-  iconBg?: string;
   className?: string;
 }
 
 const trendStyles: Record<string, { text: string; bg: string }> = {
   up: {
-    text: "text-emerald-600 dark:text-emerald-400",
-    bg: "bg-emerald-50 dark:bg-emerald-950/60",
+    text: "text-success",
+    bg: "bg-success/10",
   },
   down: {
-    text: "text-red-600 dark:text-red-400",
-    bg: "bg-red-50 dark:bg-red-950/60",
+    text: "text-destructive",
+    bg: "bg-destructive/10",
   },
   neutral: {
     text: "text-muted-foreground",
-    bg: "bg-muted dark:bg-muted/50",
+    bg: "bg-muted",
   },
 };
 
@@ -49,41 +47,30 @@ export function StatsCard({
   icon,
   description,
   trend,
-  accentColor = "border-l-primary",
-  iconBg,
   className,
 }: StatsCardProps) {
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border bg-card text-card-foreground",
-        "border-l-4 border-l-primary",
-        "shadow-elevation-1",
-        "transition-all duration-300 ease-out",
-        "hover:shadow-elevation-3 hover:-translate-y-1 hover:border-l-primary/80 hover:border-secondary/25",
-        "dark:border-l-primary dark:hover:border-l-primary/80",
-        accentColor,
+        "group relative overflow-hidden rounded-2xl border border-border bg-card text-card-foreground",
+        "shadow-elevation-1 transition-all duration-300 ease-out",
+        "hover:shadow-elevation-2 hover:border-secondary/30",
         className,
       )}
     >
       {/* Gold accent line on hover */}
       <div className="absolute top-0 left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-secondary/0 to-transparent transition-all duration-300 group-hover:via-secondary/60" />
 
-      {/* Subtle gradient overlay on hover */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/[0.03] via-transparent to-secondary/[0.02] opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:from-primary/[0.06] dark:to-secondary/[0.04]" />
-
-      <div className="relative p-5 sm:p-6">
+      <div className="relative p-5">
         {/* Top row: icon + trend */}
         <div className="mb-4 flex items-start justify-between">
           <div
             className={cn(
-              "flex h-11 w-11 items-center justify-center rounded-2xl",
-              "bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5",
-              "text-primary ring-1 ring-inset ring-primary/10",
-              "transition-all duration-300",
-              "group-hover:from-primary/20 group-hover:ring-primary/20",
-              "dark:from-primary/20 dark:via-primary/15 dark:to-primary/8 dark:ring-primary/20",
-              iconBg,
+              "flex h-10 w-10 items-center justify-center rounded-xl",
+              "bg-primary/[0.07] text-primary ring-1 ring-inset ring-primary/10",
+              "transition-colors duration-300",
+              "group-hover:bg-secondary/10 group-hover:text-secondary group-hover:ring-secondary/20",
+              "dark:bg-primary/15 dark:ring-primary/20",
             )}
           >
             {icon}
@@ -104,7 +91,7 @@ export function StatsCard({
         </div>
 
         {/* Value */}
-        <p className="text-3xl font-bold tracking-tight tabular-nums text-foreground sm:text-4xl">
+        <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground sm:text-3xl">
           {value}
         </p>
 
@@ -115,20 +102,8 @@ export function StatsCard({
 
         {/* Optional description */}
         {description && (
-          <p className="mt-1 text-xs text-muted-foreground/70">
+          <p className="mt-0.5 text-xs text-muted-foreground/70">
             {description}
-          </p>
-        )}
-
-        {/* Optional trend label below */}
-        {trend?.label && (
-          <p
-            className={cn(
-              "mt-2 text-xs",
-              trendStyles[trend.direction].text,
-            )}
-          >
-            {trend.label}
           </p>
         )}
       </div>
