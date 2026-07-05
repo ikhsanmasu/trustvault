@@ -25,7 +25,7 @@ function CitationChip({ citation }: { citation: Citation }) {
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md border border-border/60",
-        "bg-muted/50 px-2 py-1 text-xs text-muted-foreground",
+        "bg-card px-2 py-1 text-xs text-muted-foreground",
         "max-w-[260px]",
       )}
       title={`${citation.document_name} — chunk ${citation.chunk_index}: ${citation.snippet}`}
@@ -76,7 +76,7 @@ function StreamingBubble({ content }: StreamingBubbleProps) {
       <div
         className={cn(
           "relative max-w-[80%] rounded-2xl px-4 py-3",
-          "bg-secondary/50 text-secondary-foreground",
+          "border border-border/60 bg-muted/60 text-foreground",
           "rounded-tl-sm",
         )}
       >
@@ -109,7 +109,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           "relative max-w-[80%] rounded-2xl px-4 py-3",
           isUser
             ? "bg-primary text-primary-foreground rounded-tr-sm"
-            : "bg-secondary/60 text-secondary-foreground rounded-tl-sm",
+            : "border border-border/60 bg-muted/60 text-foreground rounded-tl-sm",
         )}
       >
         {/* Role label for screen readers */}
