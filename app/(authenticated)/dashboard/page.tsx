@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
@@ -9,118 +9,177 @@ import { StatsCard } from "@/components/stats-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { useDashboard } from "@/hooks/use-dashboard";
+import { getUsage, type UsageStats } from "@/lib/api-client";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { getFileTypeLabel, getFileTypeVariant } from "@/components/vault-document-row";
 import type { TrendIndicator } from "@/components/stats-card";
 import {
   IconDocument,
-  IconBriefcase,
   IconStorage,
-  IconCalendar,
   IconChevronRight,
   IconRefresh,
-  IconUsers,
   IconShield,
   IconShare,
+  IconUpload,
+  IconSearch,
+  IconMessageBot,
 } from "@/components/icons";
 import { BarChart } from "@/components/analytics/bar-chart";
 
-// ---- Donut chart (pure CSS) -------------------------------------------------
+// ---- Helpers ----------------------------------------------------------------
 
-interface DonutSegment {
-  label: string;
-  count: number;
-  color: string;
+function greetingForNow(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
 }
 
-function DonutChart({ segments, total }: { segments: DonutSegment[]; total: number }) {
-  // Build sr-only description
-  const srDescription = useMemo(() => {
-    if (total === 0) return "No documents yet";
-    return segments.map((s) => `${s.label}: ${s.count}`).join(", ");
-  }, [segments, total]);
+function usagePercent(used: number, limit: number | null): number | null {
+  if (limit === null || limit <= 0) return null;
+  return Math.min(100, (used / limit) * 100);
+}
 
-  if (total === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8">
-        <div className="relative h-28 w-28">
-          <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" role="img" aria-label="Empty chart">
-            <title>No documents yet</title>
-            <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" strokeWidth="12" className="text-muted/30" />
-          </svg>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">No documents yet</p>
-      </div>
-    );
-  }
+function usageBarClass(percent: number | null): string {
+  if (percent === null) return "bg-primary";
+  if (percent >= 90) return "bg-destructive";
+  if (percent >= 75) return "bg-warning";
+  return "bg-primary";
+}
 
-  // Build conic gradient segments
-  let cumulative = 0;
-  const gradientParts: string[] = [];
-  const totalForCalc = segments.reduce((sum, s) => sum + s.count, 0);
+// ---- Quick actions ------------------------------------------------------------
 
-  for (const seg of segments) {
-    const start = (cumulative / totalForCalc) * 100;
-    const end = ((cumulative + seg.count) / totalForCalc) * 100;
-    gradientParts.push(`${seg.color} ${start}% ${end}%`);
-    cumulative += seg.count;
-  }
+const QUICK_ACTIONS = [
+  {
+    href: "/upload",
+    label: "Upload document",
+    icon: <IconUpload className="h-4 w-4" />,
+    primary: true,
+  },
+  {
+    href: "/compare",
+    label: "Compare",
+    icon: <IconSearch className="h-4 w-4" />,
+    primary: false,
+  },
+  {
+    href: "/assistant",
+    label: "Ask assistant",
+    icon: <IconMessageBot className="h-4 w-4" />,
+    primary: false,
+  },
+] as const;
 
-  if (cumulative === 0) return null;
+// ---- Usage card ---------------------------------------------------------------
+
+function UsageRow({
+  label,
+  used,
+  limit,
+  format,
+}: {
+  label: string;
+  used: number;
+  limit: number | null;
+  format?: (n: number) => string;
+}) {
+  const fmt = format ?? ((n: number) => n.toLocaleString());
+  const percent = usagePercent(used, limit);
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      {/* Screen-reader text describing the chart data */}
-      <div className="sr-only" role="status" aria-live="polite">
-        Document type breakdown: {srDescription}. Total: {total} documents.
-      </div>
-
-      <div className="relative h-28 w-28" role="img" aria-label={`Donut chart: ${srDescription}. Total: ${total}`}>
-        <title>{`Document types: ${srDescription}. Total: ${total}`}</title>
-        {/* Donut ring using conic gradient */}
-        <div
-          className="h-full w-full rounded-full"
-          style={{
-            background: `conic-gradient(${gradientParts.join(", ")})`,
-            mask: "radial-gradient(circle, transparent 55%, black 56%)",
-            WebkitMask: "radial-gradient(circle, transparent 55%, black 56%)",
-          }}
-        />
-        {/* Center text */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-xl font-bold tabular-nums text-foreground">
-            {total}
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <span className="text-xs tabular-nums text-foreground">
+          {fmt(used)}
+          <span className="text-muted-foreground">
+            {" "}/ {limit === null ? "Unlimited" : fmt(limit)}
           </span>
-          <span className="text-[10px] text-muted-foreground">docs</span>
-        </div>
+        </span>
       </div>
-      {/* Legend */}
-      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5">
-        {segments.map((seg) => (
-          <div key={seg.label} className="flex items-center gap-1.5 text-xs">
-            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-            <span className="text-muted-foreground">
-              {seg.label} <span className="font-medium text-foreground tabular-nums">{seg.count}</span>
-            </span>
-          </div>
-        ))}
-      </div>
+      <Progress
+        value={percent ?? 100}
+        className="mt-1.5 h-1.5"
+        indicatorClassName={
+          percent === null ? "bg-primary/25" : usageBarClass(percent)
+        }
+      />
     </div>
   );
 }
 
-// ---- Chart colors -----------------------------------------------------------
-const CHART_COLORS = [
-  "#3b82f6", // blue
-  "#ef4444", // red (PDF)
-  "#10b981", // emerald (XLSX)
-  "#8b5cf6", // violet
-  "#f59e0b", // amber
-  "#6366f1", // indigo
-  "#14b8a6", // teal
-  "#f97316", // orange
-];
+function UsageCard({ usage }: { usage: UsageStats | null }) {
+  const nearLimit =
+    usage !== null &&
+    usage.plan === "free" &&
+    [
+      usagePercent(usage.documents_used, usage.documents_limit),
+      usagePercent(usage.llm_calls_used, usage.llm_calls_limit),
+      usagePercent(usage.storage_bytes_used, usage.storage_bytes_limit),
+    ].some((p) => p !== null && p >= 80);
+
+  return (
+    <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-elevation-1">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground">Plan & usage</h2>
+        {usage && (
+          <Badge variant={usage.plan === "free" ? "secondary" : "default"} className="capitalize">
+            {usage.plan}
+          </Badge>
+        )}
+      </div>
+
+      {usage ? (
+        <>
+          <div className="mt-5 space-y-4">
+            <UsageRow
+              label="Documents"
+              used={usage.documents_used}
+              limit={usage.documents_limit}
+            />
+            <UsageRow
+              label="AI verdicts this month"
+              used={usage.llm_calls_used}
+              limit={usage.llm_calls_limit}
+            />
+            <UsageRow
+              label="Storage"
+              used={usage.storage_bytes_used}
+              limit={usage.storage_bytes_limit}
+              format={formatBytes}
+            />
+          </div>
+
+          <div className="mt-auto pt-5">
+            {nearLimit && (
+              <p className="mb-3 rounded-lg bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
+                You are close to a plan limit. Upgrade to keep verifying without
+                interruption.
+              </p>
+            )}
+            <Link
+              href="/usage"
+              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              View usage details <IconChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </>
+      ) : (
+        <div className="mt-5 space-y-4">
+          {Array.from({ length: 3 }).map((_v, i) => (
+            <div key={i}>
+              <Skeleton className="h-3 w-24 mb-2" />
+              <Skeleton className="h-1.5 w-full rounded-full" />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---- Page -------------------------------------------------------------------
 
@@ -130,41 +189,67 @@ export default function DashboardPage() {
   const { stats, isLoading, error, refresh } = useDashboard();
   const { sorted: sortedRecent, toggleSort, sortIndicator } = useSort(stats?.recent_documents ?? [], "created_at", "desc");
 
+  const [usage, setUsage] = useState<UsageStats | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getUsage()
+      .then((r) => {
+        if (!cancelled) setUsage(r.usage);
+      })
+      .catch(() => {
+        // Usage is supplementary — the dashboard still works without it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // ---- Derived stats --------------------------------------------------------
+
+  const displayName = useMemo(() => {
+    const meta = user?.user_metadata as { display_name?: string } | undefined;
+    return meta?.display_name ?? user?.email?.split("@")[0] ?? "there";
+  }, [user]);
+
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    [],
+  );
 
   const thisMonthCount = useMemo(() => {
     if (!stats) return 0;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    // Count from the unsorted source list — the count is order-independent,
-    // so this memo only needs to recompute when the stats change.
     return (stats.recent_documents ?? []).filter(
       (d) => new Date(d.created_at) >= startOfMonth,
     ).length;
   }, [stats]);
 
-  const recentTrend: TrendIndicator | undefined = useMemo(() => {
-    if (!stats || thisMonthCount === 0) return undefined;
-    return {
-      direction: "up",
-      value: `${thisMonthCount} this month`,
-      label: "Active uploads",
-    };
-  }, [stats, thisMonthCount]);
+  const documentsTrend: TrendIndicator | undefined = useMemo(() => {
+    if (thisMonthCount === 0) return undefined;
+    return { direction: "up", value: `+${thisMonthCount} this month` };
+  }, [thisMonthCount]);
 
-  // Document type breakdown for chart — use API-provided data
-  const typeSegments = useMemo(() => {
-    if (!stats) return [];
-    return stats.documents_by_type
-      .sort((a, b) => b.count - a.count)
-      .map((item, i) => ({
-        label: getFileTypeLabel(item.type),
-        count: item.count,
-        color: CHART_COLORS[i % CHART_COLORS.length],
-      }));
+  const anchoredDescription = useMemo(() => {
+    if (!stats || stats.document_count === 0) return "Tamper-evident proofs";
+    const pct = Math.round((stats.anchored_count / stats.document_count) * 100);
+    return `${pct}% of your vault`;
   }, [stats]);
 
-  // Monthly uploads for bar chart — map API shape to BarChart props
+  // Top file types — compact chips under the activity chart
+  const topTypes = useMemo(() => {
+    if (!stats) return [];
+    return [...stats.documents_by_type]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4)
+      .map((item) => ({ label: getFileTypeLabel(item.type), count: item.count }));
+  }, [stats]);
+
   const monthlyUploads = useMemo(() => {
     if (!stats) return [];
     return stats.documents_by_month.map((item) => ({
@@ -191,47 +276,47 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* ---- Hero Header ------------------------------------------------------- */}
-      <section className="relative overflow-hidden rounded-2xl hero-gradient mb-2">
-        {/* dot-grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-          }}
-          aria-hidden="true"
-        />
-        {/* gold blur blob */}
-        <div
-          className="absolute -top-20 right-0 w-[250px] h-[250px] rounded-full bg-secondary/5 blur-3xl"
-          aria-hidden="true"
-        />
-        <div className="relative px-6 py-10 sm:py-12">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div>
-              <span className="text-xs font-semibold text-secondary uppercase tracking-widest">
-                Dashboard
-              </span>
-              <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-balance">
-                Welcome back
-              </h1>
-              <p className="mt-3 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-2xl text-pretty">
-                Here is what is happening across your vault.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={refresh}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-elevation-1 transition-all duration-200 hover:border-secondary/40 hover:text-foreground hover:shadow-elevation-2"
-              aria-label="Refresh dashboard data"
-            >
-              <IconRefresh className="h-4 w-4" />
-              Refresh
-            </button>
-          </div>
+    <div className="space-y-6 animate-fade-in">
+      {/* ---- Header: greeting + quick actions -------------------------------- */}
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">{todayLabel}</p>
+          <h1 className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            {greetingForNow()}, {displayName}
+          </h1>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {QUICK_ACTIONS.map((action) =>
+            action.primary ? (
+              <Link
+                key={action.href}
+                href={action.href}
+                className="inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground shadow-elevation-1 transition-all hover:bg-secondary/90 hover:shadow-elevation-2"
+              >
+                {action.icon}
+                {action.label}
+              </Link>
+            ) : (
+              <Link
+                key={action.href}
+                href={action.href}
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-elevation-1 transition-all hover:border-secondary/40 hover:shadow-elevation-2"
+              >
+                {action.icon}
+                {action.label}
+              </Link>
+            ),
+          )}
+          <button
+            type="button"
+            onClick={refresh}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-elevation-1 transition-all hover:border-secondary/40 hover:text-foreground"
+            aria-label="Refresh dashboard data"
+            title="Refresh"
+          >
+            <IconRefresh className="h-4 w-4" />
+          </button>
         </div>
       </section>
 
@@ -243,109 +328,78 @@ export default function DashboardPage() {
       )}
 
       {/* ---- Loading ---------------------------------------------------------- */}
-      {isLoading && <DashboardSkeleton />}
+      {isLoading && <DashboardSkeleton withHeader={false} />}
 
       {/* ---- Content ---------------------------------------------------------- */}
       {!isLoading && stats && (
         <>
-          {/* ---- Hero stat cards --------------------------------------------- */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* ---- KPI cards ---------------------------------------------------- */}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatsCard
-              label="Total Documents"
+              label="Documents"
               value={stats.document_count.toLocaleString()}
               icon={<IconDocument className="h-5 w-5" />}
-              description="Across all groups"
-              trend={
-                sortedRecent.length > 0
-                  ? {
-                      direction: "up",
-                      value: `+${sortedRecent.length}`,
-                      label: "Recent activity",
-                    }
-                  : undefined
-              }
-              accentColor="border-l-blue-500 dark:border-l-blue-400"
-              iconBg="from-blue-500/15 via-blue-500/10 to-blue-500/5"
+              description="In your vault"
+              trend={documentsTrend}
             />
             <StatsCard
-              label="Total Chunks"
-              value={stats.total_chunks.toLocaleString()}
-              icon={<IconBriefcase className="h-5 w-5" />}
-              description="AI-indexed chunks"
-              accentColor="border-l-violet-500 dark:border-l-violet-400"
-              iconBg="from-violet-500/15 via-violet-500/10 to-violet-500/5"
-            />
-            <StatsCard
-              label="Storage Used"
-              value={formatBytes(stats.total_storage_bytes)}
-              icon={<IconStorage className="h-5 w-5" />}
-              description="Total across all files"
-              accentColor="border-l-emerald-500 dark:border-l-emerald-400"
-              iconBg="from-emerald-500/15 via-emerald-500/10 to-emerald-500/5"
-            />
-            <StatsCard
-              label="This Month"
-              value={thisMonthCount.toLocaleString()}
-              icon={<IconCalendar className="h-5 w-5" />}
-              description={thisMonthCount === 0 ? "No uploads this month" : "New documents uploaded"}
-              trend={recentTrend}
-              accentColor="border-l-amber-500 dark:border-l-amber-400"
-              iconBg="from-amber-500/15 via-amber-500/10 to-amber-500/5"
-            />
-            <StatsCard
-              label="Total Users"
-              value={stats.total_users.toLocaleString()}
-              icon={<IconUsers className="h-5 w-5" />}
-              description="Across all groups"
-              accentColor="border-l-cyan-500 dark:border-l-cyan-400"
-              iconBg="from-cyan-500/15 via-cyan-500/10 to-cyan-500/5"
-            />
-            <StatsCard
-              label="Anchored Docs"
+              label="Anchored on-chain"
               value={stats.anchored_count.toLocaleString()}
               icon={<IconShield className="h-5 w-5" />}
-              description="Blockchain-anchored"
-              accentColor="border-l-rose-500 dark:border-l-rose-400"
-              iconBg="from-rose-500/15 via-rose-500/10 to-rose-500/5"
+              description={anchoredDescription}
             />
             <StatsCard
-              label="Active Shares"
+              label="Active shares"
               value={stats.active_shares.toLocaleString()}
               icon={<IconShare className="h-5 w-5" />}
-              description="Active shared links"
-              accentColor="border-l-indigo-500 dark:border-l-indigo-400"
-              iconBg="from-indigo-500/15 via-indigo-500/10 to-indigo-500/5"
+              description="Live shared links"
+            />
+            <StatsCard
+              label="Storage used"
+              value={formatBytes(stats.total_storage_bytes)}
+              icon={<IconStorage className="h-5 w-5" />}
+              description="Across all files"
             />
           </div>
 
-          {/* ---- Charts: Donut + Bar in two columns -------------------- */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Donut chart: Documents by type */}
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">
-                By Type
-              </h2>
-              <div className="rounded-2xl border bg-card p-5 shadow-elevation-1">
-                <DonutChart segments={typeSegments} total={sortedRecent.length} />
+          {/* ---- Activity chart + Plan & usage -------------------------------- */}
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-5 shadow-elevation-1">
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-sm font-semibold text-foreground">
+                  Upload activity
+                </h2>
+                <span className="text-xs text-muted-foreground">Last 12 months</span>
               </div>
-            </div>
-
-            {/* Bar chart: Uploads by month */}
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">
-                Uploads by Month
-              </h2>
-              <div className="rounded-2xl border bg-card p-5 shadow-elevation-1">
+              <div className="mt-4">
                 <BarChart data={monthlyUploads} maxBars={12} />
               </div>
+              {topTypes.length > 0 && (
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
+                  <span className="text-xs text-muted-foreground">Top types:</span>
+                  {topTypes.map((t) => (
+                    <span
+                      key={t.label}
+                      className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
+                    >
+                      {t.label}
+                      <span className="font-semibold tabular-nums text-foreground">
+                        {t.count}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
+
+            <UsageCard usage={usage} />
           </div>
 
           {/* ---- Recent Documents table ----------------------------------- */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                Recent Documents
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-foreground">
+                Recent documents
               </h2>
               {sortedRecent.length > 0 && (
                 <Link
@@ -368,6 +422,9 @@ export default function DashboardPage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_type")}>
                         Type <span className="ml-0.5">{sortIndicator("file_type")}</span>
                       </th>
+                      <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                        Integrity
+                      </th>
                       <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_size_bytes")}>
                         Size <span className="ml-0.5">{sortIndicator("file_size_bytes")}</span>
                       </th>
@@ -383,7 +440,7 @@ export default function DashboardPage() {
                         className="border-b border-border/50 transition-colors duration-150 hover:bg-muted/30 last:border-b-0"
                       >
                         <td className="px-4 py-3">
-                          <span className="text-sm font-medium truncate block max-w-[200px]">
+                          <span className="text-sm font-medium truncate block max-w-[220px]">
                             {doc.name}
                           </span>
                         </td>
@@ -394,6 +451,18 @@ export default function DashboardPage() {
                           >
                             {getFileTypeLabel(doc.file_type)}
                           </Badge>
+                        </td>
+                        <td className="hidden sm:table-cell px-4 py-3">
+                          {doc.anchored_at ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-secondary/10 px-2 py-0.5 text-[11px] font-semibold text-secondary-foreground dark:text-secondary">
+                              <IconShield className="h-3 w-3" />
+                              Anchored
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                              Hashed
+                            </span>
+                          )}
                         </td>
                         <td className="hidden md:table-cell px-4 py-3 text-sm text-muted-foreground tabular-nums">
                           {formatBytes(doc.file_size_bytes)}
@@ -413,8 +482,16 @@ export default function DashboardPage() {
                   No documents uploaded yet
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground/60 max-w-sm">
-                  Upload a PDF or document to get started. They will appear here.
+                  Upload a document to set your first verified baseline. It will
+                  appear here.
                 </p>
+                <Link
+                  href="/upload"
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground shadow-elevation-1 hover:bg-secondary/90 transition-colors"
+                >
+                  <IconUpload className="h-4 w-4" />
+                  Upload document
+                </Link>
               </div>
             )}
           </div>
@@ -445,22 +522,23 @@ function DashboardEmptyState() {
         Welcome to InTrustVault
       </h2>
       <p className="mt-2 text-sm text-muted-foreground max-w-md">
-        Your dashboard will populate once you create a group and upload your
-        first document. Get started by visiting the Vault or Groups page.
+        Upload your first document to set a verified baseline — your dashboard
+        will populate from there.
       </p>
       <div className="mt-6 flex gap-3">
         <Link
-          href="/vault"
-          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-elevation-1 hover:bg-primary/90 transition-colors"
+          href="/upload"
+          className="inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground shadow-elevation-1 hover:bg-secondary/90 transition-colors"
         >
-          Go to Vault
-          <IconChevronRight className="h-4 w-4" />
+          <IconUpload className="h-4 w-4" />
+          Upload document
         </Link>
         <Link
-          href="/projects"
+          href="/vault"
           className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-elevation-1 hover:bg-muted/50 transition-colors"
         >
-          Manage Groups
+          Go to vault
+          <IconChevronRight className="h-4 w-4" />
         </Link>
       </div>
     </div>
@@ -469,61 +547,63 @@ function DashboardEmptyState() {
 
 // ---- Skeleton ---------------------------------------------------------------
 
-function DashboardSkeleton() {
+function DashboardSkeleton({ withHeader = true }: { withHeader?: boolean }) {
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       {/* Header skeleton */}
-      <div>
-        <Skeleton className="h-9 w-48 mb-2" />
-        <Skeleton className="h-4 w-72" />
-      </div>
+      {withHeader && (
+        <div className="flex items-end justify-between">
+          <div>
+            <Skeleton className="h-3 w-32 mb-2" />
+            <Skeleton className="h-8 w-64" />
+          </div>
+          <div className="hidden sm:flex gap-2">
+            <Skeleton className="h-9 w-40 rounded-xl" />
+            <Skeleton className="h-9 w-28 rounded-xl" />
+            <Skeleton className="h-9 w-32 rounded-xl" />
+          </div>
+        </div>
+      )}
 
-      {/* Stat cards skeleton */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_v, i) => (
-          <div key={i} className="rounded-2xl border bg-card p-6 border-l-4 border-l-muted">
+      {/* KPI cards skeleton */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_v, i) => (
+          <div key={i} className="rounded-2xl border bg-card p-5">
             <div className="mb-4 flex items-start justify-between">
-              <Skeleton className="h-11 w-11 rounded-2xl" />
+              <Skeleton className="h-10 w-10 rounded-xl" />
               <Skeleton className="h-5 w-14 rounded-full" />
             </div>
-            <Skeleton className="h-10 w-24 mb-2" />
-            <Skeleton className="h-4 w-20 mb-1" />
-            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-8 w-20 mb-2" />
+            <Skeleton className="h-4 w-24" />
           </div>
         ))}
       </div>
 
-      {/* Charts skeleton: Donut + Bar */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <Skeleton className="h-6 w-20 mb-4" />
-          <div className="rounded-2xl border bg-card p-5">
-            <div className="flex flex-col items-center gap-4">
-              <Skeleton className="h-28 w-28 rounded-full" />
-              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5">
-                {Array.from({ length: 3 }).map((_v, i) => (
-                  <Skeleton key={i} className="h-3 w-16 rounded-full" />
-                ))}
-              </div>
+      {/* Chart + usage skeleton */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 rounded-2xl border bg-card p-5 space-y-3">
+          <Skeleton className="h-4 w-28 mb-4" />
+          {Array.from({ length: 6 }).map((_v, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-6 flex-1 rounded-r-lg" />
             </div>
-          </div>
+          ))}
         </div>
-        <div>
-          <Skeleton className="h-6 w-36 mb-4" />
-          <div className="rounded-2xl border bg-card p-5 space-y-3">
-            {Array.from({ length: 6 }).map((_v, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-6 flex-1 rounded-r-lg" />
-              </div>
-            ))}
-          </div>
+        <div className="rounded-2xl border bg-card p-5">
+          <Skeleton className="h-4 w-24 mb-6" />
+          {Array.from({ length: 3 }).map((_v, i) => (
+            <div key={i} className="mb-4">
+              <Skeleton className="h-3 w-28 mb-2" />
+              <Skeleton className="h-1.5 w-full rounded-full" />
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Table skeleton */}
       <div>
-        <Skeleton className="h-6 w-36 mb-4" />
+        <Skeleton className="h-4 w-36 mb-3" />
         <div className="rounded-2xl border bg-card overflow-hidden">
           <div className="border-b border-border px-4 py-3 bg-muted/30">
             <div className="flex gap-8">
