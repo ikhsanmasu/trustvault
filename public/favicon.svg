@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f172a"/>
-      <stop offset="100%" style="stop-color:#1e3a5f"/>
+      <stop offset="0%" stop-color="#24345C"/>
+      <stop offset="100%" stop-color="#111C33"/>
     </linearGradient>
   </defs>
   <rect width="100" height="100" rx="22" fill="url(#bg)"/>
-  <!-- Vault/shield shape -->
-  <path d="M50 18L22 38v22c0 18 13 28 28 38 15-10 28-20 28-38V38L50 18z" fill="none" stroke="#f0d57a" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M50 30L30 44v16c0 13 10 20 20 28 10-8 20-15 20-28V44L50 30z" fill="#f0d57a" opacity="0.9"/>
-  <!-- "in" text -->
-  <text x="50" y="65" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="700" font-size="24" fill="#0f172a">in</text>
+  <!-- Document sheet with folded corner -->
+  <path d="M24 26c0-5 4-9 9-9h20l14 14v37c0 5-4 9-9 9H33c-5 0-9-4-9-9V26z" fill="#F7F8FC"/>
+  <path d="M53 17l14 14h-9c-2.8 0-5-2.2-5-5v-9z" fill="#C6CDDE"/>
+  <!-- Text lines -->
+  <rect x="32" y="40" width="22" height="5" rx="2.5" fill="#24345C" opacity="0.4"/>
+  <rect x="32" y="51" width="17" height="5" rx="2.5" fill="#24345C" opacity="0.25"/>
+  <!-- Gold verification seal -->
+  <circle cx="67" cy="67" r="21" fill="#D9A93F" stroke="#131E37" stroke-width="5"/>
+  <path d="M58.5 67.5l6.5 6.5 12.5-13" fill="none" stroke="#131E37" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

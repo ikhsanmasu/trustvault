@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Reveal } from "@/components/landing/reveal";
 
 function scrollTo(id: string) {
   const el = document.getElementById(id);
@@ -19,10 +20,23 @@ function VerificationReportMock() {
   return (
     <div className="relative w-full max-w-md mx-auto select-none" aria-hidden="true">
       {/* Soft glow behind the card */}
-      <div className="absolute -inset-8 rounded-[2rem] bg-gradient-to-br from-primary/10 via-transparent to-secondary/10 blur-2xl" />
+      <div className="absolute -inset-10 rounded-[2.5rem] bg-gradient-to-br from-primary/15 via-transparent to-secondary/15 blur-3xl" />
+
+      {/* Depth layer behind the card */}
+      <div className="absolute inset-0 translate-x-4 translate-y-4 rotate-[2deg] rounded-2xl border border-border/60 bg-card/50" />
 
       {/* Report card */}
-      <div className="relative rounded-2xl border border-border bg-card shadow-elevation-4 overflow-hidden">
+      <div className="relative rotate-[-1deg] rounded-2xl border border-border bg-card shadow-elevation-4 overflow-hidden transition-transform duration-500 hover:rotate-0">
+        {/* Window chrome */}
+        <div className="flex items-center gap-1.5 border-b border-border bg-muted/50 px-4 py-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-destructive/40" />
+          <span className="h-2.5 w-2.5 rounded-full bg-warning/40" />
+          <span className="h-2.5 w-2.5 rounded-full bg-success/40" />
+          <span className="ml-3 font-hash text-[10px] text-muted-foreground/70">
+            intrustvault — verification report
+          </span>
+        </div>
+
         {/* Card header */}
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -43,9 +57,6 @@ function VerificationReportMock() {
               Compared against verified baseline · v3
             </p>
           </div>
-          <span className="ml-auto shrink-0 rounded-full bg-muted px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Report
-          </span>
         </div>
 
         {/* Deterministic checks */}
@@ -146,9 +157,9 @@ export function Hero() {
       />
 
       <div className="relative section-container pt-16 pb-24 sm:pt-24 sm:pb-28 lg:pt-28 lg:pb-36">
-        <div className="grid lg:grid-cols-[1.1fr_1fr] gap-14 lg:gap-16 items-center">
+        <div className="grid lg:grid-cols-[1.1fr_1fr] gap-14 lg:gap-20 items-center">
           {/* Text content */}
-          <div className="text-center lg:text-left">
+          <Reveal className="text-center lg:text-left">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 mb-7 shadow-elevation-1">
               <span className="h-1.5 w-1.5 rounded-full bg-secondary" />
               <span className="text-xs font-semibold tracking-wide text-muted-foreground">
@@ -156,26 +167,24 @@ export function Hero() {
               </span>
             </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-extrabold tracking-tight text-foreground leading-[1.08] text-balance">
+            <h1 className="font-display text-[2.6rem] sm:text-6xl lg:text-[4rem] font-semibold tracking-tight text-foreground leading-[1.05] text-balance">
               Know when a document change{" "}
-              <span className="relative whitespace-nowrap text-secondary">
-                actually matters
-              </span>
+              <em className="text-secondary">actually matters</em>
             </h1>
 
-            <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 leading-relaxed">
+            <p className="mt-7 text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 leading-relaxed">
               Any tool can tell you a file changed. InTrustVault tells you
               whether the change is <strong className="font-semibold text-foreground">material</strong> —
               a shifted payment amount, an altered obligation — or just cosmetic
               noise. With cryptographic proof behind every verdict.
             </p>
 
-            <div className="mt-9 flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
+            <div className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
               <Link
                 href="/register"
                 className={cn(
                   buttonVariants({ variant: "default", size: "lg" }),
-                  "w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold shadow-lg shadow-secondary/20 h-12 px-8 text-base",
+                  "w-full sm:w-auto rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold shadow-lg shadow-secondary/25 h-12 px-8 text-base",
                 )}
               >
                 Start verifying free
@@ -185,7 +194,7 @@ export function Hero() {
                 onClick={() => scrollTo("how-it-works")}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "lg" }),
-                  "w-full sm:w-auto border-border text-foreground hover:bg-accent h-12 px-8 text-base cursor-pointer",
+                  "w-full sm:w-auto rounded-full border-border text-foreground hover:bg-accent h-12 px-8 text-base cursor-pointer",
                 )}
               >
                 See how it works
@@ -196,7 +205,7 @@ export function Hero() {
             </div>
 
             {/* Honest trust indicators */}
-            <ul className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-2 justify-center lg:justify-start text-sm text-muted-foreground">
+            <ul className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-2 justify-center lg:justify-start text-sm text-muted-foreground">
               {[
                 "Free plan — no credit card",
                 "Tamper-evident, on-chain proofs",
@@ -210,12 +219,12 @@ export function Hero() {
                 </li>
               ))}
             </ul>
-          </div>
+          </Reveal>
 
           {/* Visual: product-representative verification report */}
-          <div className="hidden md:flex items-center justify-center lg:justify-end px-4">
+          <Reveal delay={150} className="hidden md:flex items-center justify-center lg:justify-end px-4">
             <VerificationReportMock />
-          </div>
+          </Reveal>
         </div>
       </div>
     </section>

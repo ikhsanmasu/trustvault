@@ -25,9 +25,32 @@ export function IconBrand({ className }: IconProps) {
       aria-label="InTrustVault"
     >
       <title>InTrustVault</title>
-      <rect width="32" height="32" rx="8" className="fill-primary" />
-      <path d="M16 6L8 10V17C8 22.5 16 26 16 26C16 26 24 22.5 24 17V10L16 6Z" className="fill-secondary" opacity="0.9" />
-      <path d="M16 11L11 13.5V17.8C11 21 16 23.5 16 23.5C16 23.5 21 21 21 17.8V13.5L16 11Z" className="fill-primary" />
+      <defs>
+        <linearGradient id="itv-brand-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#24345C" />
+          <stop offset="100%" stopColor="#111C33" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="8" fill="url(#itv-brand-bg)" />
+      {/* Document sheet with folded corner */}
+      <path
+        d="M8 8.6c0-1.7 1.3-3 3-3h6l4.6 4.6v11.6c0 1.7-1.3 3-3 3H11c-1.7 0-3-1.3-3-3V8.6z"
+        fill="#F7F8FC"
+      />
+      <path d="M17 5.6l4.6 4.6h-3c-.9 0-1.6-.7-1.6-1.6v-3z" fill="#C6CDDE" />
+      {/* Text lines */}
+      <rect x="10.5" y="13" width="7" height="1.6" rx="0.8" fill="#24345C" opacity="0.4" />
+      <rect x="10.5" y="16.5" width="5.5" height="1.6" rx="0.8" fill="#24345C" opacity="0.25" />
+      {/* Gold verification seal */}
+      <circle cx="21.5" cy="21.5" r="6.8" fill="#D9A93F" stroke="#131E37" strokeWidth="1.6" />
+      <path
+        d="M18.7 21.7l2.1 2.1 4-4.3"
+        fill="none"
+        stroke="#131E37"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

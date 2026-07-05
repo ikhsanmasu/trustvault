@@ -1,5 +1,9 @@
+import { SectionHeader } from "@/components/landing/section-header";
+import { Reveal } from "@/components/landing/reveal";
+
 const principles = [
   {
+    number: "01",
     title: "Deterministic first, AI second",
     description:
       "Exact cryptographic checks always run before any AI call. Identical files resolve with certainty — instantly and at zero AI cost. The model is only consulted for the judgment hashes cannot make.",
@@ -15,6 +19,7 @@ const principles = [
     ),
   },
   {
+    number: "02",
     title: "Always a verified baseline",
     description:
       "Comparisons are never made against an arbitrary copy. Every verdict is anchored to a previously stored, verified version — so the chain of custody never drifts.",
@@ -30,6 +35,7 @@ const principles = [
     ),
   },
   {
+    number: "03",
     title: "Evidence, not vibes",
     description:
       "Every material verdict cites the exact clause that changed and states its confidence. Cosmetic changes are listed too — nothing is hidden behind a score you cannot inspect.",
@@ -60,35 +66,36 @@ export function Trust() {
       />
 
       <div className="relative section-container">
-        <div className="text-center max-w-2xl mx-auto">
-          <span className="text-sm font-bold text-secondary uppercase tracking-widest">
-            Why trust the verdict
-          </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-primary-foreground text-balance">
-            An AI opinion is only useful if you can audit it
-          </h2>
-          <p className="mt-4 text-lg text-primary-foreground/65 leading-relaxed">
-            InTrustVault is built on three rules that keep every verdict
-            explainable — to you, your reviewers, and your auditors.
-          </p>
-        </div>
+        <Reveal>
+          <SectionHeader
+            dark
+            eyebrow="Why trust the verdict"
+            title="An AI opinion is only useful if you can audit it"
+            description="InTrustVault is built on three rules that keep every verdict explainable — to you, your reviewers, and your auditors."
+          />
+        </Reveal>
 
         <div className="mt-16 grid gap-6 lg:grid-cols-3">
-          {principles.map((p) => (
-            <div
-              key={p.title}
-              className="rounded-2xl border border-primary-foreground/10 bg-primary-foreground/[0.04] p-7 backdrop-blur-sm"
-            >
-              <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-secondary/15 text-secondary">
-                {p.icon}
+          {principles.map((p, index) => (
+            <Reveal key={p.title} delay={index * 90} className="h-full">
+              <div className="relative h-full rounded-2xl border border-primary-foreground/10 bg-primary-foreground/[0.04] p-7 backdrop-blur-sm">
+                <span
+                  className="font-display absolute right-6 top-5 text-4xl font-semibold text-primary-foreground/10"
+                  aria-hidden="true"
+                >
+                  {p.number}
+                </span>
+                <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-secondary/15 text-secondary">
+                  {p.icon}
+                </div>
+                <h3 className="mt-5 text-lg font-semibold text-primary-foreground">
+                  {p.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-primary-foreground/60">
+                  {p.description}
+                </p>
               </div>
-              <h3 className="mt-5 text-lg font-semibold text-primary-foreground">
-                {p.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-primary-foreground/60">
-                {p.description}
-              </p>
-            </div>
+            </Reveal>
           ))}
         </div>
       </div>

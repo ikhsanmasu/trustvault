@@ -72,7 +72,7 @@ export function LandingNav() {
             href="/login"
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
-              "hidden sm:inline-flex border-border hover:bg-accent",
+              "hidden sm:inline-flex rounded-full border-border hover:bg-accent",
             )}
           >
             Sign in
@@ -81,7 +81,7 @@ export function LandingNav() {
             href="/register"
             className={cn(
               buttonVariants({ variant: "default", size: "sm" }),
-              "bg-secondary text-secondary-foreground hover:bg-secondary/90 font-semibold shadow-sm",
+              "rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/90 font-semibold shadow-sm",
             )}
           >
             Get started

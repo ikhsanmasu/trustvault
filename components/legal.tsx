@@ -17,7 +17,7 @@ export function LegalHeader({
       <span className="text-sm font-bold text-secondary uppercase tracking-widest">
         {eyebrow}
       </span>
-      <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-balance">
+      <h1 className="font-display mt-3 text-3xl sm:text-[2.6rem] font-semibold leading-[1.15] text-foreground text-balance">
         {title}
       </h1>
       {updated && (
