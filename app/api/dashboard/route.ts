@@ -92,35 +92,15 @@ export async function GET(): Promise<
   // -------------------------------------------------------------------------
   const serviceClient = createServiceClient();
 
-  // Count active shares by joining through projects in the tenant,
-  // and also include shares with null project_id whose documents belong to tenant.
-  const { data: tenantProjects } = await serviceClient
-    .from("projects")
-    .select("id")
-    .eq("tenant_id", tenantId);
-  const projectIds = (tenantProjects ?? []).map(
-    (p: { id: string }) => p.id,
-  );
-
   let activeShares = 0;
   let totalChunks = 0;
 
-  // active_shares: count shares in tenant's projects + shares with null project_id
+  // active_shares: count all active share links
   {
-    let sharesQuery = serviceClient
+    const { count: sharesCount, error: sharesErr } = await serviceClient
       .from("shared_links")
       .select("id", { count: "exact", head: true })
       .eq("is_active", true);
-
-    if (projectIds.length > 0) {
-      sharesQuery = sharesQuery.or(
-        `project_id.in.(${projectIds.join(",")}),project_id.is.null`,
-      );
-    } else {
-      sharesQuery = sharesQuery.is("project_id", null);
-    }
-
-    const { count: sharesCount, error: sharesErr } = await sharesQuery;
     if (!sharesErr) activeShares = sharesCount ?? 0;
   }
 

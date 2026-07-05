@@ -89,7 +89,7 @@ export async function POST(
       // 3a. Fetch document (RLS ensures access)
       const { data: document, error: docError } = await supabase
         .from("documents")
-        .select("id, project_id, extracted_text, name")
+        .select("id, extracted_text, name")
         .eq("id", documentId)
         .single();
 

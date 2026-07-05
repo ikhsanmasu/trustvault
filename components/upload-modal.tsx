@@ -13,14 +13,13 @@ import { cn } from "@/lib/utils";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  projectId?: string;
   onSuccess: () => void;
 }
 
-export function UploadModal({ open, onOpenChange, projectId, onSuccess }: Props) {
+export function UploadModal({ open, onOpenChange, onSuccess }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const { files, addFiles, removeFile, updateFileName, clearFiles, uploadAll, status, result, error } = useBulkUpload(projectId ?? "");
+  const { files, addFiles, removeFile, updateFileName, clearFiles, uploadAll, status, result, error } = useBulkUpload();
   const [labels, setLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [selectedLabelIds, setSelectedLabelIds] = useState<Set<string>>(new Set());
   const [newLabelName, setNewLabelName] = useState("");

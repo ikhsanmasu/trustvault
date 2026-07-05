@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, requireProjectRole, getUserTenantId } from "@/lib/supabase/auth";
+import { requireAuth, getUserTenantId } from "@/lib/supabase/auth";
 import {
   generateEmbedding,
   buildRAGPrompt,
@@ -59,7 +59,6 @@ export async function POST(
   }
 
   const sessionId = body.sessionId as string | undefined;
-  const projectId = body.projectId as string | undefined;
   const message = body.message as string | undefined;
   const documentIds = body.documentIds as string[] | undefined;
   const customPrompt = body.customPrompt as string | undefined;
@@ -107,22 +106,14 @@ export async function POST(
     }
   }
 
-  // -- 3. Verify project membership (if projectId provided) ------------------
-  if (projectId) {
-    const roleCheck = await requireProjectRole(supabase, user.id, projectId, [
-      "admin", "editor", "viewer",
-    ]);
-    if (!roleCheck.ok) return roleCheck.response;
-  }
-
-  // -- 4. Resolve/create session --------------------------------------------
+  // -- 3. Resolve/create session --------------------------------------------
   let resolvedSessionId: string;
 
   if (sessionId) {
     // Fetch existing session, verify ownership
     const { data: existingSession, error: sessionError } = await supabase
       .from("chat_sessions")
-      .select("id, project_id, user_id")
+      .select("id, user_id")
       .eq("id", sessionId)
       .single();
 
@@ -154,7 +145,6 @@ export async function POST(
     const { data: newSession, error: createError } = await supabase
       .from("chat_sessions")
       .insert({
-        project_id: projectId,
         user_id: user.id,
         title,
       })
@@ -194,7 +184,6 @@ export async function POST(
 
   // -- 6. Capture state for the streaming closure ---------------------------
   const capturedSessionId = resolvedSessionId;
-  const capturedProjectId = projectId;
 
   // -- 7. Build and return SSE stream ---------------------------------------
   const stream = new ReadableStream({
@@ -227,10 +216,8 @@ export async function POST(
           if (docIdList && docIdList.length > 0) {
             // Filter to only chunks from selected knowledge-base documents
             chunkQuery = chunkQuery.in("document_id", docIdList);
-          } else if (capturedProjectId) {
-            chunkQuery = chunkQuery.eq("project_id", capturedProjectId);
-          }
-          // If neither documentIds nor projectId, RLS + tenant scoping handles access
+              }
+          // RLS + tenant scoping handles access
 
           const { data: allChunks, error: chunksError } = await chunkQuery;
 

@@ -116,10 +116,9 @@ async function main() {
 
   // ── 3. Add user as admin of demo project ─────────────────────────────
   const { error: memberErr } = await adminClient.from("project_members").upsert({
-    project_id: DEMO_PROJECT,
     user_id: DEMO_USER_ID,
     role: "admin",
-  }, { onConflict: "project_id,user_id" });
+  });
 
   if (memberErr) {
     // Membership may already exist — non-fatal
@@ -183,8 +182,7 @@ async function main() {
         file_size_bytes: buffer.length,
         file_type: mimeType,
         tenant_id: DEMO_TENANT,
-        project_id: DEMO_PROJECT,
-        uploaded_by: DEMO_USER_ID,
+            uploaded_by: DEMO_USER_ID,
       });
       if (dbErr) { console.error(`  ❌ ${filename}: DB insert failed — ${dbErr.message}`); continue; }
       console.log(`  ✅ ${filename} (${(buffer.length / 1024).toFixed(1)} KB, ${mimeType})`);

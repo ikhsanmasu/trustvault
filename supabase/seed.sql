@@ -14,7 +14,6 @@ INSERT INTO public.projects (id, tenant_id, name, description) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- -- Demo documents (multi-format P3) -----------------------------------------------
-INSERT INTO public.documents (id, name, storage_path, binary_hash, text_hash, extracted_text, file_size_bytes, file_type, tenant_id, project_id, uploaded_by)
 VALUES
 -- --- PDFs ---
 (

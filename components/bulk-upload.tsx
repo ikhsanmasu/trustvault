@@ -20,11 +20,10 @@ import type { BulkUploadItem } from "@/lib/api-client";
 import { formatBytes } from "@/lib/utils";
 
 interface BulkUploadProps {
-  projectId?: string;
   onComplete?: () => void;
 }
 
-export default function BulkUpload({ projectId = "", onComplete }: BulkUploadProps) {
+export default function BulkUpload({ onComplete }: BulkUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     files,
@@ -36,7 +35,7 @@ export default function BulkUpload({ projectId = "", onComplete }: BulkUploadPro
     status,
     result,
     error,
-  } = useBulkUpload(projectId);
+  } = useBulkUpload();
 
   const [dragOver, setDragOver] = useState(false);
 

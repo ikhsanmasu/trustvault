@@ -47,13 +47,13 @@ CREATE INDEX IF NOT EXISTS projects_tenant_id_idx ON public.projects (tenant_id)
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.project_members (
   id          uuid          NOT NULL DEFAULT gen_random_uuid(),
-  project_id  uuid          NOT NULL,
+  NULL /* was project_id */  uuid          NOT NULL,
   user_id     uuid          NOT NULL,
   role        text          NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
   created_at  timestamptz   NOT NULL DEFAULT now(),
   CONSTRAINT project_members_pkey PRIMARY KEY (id),
-  CONSTRAINT project_members_project_user_unique UNIQUE (project_id, user_id),
-  CONSTRAINT project_members_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE,
+  CONSTRAINT project_members_project_user_unique UNIQUE (NULL /* was project_id */, user_id),
+  CONSTRAINT project_members_NULL /* was project_id */_fkey FOREIGN KEY (NULL /* was project_id */) REFERENCES public.projects(id) ON DELETE CASCADE,
   CONSTRAINT project_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS project_members_user_id_idx ON public.project_members (user_id);
@@ -87,8 +87,8 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
     UPDATE public.documents
     SET tenant_id = DEFAULT_TENANT_ID,
-        project_id = DEFAULT_PROJECT_ID
-    WHERE tenant_id IS NULL OR project_id IS NULL;
+        NULL /* was project_id */ = DEFAULT_PROJECT_ID
+    WHERE tenant_id IS NULL OR NULL /* was project_id */ IS NULL;
   END IF;
 END $$;
 
@@ -109,10 +109,10 @@ BEGIN
 END $$;
 
 -- --------------------------------------------------------------------------
--- 8. MAKE tenant_id AND project_id NOT NULL ON DOCUMENTS
+-- 8. MAKE tenant_id AND NULL /* was project_id */ NOT NULL ON DOCUMENTS
 -- --------------------------------------------------------------------------
 ALTER TABLE public.documents ALTER COLUMN tenant_id SET NOT NULL;
-ALTER TABLE public.documents ALTER COLUMN project_id SET NOT NULL;
+ALTER TABLE public.documents ALTER COLUMN NULL /* was project_id */ SET NOT NULL;
 
 -- --------------------------------------------------------------------------
 -- 9. ADD FOREIGN KEY CONSTRAINTS ON DOCUMENTS (idempotent)
@@ -123,16 +123,16 @@ BEGIN
     ALTER TABLE public.documents ADD CONSTRAINT documents_tenant_id_fkey
       FOREIGN KEY (tenant_id) REFERENCES public.tenants(id);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_project_id_fkey') THEN
-    ALTER TABLE public.documents ADD CONSTRAINT documents_project_id_fkey
-      FOREIGN KEY (project_id) REFERENCES public.projects(id);
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_NULL /* was project_id */_fkey') THEN
+    ALTER TABLE public.documents ADD CONSTRAINT documents_NULL /* was project_id */_fkey
+      FOREIGN KEY (NULL /* was project_id */) REFERENCES public.projects(id);
   END IF;
 END $$;
 
 -- --------------------------------------------------------------------------
 -- 10. INDEX ON DOCUMENTS
 -- --------------------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS documents_project_id_idx ON public.documents (project_id);
+CREATE INDEX IF NOT EXISTS documents_NULL /* was project_id */_idx ON public.documents (NULL /* was project_id */);
 
 -- --------------------------------------------------------------------------
 -- 11. RLS HELPER FUNCTIONS
@@ -142,20 +142,20 @@ RETURNS uuid AS $$
   SELECT tenant_id FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = 'public, auth, pg_catalog';
 
-CREATE OR REPLACE FUNCTION public.get_project_role(p_project_id uuid)
+CREATE OR REPLACE FUNCTION public.get_project_role(p_NULL /* was project_id */ uuid)
 RETURNS text AS $$
   SELECT role FROM public.project_members
-  WHERE project_id = p_project_id AND user_id = auth.uid();
+  WHERE NULL /* was project_id */ = p_NULL /* was project_id */ AND user_id = auth.uid();
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = 'public, auth, pg_catalog';
 
-CREATE OR REPLACE FUNCTION public.is_project_member(p_project_id uuid, p_user_id uuid)
+CREATE OR REPLACE FUNCTION public.is_project_member(p_NULL /* was project_id */ uuid, p_user_id uuid)
 RETURNS boolean AS $$
-  SELECT EXISTS (SELECT 1 FROM public.project_members WHERE project_id = p_project_id AND user_id = p_user_id);
+  SELECT EXISTS (SELECT 1 FROM public.project_members WHERE NULL /* was project_id */ = p_NULL /* was project_id */ AND user_id = p_user_id);
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = 'public, auth, pg_catalog';
 
-CREATE OR REPLACE FUNCTION public.has_project_role(p_project_id uuid, p_user_id uuid, p_role text)
+CREATE OR REPLACE FUNCTION public.has_project_role(p_NULL /* was project_id */ uuid, p_user_id uuid, p_role text)
 RETURNS boolean AS $$
-  SELECT EXISTS (SELECT 1 FROM public.project_members WHERE project_id = p_project_id AND user_id = p_user_id AND role = p_role);
+  SELECT EXISTS (SELECT 1 FROM public.project_members WHERE NULL /* was project_id */ = p_NULL /* was project_id */ AND user_id = p_user_id AND role = p_role);
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = 'public, auth, pg_catalog';
 
 CREATE OR REPLACE FUNCTION public.is_authenticated()

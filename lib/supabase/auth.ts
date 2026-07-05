@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { setMonitoringUser, captureError } from "@/lib/monitoring";
 import { apiError } from "@/lib/utils";
-import type { ErrorResponse, Role, TenantRole } from "@/lib/types";
+import type { ErrorResponse, TenantRole } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Auth result types
@@ -21,22 +21,6 @@ export type AuthFailure = {
 };
 
 export type AuthResult = AuthSuccess | AuthFailure;
-
-// ---------------------------------------------------------------------------
-// Role check result types
-// ---------------------------------------------------------------------------
-
-export type RoleSuccess = {
-  ok: true;
-  role: Role;
-};
-
-export type RoleFailure = {
-  ok: false;
-  response: NextResponse<ErrorResponse>;
-};
-
-export type RoleResult = RoleSuccess | RoleFailure;
 
 // ---------------------------------------------------------------------------
 // requireAuth — validate session, return user + user-scoped client
@@ -74,53 +58,6 @@ export async function requireAuth(): Promise<AuthResult> {
   });
 
   return { ok: true, user, supabase };
-}
-
-// ---------------------------------------------------------------------------
-// requireProjectRole — check RBAC for a project
-// ---------------------------------------------------------------------------
-
-/**
- * Checks that the given user has one of the allowed roles in the given
- * project by querying the `project_members` table.
- *
- * Returns `{ ok: true, role }` on success.
- * Returns `{ ok: false, response }` with a 403 or 404 response on failure.
- *
- * The `supabase` client should be the user-scoped client (from `requireAuth()`)
- * so that RLS is enforced. RLS on `project_members` only lets users see
- * memberships for projects they belong to.
- */
-export async function requireProjectRole(
-  supabase: SupabaseClient,
-  userId: string,
-  projectId: string,
-  allowedRoles: Role[],
-): Promise<RoleResult> {
-  const { data: member, error } = await supabase
-    .from("project_members")
-    .select("role")
-    .eq("project_id", projectId)
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !member) {
-    // RLS may have filtered the row, or the project doesn't exist.
-    // Return 403 to avoid leaking whether the project exists (per api-spec).
-    return {
-      ok: false,
-      response: apiError("You do not have access to this project", "FORBIDDEN", 403) as NextResponse<ErrorResponse>,
-    };
-  }
-
-  if (!allowedRoles.includes(member.role as Role)) {
-    return {
-      ok: false,
-      response: apiError("Insufficient permissions for this operation", "FORBIDDEN", 403) as NextResponse<ErrorResponse>,
-    };
-  }
-
-  return { ok: true, role: member.role as Role };
 }
 
 // ---------------------------------------------------------------------------

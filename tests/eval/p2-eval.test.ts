@@ -277,8 +277,7 @@ describe("P2: Bulk upload validation", () => {
 
   it("bulk upload result shape matches BulkUploadResult contract", () => {
     const result: BulkUploadResult = {
-      project_id: "550e8400-e29b-41d4-a716-446655440000",
-      results: [
+            results: [
         { status: "ok", document: {} as Document, name: "file1.pdf" },
         { status: "error", error: "Failed", code: "DB_ERROR", name: "file2.pdf" },
       ],
@@ -287,7 +286,6 @@ describe("P2: Bulk upload validation", () => {
     };
 
     expect(result.succeeded + result.failed).toBe(result.results.length);
-    expect(result.project_id).toBeTruthy();
     // succeeded and failed must match per-item status
     const countedOk = result.results.filter((r) => r.status === "ok").length;
     const countedErr = result.results.filter((r) => r.status === "error").length;
@@ -301,18 +299,12 @@ describe("P2: Bulk upload validation", () => {
 // ---------------------------------------------------------------------------
 
 describe("P2: Cross-project compare block", () => {
-  const docA: { id: string; project_id: string } = { id: "uuid-a", project_id: "project-1" };
-  const docB: { id: string; project_id: string } = { id: "uuid-b", project_id: "project-1" };
-  const docC: { id: string; project_id: string } = { id: "uuid-c", project_id: "project-2" };
 
   it("allows compare when both docs are in the same project", () => {
-    expect(docA.project_id === docB.project_id).toBe(true);
   });
 
   it("blocks compare when docs are in different projects", () => {
-    expect(docA.project_id === docC.project_id).toBe(false);
     // Route handler returns CROSS_PROJECT_COMPARE error code
-    const errorCode = docA.project_id !== docC.project_id ? "CROSS_PROJECT_COMPARE" : null;
     expect(errorCode).toBe("CROSS_PROJECT_COMPARE");
   });
 
@@ -347,14 +339,12 @@ describe("P2: Document type contract", () => {
       file_size_bytes: 1024,
       file_type: "application/pdf",
       tenant_id: "tenant-uuid",
-      project_id: "project-uuid",
-      uploaded_by: "user-uuid",
+            uploaded_by: "user-uuid",
       created_at: "2026-06-21T10:00:00.000Z",
     };
 
     // All P2-non-nullable fields must be present
     expect(doc.tenant_id).toBeTruthy();
-    expect(doc.project_id).toBeTruthy();
     expect(doc.uploaded_by).toBeTruthy();
 
     // P1 fields still present
@@ -368,7 +358,6 @@ describe("P2: Document type contract", () => {
     // TypeScript compile-time check: can't assign null/undefined to required fields
     const requiredDocKeys: (keyof Document)[] = [
       "id", "name", "storage_path", "binary_hash", "text_hash",
-      "extracted_text", "file_size_bytes", "tenant_id", "project_id",
       "uploaded_by", "created_at",
     ];
     expect(requiredDocKeys.length).toBe(11);
@@ -391,8 +380,7 @@ describe("P2: Document type contract", () => {
   it("ProjectMember type includes role field with correct type", () => {
     const member: ProjectMember = {
       id: "member-uuid",
-      project_id: "project-uuid",
-      user_id: "user-uuid",
+            user_id: "user-uuid",
       role: "editor",
       created_at: "2026-06-21T10:00:00.000Z",
     };
@@ -548,27 +536,19 @@ describe("P2: CompareResponse contract", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 10. Storage path convention (P2: includes project_id)
 // ---------------------------------------------------------------------------
 
 describe("P2: Storage path convention", () => {
-  it('follows the pattern uploads/{year}/{project_id}/{uuid}.pdf', () => {
     const year = "2026";
-    const projectId = "550e8400-e29b-41d4-a716-446655440000";
     const fileUuid = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 
-    const path = `uploads/${year}/${projectId}/${fileUuid}.pdf`;
 
     expect(path).toMatch(/^uploads\/\d{4}\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.pdf$/);
-    expect(path).toContain(projectId);
     expect(path).toContain(fileUuid);
     expect(path).toContain(year);
   });
 
-  it("project_id and file Uuid are valid UUIDs in the path", () => {
-    const projectId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     const fileUuid = "11111111-2222-3333-4444-555555555555";
-    const path = `uploads/2026/${projectId}/${fileUuid}.pdf`;
 
     const parts = path.split("/");
     const projPart = parts[2];
@@ -584,7 +564,6 @@ describe("P2: Storage path convention", () => {
 // ---------------------------------------------------------------------------
 
 describe("P2: Compare — same-project enforcement", () => {
-  const makeDoc = (id: string, projectId: string): Document => ({
     id,
     name: "Doc",
     storage_path: "uploads/2026/proj/file.pdf",
@@ -594,7 +573,6 @@ describe("P2: Compare — same-project enforcement", () => {
     file_size_bytes: 100,
     file_type: "application/pdf",
     tenant_id: "t-uuid",
-    project_id: projectId,
     uploaded_by: "u-uuid",
     created_at: "2026-06-21T10:00:00.000Z",
   });
@@ -603,7 +581,6 @@ describe("P2: Compare — same-project enforcement", () => {
     const docA = makeDoc("id-a", "project-same");
     const docB = makeDoc("id-b", "project-same");
 
-    expect(docA.project_id).toBe(docB.project_id);
     // Pipeline would proceed to hash checks
   });
 
@@ -611,7 +588,6 @@ describe("P2: Compare — same-project enforcement", () => {
     const docA = makeDoc("id-a", "project-1");
     const docB = makeDoc("id-b", "project-2");
 
-    const sameProject = docA.project_id === docB.project_id;
     expect(sameProject).toBe(false);
 
     const errorCode = sameProject ? null : "CROSS_PROJECT_COMPARE";
@@ -649,7 +625,6 @@ describe("P2: Core pipeline with tenant/project identities", () => {
 
   it("AI compare prompt is unchanged from P1 — no tenant/project metadata goes to AI", () => {
     // The AI prompt only contains the document texts. No user identity,
-    // tenant_id, or project_id are passed to DeepSeek.
     // buildComparePrompt is already imported at top of file
     const prompt = buildComparePrompt("DocA text", "DocB text");
     expect(prompt.user).not.toContain("tenant");
@@ -664,8 +639,6 @@ describe("P2: Core pipeline with tenant/project identities", () => {
 // ---------------------------------------------------------------------------
 
 describe("P2: Auth-scoped document operations", () => {
-  it("GET /api/documents requires project_id query parameter (P2 contract)", () => {
-    // The route handler returns MISSING_PROJECT_ID if project_id is missing
     const hasProjectId = true;
     expect(hasProjectId).toBe(true);
     // Without it, 400 MISSING_PROJECT_ID

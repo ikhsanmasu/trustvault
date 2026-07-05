@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
   extracted_text   text          NOT NULL DEFAULT '',
   file_size_bytes  bigint        NOT NULL,
   tenant_id        uuid          NULL DEFAULT NULL,
-  project_id       uuid          NULL DEFAULT NULL,
+  NULL /* was project_id */       uuid          NULL DEFAULT NULL,
   created_at       timestamptz   NOT NULL DEFAULT now(),
 
   CONSTRAINT documents_pkey PRIMARY KEY (id)

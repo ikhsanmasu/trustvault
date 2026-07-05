@@ -41,7 +41,6 @@ describe("P4: Document type contract (soft delete fields)", () => {
       file_size_bytes: 1024,
       file_type: "application/pdf",
       tenant_id: "t-uuid",
-      project_id: "p-uuid",
       uploaded_by: "u-uuid",
       created_at: "2026-06-21T10:00:00.000Z",
       deleted_at: null,
@@ -64,7 +63,6 @@ describe("P4: Document type contract (soft delete fields)", () => {
       file_size_bytes: 0,
       file_type: "application/pdf",
       tenant_id: "t-uuid",
-      project_id: "p-uuid",
       uploaded_by: "u-uuid",
       created_at: "2026-06-21T10:00:00.000Z",
       deleted_at: "2026-06-22T14:30:00.000Z",
@@ -90,7 +88,6 @@ describe("P4: Document type contract (soft delete fields)", () => {
       file_size_bytes: 0,
       file_type: "application/pdf",
       tenant_id: "t",
-      project_id: "p",
       uploaded_by: "u-uuid",
       created_at: "2026-06-21T10:00:00.000Z",
       deleted_at: "2026-06-22T10:00:00.000Z",
@@ -112,7 +109,6 @@ describe("P4: Document type contract (soft delete fields)", () => {
       file_size_bytes: 4096,
       file_type: "application/pdf",
       tenant_id: "t-uuid",
-      project_id: "p-uuid",
       uploaded_by: "u-uuid",
       created_at: "2026-06-22T08:00:00.000Z",
     };
@@ -131,7 +127,6 @@ describe("P4: Document type contract (soft delete fields)", () => {
       file_size_bytes: 100,
       file_type: "application/pdf",
       tenant_id: "t",
-      project_id: "p",
       uploaded_by: "u",
       created_at: "c",
       deleted_at: null,
@@ -152,7 +147,6 @@ describe("P4: Document type contract (soft delete fields)", () => {
       file_size_bytes: 0,
       file_type: "application/pdf",
       tenant_id: "t",
-      project_id: "p",
       uploaded_by: "u",
       created_at: "c",
       deleted_at: "2026-06-22T00:00:00.000Z",
@@ -256,7 +250,6 @@ describe("P4: Soft delete flow contract", () => {
         file_size_bytes: 0,
         file_type: "application/pdf",
         tenant_id: "t-uuid",
-        project_id: "p-uuid",
         uploaded_by: "u-uuid",
         created_at: "2026-06-21T10:00:00.000Z",
         deleted_at: "2026-06-22T10:00:00.000Z",
@@ -329,7 +322,6 @@ describe("P4: Restore flow contract", () => {
         file_size_bytes: 0,
         file_type: "application/pdf",
         tenant_id: "t-uuid",
-        project_id: "p-uuid",
         uploaded_by: "u-uuid",
         created_at: "2026-06-21T10:00:00.000Z",
         deleted_at: null,
@@ -461,11 +453,7 @@ describe("P4: File preview endpoint contracts", () => {
     expect(error.error).toBeTruthy();
   });
 
-  it("GET /api/documents/:id/file queries document for storage_path, project_id, file_type, and name", () => {
-    // Route handler: .select("storage_path, project_id, file_type, name")
-    const selectedFields = ["storage_path", "project_id", "file_type", "name"];
     expect(selectedFields).toContain("storage_path");
-    expect(selectedFields).toContain("project_id");
     expect(selectedFields).toContain("file_type");
     expect(selectedFields).toContain("name");
   });
@@ -627,7 +615,6 @@ describe("P4: GET single document with soft delete awareness", () => {
         file_size_bytes: 0,
         file_type: "application/pdf",
         tenant_id: "t-uuid",
-        project_id: "p-uuid",
         uploaded_by: "u-uuid",
         created_at: "2026-06-21T10:00:00.000Z",
         deleted_at: "2026-06-22T10:00:00.000Z",

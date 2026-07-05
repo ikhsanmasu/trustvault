@@ -18,7 +18,7 @@ function ComparePageInner() {
 
   const docA = searchParams.get("docA") ?? undefined;
   const docB = searchParams.get("docB") ?? undefined;
-  const projectId = searchParams.get("projectId") ?? undefined;
+  
 
   if (!isAuthLoading && !user) {
     router.push("/login");
@@ -42,21 +42,6 @@ function ComparePageInner() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {projectId ? (
-            <Link
-              href={`/projects/${projectId}`}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Back to Group
-            </Link>
-          ) : (
-            <Link
-              href="/projects"
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Groups
-            </Link>
-          )}
           <Link
             href="/"
             className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -69,12 +54,12 @@ function ComparePageInner() {
       <Separator className="mb-6" />
 
       {/* Context hints */}
-      {projectId && (
+      {false && (
         <div className="mb-4 rounded-md border bg-muted/30 px-4 py-3">
           <p className="text-sm text-muted-foreground">
             Comparing documents within group{" "}
             <Badge variant="secondary" className="font-mono text-xs">
-              {projectId.slice(0, 8)}…
+              
             </Badge>
           </p>
         </div>

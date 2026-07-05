@@ -9,7 +9,7 @@
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.shared_links (
   id              uuid          NOT NULL DEFAULT gen_random_uuid(),
-  project_id      uuid          NOT NULL,
+  NULL /* was project_id */      uuid          NOT NULL,
   document_ids    uuid[]        NOT NULL DEFAULT '{}',
   token           text          NOT NULL,
   created_by      uuid          NOT NULL,
@@ -22,14 +22,14 @@ CREATE TABLE IF NOT EXISTS public.shared_links (
 
   CONSTRAINT shared_links_pkey PRIMARY KEY (id),
   CONSTRAINT shared_links_token_unique UNIQUE (token),
-  CONSTRAINT shared_links_project_id_fkey FOREIGN KEY (project_id)
+  CONSTRAINT shared_links_NULL /* was project_id */_fkey FOREIGN KEY (NULL /* was project_id */)
     REFERENCES public.projects(id) ON DELETE CASCADE,
   CONSTRAINT shared_links_created_by_fkey FOREIGN KEY (created_by)
     REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS shared_links_project_id_idx
-  ON public.shared_links (project_id);
+CREATE INDEX IF NOT EXISTS shared_links_NULL /* was project_id */_idx
+  ON public.shared_links (NULL /* was project_id */);
 
 CREATE INDEX IF NOT EXISTS shared_links_token_idx
   ON public.shared_links (token);
@@ -45,7 +45,7 @@ CREATE POLICY "shared_links_select_member" ON public.shared_links
   USING (
     EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = shared_links.project_id AND user_id = auth.uid()
+      WHERE NULL /* was project_id */ = shared_links.NULL /* was project_id */ AND user_id = auth.uid()
     )
   );
 
@@ -56,7 +56,7 @@ CREATE POLICY "shared_links_insert_editor" ON public.shared_links
     created_by = auth.uid()
     AND EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = shared_links.project_id
+      WHERE NULL /* was project_id */ = shared_links.NULL /* was project_id */
         AND user_id = auth.uid()
         AND role IN ('admin', 'editor')
     )
@@ -68,7 +68,7 @@ CREATE POLICY "shared_links_update_editor" ON public.shared_links
   USING (
     EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = shared_links.project_id
+      WHERE NULL /* was project_id */ = shared_links.NULL /* was project_id */
         AND user_id = auth.uid()
         AND role IN ('admin', 'editor')
     )
@@ -79,7 +79,7 @@ CREATE POLICY "shared_links_delete_editor" ON public.shared_links
   USING (
     EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = shared_links.project_id
+      WHERE NULL /* was project_id */ = shared_links.NULL /* was project_id */
         AND user_id = auth.uid()
         AND role IN ('admin', 'editor')
     )

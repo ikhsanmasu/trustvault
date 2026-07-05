@@ -38,7 +38,7 @@ export async function GET(
   // -- 3. Fetch session (RLS ensures user owns it) --------------------------
   const { data: session, error: sessionError } = await supabase
     .from("chat_sessions")
-    .select("id, project_id, user_id, title, created_at, updated_at")
+    .select("id, user_id, title, created_at, updated_at")
     .eq("id", id)
     .single();
 

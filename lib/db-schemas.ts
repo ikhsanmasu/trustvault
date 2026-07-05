@@ -58,7 +58,6 @@ export const DocumentRowSchema = z.object({
   file_size_bytes: z.number().int().nonnegative(),
   file_type: z.string(),
   tenant_id: uuidSchema,
-  project_id: uuidSchema.nullable(),
   uploaded_by: uuidSchema,
   created_at: isoDateSchema,
   deleted_at: nullableIsoDate.optional(),
@@ -91,7 +90,6 @@ export type DocumentChunkRow = z.output<typeof DocumentChunkRowSchema>;
 
 export const ChatSessionRowSchema = z.object({
   id: uuidSchema,
-  project_id: uuidSchema.nullable(),
   user_id: uuidSchema,
   title: z.string(),
   created_at: isoDateSchema,
@@ -117,7 +115,6 @@ export type ChatMessageRow = z.output<typeof ChatMessageRowSchema>;
 
 export const SharedLinkRowSchema = z.object({
   id: uuidSchema,
-  project_id: uuidSchema.nullable(),
   document_ids: z.array(z.string().uuid()),
   token: z.string().length(32),
   created_by: uuidSchema,

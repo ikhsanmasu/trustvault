@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, requireProjectRole } from "@/lib/supabase/auth";
+import { requireAuth } from "@/lib/supabase/auth";
 import type {
   ListSessionsResponse,
   ErrorResponse,
@@ -25,18 +25,14 @@ export async function GET(
 
   const searchParams = request.nextUrl.searchParams;
 
-  // -- 2. Parse optional project_id ------------------------------------------
-  const projectIdRaw = searchParams.get("project_id")?.trim();
-  const projectId = projectIdRaw && isValidUUID(projectIdRaw) ? projectIdRaw : null;
 
   // -- 3. Query sessions (all user sessions if no project filter) ------------
   let query = supabase
     .from("chat_sessions")
-    .select("id, project_id, user_id, title, created_at, updated_at")
+    .select("id, user_id, title, created_at, updated_at")
     .eq("user_id", user.id);
 
-  if (projectId) query = query.eq("project_id", projectId);
-
+  
   const { data: sessions, error } = await query
     .order("updated_at", { ascending: false });
 

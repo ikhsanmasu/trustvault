@@ -61,7 +61,7 @@ BEGIN
       USING (
         EXISTS (
           SELECT 1 FROM public.project_members
-          WHERE project_id = documents.project_id
+          WHERE NULL /* was project_id */ = documents.NULL /* was project_id */
             AND user_id = auth.uid()
             AND role IN ('admin', 'editor')
         )
@@ -69,7 +69,7 @@ BEGIN
       WITH CHECK (
         EXISTS (
           SELECT 1 FROM public.project_members
-          WHERE project_id = documents.project_id
+          WHERE NULL /* was project_id */ = documents.NULL /* was project_id */
             AND user_id = auth.uid()
             AND role IN ('admin', 'editor')
         )

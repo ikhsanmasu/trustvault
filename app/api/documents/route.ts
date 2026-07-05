@@ -254,7 +254,6 @@ export async function POST(
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/documents -- List documents (P2: auth + required project_id filter)
 // ---------------------------------------------------------------------------
 
 export async function GET(
