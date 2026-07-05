@@ -16,7 +16,7 @@ CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
 CREATE TABLE IF NOT EXISTS public.document_chunks (
   id            uuid          NOT NULL DEFAULT gen_random_uuid(),
   document_id   uuid          NOT NULL,
-  project_id    uuid          NOT NULL,
+  NULL /* was project_id */    uuid          NOT NULL,
   chunk_index   integer       NOT NULL,
   content       text          NOT NULL,
   embedding     vector(1536)  NULL DEFAULT NULL,
@@ -26,15 +26,15 @@ CREATE TABLE IF NOT EXISTS public.document_chunks (
   CONSTRAINT document_chunks_pkey PRIMARY KEY (id),
   CONSTRAINT document_chunks_document_id_fkey FOREIGN KEY (document_id)
     REFERENCES public.documents(id) ON DELETE CASCADE,
-  CONSTRAINT document_chunks_project_id_fkey FOREIGN KEY (project_id)
+  CONSTRAINT document_chunks_NULL /* was project_id */_fkey FOREIGN KEY (NULL /* was project_id */)
     REFERENCES public.projects(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS document_chunks_document_id_idx
   ON public.document_chunks (document_id);
 
-CREATE INDEX IF NOT EXISTS document_chunks_project_id_idx
-  ON public.document_chunks (project_id);
+CREATE INDEX IF NOT EXISTS document_chunks_NULL /* was project_id */_idx
+  ON public.document_chunks (NULL /* was project_id */);
 
 -- IVFFlat index for cosine similarity search on embeddings.
 -- Lists = 100 is suitable for up to ~1 million chunks.
@@ -48,21 +48,21 @@ CREATE INDEX IF NOT EXISTS document_chunks_embedding_idx
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.chat_sessions (
   id            uuid          NOT NULL DEFAULT gen_random_uuid(),
-  project_id    uuid          NOT NULL,
+  NULL /* was project_id */    uuid          NOT NULL,
   user_id       uuid          NOT NULL,
   title         text          NOT NULL DEFAULT 'New Chat',
   created_at    timestamptz   NOT NULL DEFAULT now(),
   updated_at    timestamptz   NOT NULL DEFAULT now(),
 
   CONSTRAINT chat_sessions_pkey PRIMARY KEY (id),
-  CONSTRAINT chat_sessions_project_id_fkey FOREIGN KEY (project_id)
+  CONSTRAINT chat_sessions_NULL /* was project_id */_fkey FOREIGN KEY (NULL /* was project_id */)
     REFERENCES public.projects(id) ON DELETE CASCADE,
   CONSTRAINT chat_sessions_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS chat_sessions_project_user_idx
-  ON public.chat_sessions (project_id, user_id);
+  ON public.chat_sessions (NULL /* was project_id */, user_id);
 
 CREATE INDEX IF NOT EXISTS chat_sessions_updated_at_idx
   ON public.chat_sessions (updated_at DESC);
@@ -98,7 +98,7 @@ CREATE POLICY "document_chunks_select_member" ON public.document_chunks
   USING (
     EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = document_chunks.project_id AND user_id = auth.uid()
+      WHERE NULL /* was project_id */ = document_chunks.NULL /* was project_id */ AND user_id = auth.uid()
     )
   );
 
@@ -107,7 +107,7 @@ CREATE POLICY "document_chunks_insert_editor" ON public.document_chunks
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = document_chunks.project_id
+      WHERE NULL /* was project_id */ = document_chunks.NULL /* was project_id */
         AND user_id = auth.uid()
         AND role IN ('admin', 'editor')
     )
@@ -118,7 +118,7 @@ CREATE POLICY "document_chunks_delete_editor" ON public.document_chunks
   USING (
     EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = document_chunks.project_id
+      WHERE NULL /* was project_id */ = document_chunks.NULL /* was project_id */
         AND user_id = auth.uid()
         AND role IN ('admin', 'editor')
     )
@@ -137,7 +137,7 @@ CREATE POLICY "chat_sessions_insert_member" ON public.chat_sessions
     user_id = auth.uid()
     AND EXISTS (
       SELECT 1 FROM public.project_members
-      WHERE project_id = chat_sessions.project_id AND user_id = auth.uid()
+      WHERE NULL /* was project_id */ = chat_sessions.NULL /* was project_id */ AND user_id = auth.uid()
     )
   );
 

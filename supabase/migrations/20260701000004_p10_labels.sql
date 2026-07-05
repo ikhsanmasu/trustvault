@@ -46,7 +46,7 @@ CREATE POLICY "document_labels_select_member" ON public.document_labels
   USING (
     EXISTS (
       SELECT 1 FROM public.documents d
-      JOIN public.project_members pm ON pm.project_id = d.project_id AND pm.user_id = auth.uid()
+      JOIN public.project_members pm ON pm.NULL /* was project_id */ = d.NULL /* was project_id */ AND pm.user_id = auth.uid()
       WHERE d.id = document_labels.document_id
     )
   );
@@ -56,7 +56,7 @@ CREATE POLICY "document_labels_insert_editor" ON public.document_labels
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.documents d
-      JOIN public.project_members pm ON pm.project_id = d.project_id AND pm.user_id = auth.uid()
+      JOIN public.project_members pm ON pm.NULL /* was project_id */ = d.NULL /* was project_id */ AND pm.user_id = auth.uid()
       WHERE d.id = document_labels.document_id AND pm.role IN ('admin', 'editor')
     )
   );
@@ -66,7 +66,7 @@ CREATE POLICY "document_labels_delete_editor" ON public.document_labels
   USING (
     EXISTS (
       SELECT 1 FROM public.documents d
-      JOIN public.project_members pm ON pm.project_id = d.project_id AND pm.user_id = auth.uid()
+      JOIN public.project_members pm ON pm.NULL /* was project_id */ = d.NULL /* was project_id */ AND pm.user_id = auth.uid()
       WHERE d.id = document_labels.document_id AND pm.role IN ('admin', 'editor')
     )
   );

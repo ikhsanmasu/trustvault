@@ -540,7 +540,6 @@ describe("P3: Dashboard endpoint contracts", () => {
             file_size_bytes: 1024,
             file_type: "application/pdf",
             tenant_id: "t-uuid",
-            project_id: "p-uuid",
             uploaded_by: "u-uuid",
             created_at: "2026-06-21T10:00:00.000Z",
           } as Document,
@@ -848,7 +847,6 @@ describe("P3: Document type contract", () => {
       file_size_bytes: 1024,
       file_type: "application/pdf",
       tenant_id: "t-uuid",
-      project_id: "p-uuid",
       uploaded_by: "u-uuid",
       created_at: "2026-06-21T10:00:00.000Z",
     };
@@ -869,7 +867,6 @@ describe("P3: Document type contract", () => {
         file_size_bytes: 100,
         file_type: mime,
         tenant_id: "t-uuid",
-        project_id: "p-uuid",
         uploaded_by: "u-uuid",
         created_at: "2026-06-21T10:00:00.000Z",
       };
@@ -901,7 +898,6 @@ describe("P3: Document type contract", () => {
       file_size_bytes: 0,
       file_type: "application/pdf",
       tenant_id: "t",
-      project_id: "p",
       uploaded_by: "u",
       created_at: "c",
     };
@@ -1121,9 +1117,6 @@ describe("P3: Cross-format hash consistency", () => {
 describe("P3: Dashboard aggregate logic", () => {
   it("project_count derived from project_members filter", () => {
     const memberships = [
-      { project_id: "p-1", user_id: "u-1" },
-      { project_id: "p-2", user_id: "u-1" },
-      { project_id: "p-3", user_id: "u-1" },
     ];
     const count = memberships.filter((m) => m.user_id === "u-1").length;
     expect(count).toBe(3);

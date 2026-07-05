@@ -1,15 +1,15 @@
 -- ============================================================================
--- TrustVault P11: Make project_id optional everywhere
+-- TrustVault P11: Make NULL /* was project_id */ optional everywhere
 -- ============================================================================
 
--- 1. document_chunks: drop NOT NULL on project_id
+-- 1. document_chunks: drop NOT NULL on NULL /* was project_id */
 ALTER TABLE public.document_chunks
-  ALTER COLUMN project_id DROP NOT NULL;
+  ALTER COLUMN NULL /* was project_id */ DROP NOT NULL;
 
--- 2. documents: drop NOT NULL + FK on project_id
+-- 2. documents: drop NOT NULL + FK on NULL /* was project_id */
 ALTER TABLE public.documents
-  DROP CONSTRAINT IF EXISTS documents_project_id_fkey,
-  ALTER COLUMN project_id DROP NOT NULL;
+  DROP CONSTRAINT IF EXISTS documents_NULL /* was project_id */_fkey,
+  ALTER COLUMN NULL /* was project_id */ DROP NOT NULL;
 
 -- 3. Drop old project-scoped RLS policies (will be recreated by backend)
 DROP POLICY IF EXISTS "documents_select_member" ON public.documents;
