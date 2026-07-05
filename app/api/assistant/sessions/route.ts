@@ -5,7 +5,6 @@ import type {
   ErrorResponse,
   ChatSession,
 } from "@/lib/types";
-import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
