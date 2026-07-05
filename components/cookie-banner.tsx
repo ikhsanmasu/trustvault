@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 const STORAGE_KEY = "trustvault-cookie-consent";
 
@@ -21,19 +22,22 @@ export function CookieBanner() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700 p-4">
+    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md p-4 shadow-elevation-3">
       <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <p className="text-sm text-gray-300">
-          We use only essential cookies for authentication. No tracking, analytics, or advertising cookies.
-          See our{" "}
-          <a href="/privacy" className="text-indigo-400 underline hover:text-indigo-300">
+        <p className="text-sm text-muted-foreground">
+          We use only essential cookies for authentication. No tracking,
+          analytics, or advertising cookies. See our{" "}
+          <Link
+            href="/privacy"
+            className="font-medium text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
+          >
             Privacy Policy
-          </a>
+          </Link>
           .
         </p>
         <button
           onClick={accept}
-          className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg shrink-0 transition-colors"
+          className="shrink-0 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           Got it
         </button>

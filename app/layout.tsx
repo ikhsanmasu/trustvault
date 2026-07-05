@@ -4,9 +4,9 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { CookieBanner } from "@/components/cookie-banner";
 
 export const metadata: Metadata = {
-  title: "InTrustVault — Intelligent and trusted vault",
+  title: "InTrustVault — Know when a document change actually matters",
   description:
-    "AI-powered document integrity platform — secure storage, blockchain verification, and intelligent analysis.",
+    "Document-integrity platform for audit, legal, and compliance teams: layered cryptographic verification, on-chain proofs, and AI that judges whether a change is material or cosmetic.",
   icons: {
     icon: "/favicon.svg",
   },
