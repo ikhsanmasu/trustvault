@@ -7,7 +7,6 @@ import type {
   AnchorRequest,
   AnchorResponse,
   ErrorResponse,
-  Document,
 } from "@/lib/types";
 import { isValidUUID } from '@/lib/utils';
 

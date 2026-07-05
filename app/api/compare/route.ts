@@ -17,7 +17,6 @@ import type {
   CompareRequest,
   CompareResponse,
   ErrorResponse,
-  Document,
 } from "@/lib/types";
 import { isValidUUID } from '@/lib/utils';
 

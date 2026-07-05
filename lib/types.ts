@@ -75,6 +75,7 @@ export interface Document {
   file_size_bytes: number;
   file_type: string;
   tenant_id: string;
+  project_id?: string | null; // deprecated — column dropped in P12, kept for backward compat
   uploaded_by: string;
   created_at: string;
   deleted_at?: string | null;
@@ -102,6 +103,7 @@ export interface Project {
 }
 
 export interface ProjectMember {
+  project_id: string; // deprecated
   id: string;
   user_id: string;
   role: Role;
@@ -141,6 +143,7 @@ export interface CompareResponse {
 // ---------------------------------------------------------------------------
 
 export interface BulkUploadItem {
+  project_id?: string | null; // deprecated
   status: "ok" | "error";
   document?: Document;
   error?: string;
@@ -150,6 +153,7 @@ export interface BulkUploadItem {
 }
 
 export interface BulkUploadResult {
+  project_id?: string | null; // deprecated
   results: BulkUploadItem[];
   succeeded: number;
   failed: number;

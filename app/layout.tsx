@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { CookieBanner } from "@/components/cookie-banner";
 
 export const metadata: Metadata = {
   title: "InTrustVault — Intelligent and trusted vault",
@@ -40,6 +41,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background antialiased">
         <ThemeProvider>{children}</ThemeProvider>
+        <CookieBanner />
       </body>
     </html>
   );

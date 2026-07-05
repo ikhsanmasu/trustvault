@@ -32,7 +32,7 @@ const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const CHAT_MODEL = "deepseek-chat";
 
 /** Expected embedding dimension. */
-const EMBEDDING_DIM = 1536;
+// EMBEDDING_DIM removed (unused)
 
 /** System prompt for the AI assistant. */
 const ASSISTANT_SYSTEM_PROMPT = `You are TrustVault AI Assistant, a document-integrity and knowledge assistant.

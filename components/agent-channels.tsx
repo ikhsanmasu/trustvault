@@ -32,7 +32,7 @@ export function AgentChannels({
   channels,
   onConnectWhatsApp,
   onDisconnectWhatsApp,
-  onWhatsAppStatus,
+
   onConnectTelegram,
   onDisconnectTelegram,
   onRemoveChannel,

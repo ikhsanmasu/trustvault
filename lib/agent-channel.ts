@@ -49,7 +49,7 @@ export interface TelegramPlainConfig {
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96 bits recommended for GCM
-const AUTH_TAG_LENGTH = 16; // 128 bits
+// AUTH_TAG_LENGTH removed (unused)
 
 // Per-process random dev key — regenerated on every server restart.
 // This avoids the security risk of a hardcoded fallback key shared across

@@ -6,7 +6,6 @@ import type {
   VerifyRequest,
   VerifyResponse,
   ErrorResponse,
-  Document,
 } from "@/lib/types";
 import { isValidUUID } from '@/lib/utils';
 
