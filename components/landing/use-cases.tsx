@@ -1,3 +1,6 @@
+import { SectionHeader } from "@/components/landing/section-header";
+import { Reveal } from "@/components/landing/reveal";
+
 const useCases = [
   {
     label: "Audit teams",
@@ -68,58 +71,52 @@ export function UseCases() {
   return (
     <section id="use-cases" className="relative bg-muted/40 py-20 sm:py-28">
       <div className="section-container">
-        <div className="text-center max-w-2xl mx-auto">
-          <span className="text-sm font-bold text-secondary uppercase tracking-widest">
-            Who it&apos;s for
-          </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-foreground text-balance">
-            Built for work where a missed change is expensive
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Audit, legal, and compliance teams do not need another alert that
-            something changed. They need to know whether it matters.
-          </p>
-        </div>
+        <Reveal>
+          <SectionHeader
+            eyebrow="Who it's for"
+            title="Built for work where a missed change is expensive"
+            description="Audit, legal, and compliance teams do not need another alert that something changed. They need to know whether it matters."
+          />
+        </Reveal>
 
         {/* Persona cards */}
         <div className="mt-16 grid gap-6 lg:grid-cols-3">
-          {useCases.map((uc) => (
-            <div
-              key={uc.label}
-              className="flex flex-col rounded-2xl border border-border bg-card p-7 transition-all duration-300 hover:shadow-elevation-3 hover:border-secondary/25"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/5 text-primary">
-                  {uc.icon}
+          {useCases.map((uc, index) => (
+            <Reveal key={uc.label} delay={index * 90} className="h-full">
+              <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-7 transition-all duration-300 hover:shadow-elevation-3 hover:border-secondary/25">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/5 text-primary">
+                    {uc.icon}
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-widest text-secondary">
+                    {uc.label}
+                  </span>
                 </div>
-                <span className="text-xs font-bold uppercase tracking-widest text-secondary">
-                  {uc.label}
-                </span>
-              </div>
 
-              <h3 className="mt-5 text-xl font-semibold text-foreground leading-snug">
-                {uc.headline}
-              </h3>
-              <p className="mt-3 flex-1 text-sm text-muted-foreground leading-relaxed">
-                {uc.description}
-              </p>
-
-              {/* Example verdict */}
-              <div className="mt-6 rounded-xl border border-border bg-muted/50 p-4">
-                <span
-                  className={
-                    uc.example.tone === "destructive"
-                      ? "inline-block rounded-md bg-destructive/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-destructive"
-                      : "inline-block rounded-md bg-success/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-success"
-                  }
-                >
-                  {uc.example.verdict}
-                </span>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  {uc.example.text}
+                <h3 className="font-display mt-5 text-xl font-semibold text-foreground leading-snug">
+                  {uc.headline}
+                </h3>
+                <p className="mt-3 flex-1 text-sm text-muted-foreground leading-relaxed">
+                  {uc.description}
                 </p>
+
+                {/* Example verdict */}
+                <div className="mt-6 rounded-xl border border-border bg-muted/50 p-4">
+                  <span
+                    className={
+                      uc.example.tone === "destructive"
+                        ? "inline-block rounded-md bg-destructive/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-destructive"
+                        : "inline-block rounded-md bg-success/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-success"
+                    }
+                  >
+                    {uc.example.verdict}
+                  </span>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    {uc.example.text}
+                  </p>
+                </div>
               </div>
-            </div>
+            </Reveal>
           ))}
         </div>
       </div>

@@ -1,3 +1,6 @@
+import { SectionHeader } from "@/components/landing/section-header";
+import { Reveal } from "@/components/landing/reveal";
+
 const faqs = [
   {
     q: "What does InTrustVault actually verify?",
@@ -29,36 +32,36 @@ export function FAQ() {
   return (
     <section id="faq" className="relative bg-background py-20 sm:py-28">
       <div className="mx-auto max-w-3xl px-6">
-        <div className="text-center">
-          <span className="text-sm font-bold text-secondary uppercase tracking-widest">
-            FAQ
-          </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-balance">
-            Questions worth asking a trust product
-          </h2>
-        </div>
+        <Reveal>
+          <SectionHeader
+            eyebrow="FAQ"
+            title="Questions worth asking a trust product"
+          />
+        </Reveal>
 
-        <div className="mt-12 divide-y divide-border rounded-2xl border border-border bg-card">
-          {faqs.map((faq) => (
-            <details key={faq.q} className="group px-6 py-5">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-base font-semibold text-foreground [&::-webkit-details-marker]:hidden">
-                {faq.q}
-                <svg
-                  className="h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </summary>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                {faq.a}
-              </p>
-            </details>
-          ))}
-        </div>
+        <Reveal delay={100}>
+          <div className="mt-12 divide-y divide-border rounded-2xl border border-border bg-card">
+            {faqs.map((faq) => (
+              <details key={faq.q} className="group px-6 py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-base font-semibold text-foreground [&::-webkit-details-marker]:hidden">
+                  {faq.q}
+                  <svg
+                    className="h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </summary>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  {faq.a}
+                </p>
+              </details>
+            ))}
+          </div>
+        </Reveal>
       </div>
     </section>
   );

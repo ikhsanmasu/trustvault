@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Reveal } from "@/components/landing/reveal";
 
 export function CTA() {
   return (
@@ -12,63 +13,64 @@ export function CTA() {
       />
 
       <div className="section-container">
-        <div className="relative overflow-hidden rounded-3xl bg-primary px-6 py-16 sm:px-12 sm:py-20 lg:px-16">
-          {/* Decorative elements */}
-          <div
-            className="absolute top-0 right-0 w-64 h-64 rounded-full bg-secondary/8 blur-3xl"
-            aria-hidden="true"
-          />
-          <div
-            className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-white/[0.03] blur-3xl"
-            aria-hidden="true"
-          />
+        <Reveal>
+          <div className="relative overflow-hidden rounded-3xl bg-primary px-6 py-16 sm:px-12 sm:py-20 lg:px-16">
+            {/* Decorative elements */}
+            <div
+              className="absolute top-0 right-0 w-64 h-64 rounded-full bg-secondary/8 blur-3xl"
+              aria-hidden="true"
+            />
+            <div
+              className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-white/[0.03] blur-3xl"
+              aria-hidden="true"
+            />
 
-          {/* Gold accent corner lines */}
-          <div
-            className="absolute top-8 left-8 w-16 h-16 border-t-2 border-l-2 border-secondary/20 rounded-tl-2xl"
-            aria-hidden="true"
-          />
-          <div
-            className="absolute bottom-8 right-8 w-16 h-16 border-b-2 border-r-2 border-secondary/20 rounded-br-2xl"
-            aria-hidden="true"
-          />
+            {/* Gold accent corner lines */}
+            <div
+              className="absolute top-8 left-8 w-16 h-16 border-t-2 border-l-2 border-secondary/20 rounded-tl-2xl"
+              aria-hidden="true"
+            />
+            <div
+              className="absolute bottom-8 right-8 w-16 h-16 border-b-2 border-r-2 border-secondary/20 rounded-br-2xl"
+              aria-hidden="true"
+            />
 
-          <div className="relative text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-primary-foreground leading-[1.15] text-balance">
-              The next revision is already on its way.
-              <br className="hidden sm:block" />{" "}
-              <span className="text-secondary">Know if it matters.</span>
-            </h2>
-            <p className="mt-5 text-lg text-primary-foreground/65 leading-relaxed max-w-lg mx-auto">
-              Upload your first document, set a verified baseline, and get a
-              materiality verdict on the next version — in minutes, for free.
-            </p>
-            <div className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center">
-              <Link
-                href="/register"
-                className={cn(
-                  buttonVariants({ variant: "default", size: "lg" }),
-                  "w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold shadow-xl shadow-secondary/10 h-12 px-8 text-base",
-                )}
-              >
-                Start verifying free
-              </Link>
-              <Link
-                href="/login"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "lg" }),
-                  "w-full sm:w-auto bg-primary-foreground/10 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20 hover:border-primary-foreground/50 h-12 px-8 text-base font-medium",
-                )}
-              >
-                Sign in
-              </Link>
+            <div className="relative text-center max-w-2xl mx-auto">
+              <h2 className="font-display text-3xl sm:text-4xl lg:text-[2.9rem] font-semibold tracking-tight text-primary-foreground leading-[1.12] text-balance">
+                The next revision is already on its way.{" "}
+                <em className="text-secondary">Know if it matters.</em>
+              </h2>
+              <p className="mt-5 text-lg text-primary-foreground/65 leading-relaxed max-w-lg mx-auto">
+                Upload your first document, set a verified baseline, and get a
+                materiality verdict on the next version — in minutes, for free.
+              </p>
+              <div className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center">
+                <Link
+                  href="/register"
+                  className={cn(
+                    buttonVariants({ variant: "default", size: "lg" }),
+                    "w-full sm:w-auto rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold shadow-xl shadow-secondary/15 h-12 px-8 text-base",
+                  )}
+                >
+                  Start verifying free
+                </Link>
+                <Link
+                  href="/login"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "lg" }),
+                    "w-full sm:w-auto rounded-full bg-primary-foreground/10 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20 hover:border-primary-foreground/50 h-12 px-8 text-base font-medium",
+                  )}
+                >
+                  Sign in
+                </Link>
+              </div>
+
+              <p className="mt-8 text-sm text-primary-foreground/40">
+                Free plan · No credit card · Deterministic first, AI second
+              </p>
             </div>
-
-            <p className="mt-8 text-sm text-primary-foreground/40">
-              Free plan · No credit card · Deterministic first, AI second
-            </p>
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

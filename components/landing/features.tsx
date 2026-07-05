@@ -1,3 +1,6 @@
+import { SectionHeader } from "@/components/landing/section-header";
+import { Reveal } from "@/components/landing/reveal";
+
 const features = [
   {
     title: "AI materiality verdicts",
@@ -96,48 +99,43 @@ export function Features() {
   return (
     <section id="features" className="relative bg-background py-20 sm:py-28">
       <div className="section-container">
-        {/* Section header */}
-        <div className="text-center max-w-2xl mx-auto">
-          <span className="text-sm font-bold text-secondary uppercase tracking-widest">
-            Features
-          </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-foreground text-balance">
-            Integrity you can prove. Judgment you can check.
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            One vault that stores, fingerprints, and understands your critical
-            documents — built for teams where a missed change is expensive.
-          </p>
-        </div>
+        <Reveal>
+          <SectionHeader
+            eyebrow="Features"
+            title="Integrity you can prove. Judgment you can check."
+            description="One vault that stores, fingerprints, and understands your critical documents — built for teams where a missed change is expensive."
+          />
+        </Reveal>
 
         {/* Feature grid */}
         <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature) => (
-            <div
-              key={feature.title}
-              className={
-                feature.highlight
-                  ? "group relative rounded-2xl border border-secondary/40 bg-accent p-7 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-0.5"
-                  : "group relative rounded-2xl border border-border bg-card p-7 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-0.5 hover:border-secondary/25"
-              }
-            >
+          {features.map((feature, index) => (
+            <Reveal key={feature.title} delay={(index % 3) * 90} className="h-full">
               <div
                 className={
                   feature.highlight
-                    ? "inline-flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-secondary-foreground"
-                    : "inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/5 text-primary transition-colors duration-300 group-hover:bg-secondary/10 group-hover:text-secondary"
+                    ? "group relative h-full rounded-2xl border border-secondary/40 bg-accent p-7 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-0.5"
+                    : "group relative h-full rounded-2xl border border-border bg-card p-7 transition-all duration-300 hover:shadow-elevation-3 hover:-translate-y-0.5 hover:border-secondary/25"
                 }
               >
-                {feature.icon}
-              </div>
+                <div
+                  className={
+                    feature.highlight
+                      ? "inline-flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-secondary-foreground"
+                      : "inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/5 text-primary transition-colors duration-300 group-hover:bg-secondary/10 group-hover:text-secondary"
+                  }
+                >
+                  {feature.icon}
+                </div>
 
-              <h3 className="mt-5 text-lg font-semibold text-foreground">
-                {feature.title}
-              </h3>
-              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                {feature.description}
-              </p>
-            </div>
+                <h3 className="mt-5 text-lg font-semibold text-foreground">
+                  {feature.title}
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                  {feature.description}
+                </p>
+              </div>
+            </Reveal>
           ))}
         </div>
       </div>

@@ -1,3 +1,6 @@
+import { SectionHeader } from "@/components/landing/section-header";
+import { Reveal } from "@/components/landing/reveal";
+
 const steps = [
   {
     number: "01",
@@ -44,25 +47,18 @@ export function HowItWorks() {
       />
 
       <div className="relative section-container">
-        {/* Section header */}
-        <div className="text-center max-w-2xl mx-auto">
-          <span className="text-sm font-bold text-secondary uppercase tracking-widest">
-            How it works
-          </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-foreground text-balance">
-            Deterministic first. AI second.
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Cheap, exact checks run before any AI call — so the expensive
-            judgment is reserved for the one question hashes cannot answer:
-            does this change matter?
-          </p>
-        </div>
+        <Reveal>
+          <SectionHeader
+            eyebrow="How it works"
+            title="Deterministic first. AI second."
+            description="Cheap, exact checks run before any AI call — so the expensive judgment is reserved for the one question hashes cannot answer: does this change matter?"
+          />
+        </Reveal>
 
         {/* Pipeline steps */}
         <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((step, index) => (
-            <div key={step.number} className="relative">
+            <Reveal key={step.number} delay={index * 90} className="relative h-full">
               {/* Connector line (desktop) */}
               {index < steps.length - 1 && (
                 <div
@@ -73,7 +69,7 @@ export function HowItWorks() {
 
               <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6 transition-all duration-300 hover:shadow-elevation-3 hover:border-secondary/25">
                 <div className="flex items-center justify-between">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+                  <span className="font-display flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-base font-semibold text-primary-foreground">
                     {step.number}
                   </span>
                   <span className="font-hash rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
@@ -88,19 +84,21 @@ export function HowItWorks() {
                   {step.description}
                 </p>
               </div>
-            </div>
+            </Reveal>
           ))}
         </div>
 
         {/* Pipeline invariant callout */}
-        <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-secondary/25 bg-accent px-6 py-5 text-center">
-          <p className="text-sm leading-relaxed text-accent-foreground">
-            <span className="font-semibold">The core guarantee:</span> the AI
-            never runs before the hash check, and every comparison is made
-            against a previously verified baseline — never against an
-            unverified copy.
-          </p>
-        </div>
+        <Reveal delay={120}>
+          <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-secondary/25 bg-accent px-6 py-5 text-center">
+            <p className="text-sm leading-relaxed text-accent-foreground">
+              <span className="font-semibold">The core guarantee:</span> the AI
+              never runs before the hash check, and every comparison is made
+              against a previously verified baseline — never against an
+              unverified copy.
+            </p>
+          </div>
+        </Reveal>
       </div>
     </section>
   );

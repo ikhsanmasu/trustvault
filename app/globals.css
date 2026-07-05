@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500..700;1,9..144,500..700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -237,14 +238,19 @@
   .hero-gradient {
     background:
       radial-gradient(
-        ellipse 80% 60% at 50% -10%,
-        hsl(225 40% 55% / 0.08),
-        transparent
+        ellipse 70% 55% at 20% -10%,
+        hsl(225 50% 45% / 0.13),
+        transparent 60%
       ),
       radial-gradient(
-        ellipse 60% 50% at 80% 80%,
-        hsl(42 65% 55% / 0.06),
-        transparent
+        ellipse 55% 45% at 85% 12%,
+        hsl(42 70% 55% / 0.1),
+        transparent 65%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 70% 100%,
+        hsl(225 45% 50% / 0.07),
+        transparent 60%
       ),
       hsl(var(--background));
   }
@@ -335,6 +341,15 @@
   .font-hash {
     font-family: 'JetBrains Mono', 'SFMono-Regular', 'Consolas',
       'Liberation Mono', 'Menlo', monospace;
+  }
+
+  /* ------------------------------------------------------------------
+     Display face — landing & legal headlines (editorial serif)
+     ------------------------------------------------------------------ */
+  .font-display {
+    font-family: 'Fraunces', 'Georgia', serif;
+    font-variation-settings: 'opsz' 60;
+    letter-spacing: -0.015em;
   }
 }
 
