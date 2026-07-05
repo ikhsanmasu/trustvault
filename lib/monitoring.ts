@@ -62,7 +62,6 @@ const _counters = {
   slowOps: 0,
   requests: 0,
 };
-const _startTime = Date.now();
 
 export function incrementCounter(key: keyof typeof _counters): void {
   _counters[key]++;

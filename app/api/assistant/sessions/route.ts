@@ -27,12 +27,11 @@ export async function GET(
 
 
   // -- 3. Query sessions (all user sessions if no project filter) ------------
-  let query = supabase
+  const query = supabase
     .from("chat_sessions")
     .select("id, user_id, title, created_at, updated_at")
     .eq("user_id", user.id);
 
-  
   const { data: sessions, error } = await query
     .order("updated_at", { ascending: false });
 

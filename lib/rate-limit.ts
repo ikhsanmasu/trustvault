@@ -205,13 +205,6 @@ export async function incrementUsage(
   const amount = opts?.amount ?? 1;
   const serviceClient = createServiceClient();
 
-  const column =
-    type === "documents"
-      ? "usage_documents"
-      : type === "llm_calls"
-        ? "usage_llm_calls"
-        : "usage_storage_bytes";
-
   // ── Atomic increment via RPC ──────────────────────────────────────────
   // The DB function increment_tenant_usage(p_tenant_id, p_documents, p_llm_calls, p_storage_bytes)
   // atomically increments usage counters in a single UPDATE.

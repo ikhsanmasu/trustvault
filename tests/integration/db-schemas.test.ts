@@ -47,6 +47,7 @@ describe("DocumentRow Schema", () => {
     file_size_bytes: 2048576,
     file_type: "application/pdf",
     tenant_id: "550e8400-e29b-41d4-a716-446655440001",
+    project_id: "550e8400-e29b-41d4-a716-446655440002",
     uploaded_by: "550e8400-e29b-41d4-a716-446655440003",
     created_at: "2026-07-05T10:30:00.000Z",
     deleted_at: null,
@@ -167,6 +168,7 @@ describe("ProfileRow Schema", () => {
 describe("SharedLinkRow Schema", () => {
   const validShare = {
     id: "550e8400-e29b-41d4-a716-446655440000",
+    project_id: null,
     document_ids: ["550e8400-e29b-41d4-a716-446655440001"],
     token: "a".repeat(32),
     created_by: "550e8400-e29b-41d4-a716-446655440002",
@@ -335,6 +337,7 @@ describe("Schema Round-Trip", () => {
       file_size_bytes: 100,
       file_type: "text/plain",
       tenant_id: "550e8400-e29b-41d4-a716-446655440001",
+      project_id: null,
       uploaded_by: "550e8400-e29b-41d4-a716-446655440002",
       created_at: "2026-07-05T10:30:00.000Z",
       description: null,

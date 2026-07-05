@@ -925,12 +925,14 @@ describe("P2: Bulk upload constraints", () => {
 // ---------------------------------------------------------------------------
 
 describe("P2: Cross-project compare blocking", () => {
+  it("same project_id comparison is allowed", () => {
     const docAProjectId = "project-alpha";
     const docBProjectId = "project-alpha";
     const sameProject = docAProjectId === docBProjectId;
     expect(sameProject).toBe(true);
   });
 
+  it("different project_id comparison is blocked", () => {
     const docAProjectId: string = "project-alpha";
     const docBProjectId: string = "project-beta";
     const sameProject = docAProjectId === docBProjectId;
@@ -962,9 +964,12 @@ describe("P2: Cross-project compare blocking", () => {
 // ---------------------------------------------------------------------------
 
 describe("P2: Document type structural contract", () => {
+  it("P2 Document must include tenant_id, project_id, and uploaded_by", () => {
     // These fields are NOT NULL in P2 (were nullable in P1)
+    const requiredP2Fields = ["tenant_id", "project_id", "uploaded_by"] as const;
     const sampleDocument = {
       tenant_id: "some-tenant-uuid",
+      project_id: "some-project-uuid",
       uploaded_by: "some-user-uuid",
     };
     for (const field of requiredP2Fields) {
@@ -973,13 +978,18 @@ describe("P2: Document type structural contract", () => {
     expect(requiredP2Fields).toHaveLength(3);
   });
 
+  it("storage_path follows P2 convention: uploads/{year}/{project_id}/{uuid}.pdf", () => {
     const year = new Date().getUTCFullYear().toString();
+    const projectId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     const fileUuid = "11111111-2222-3333-4444-555555555555";
+    const path = `uploads/${year}/${projectId}/${fileUuid}.pdf`;
 
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     expect(path).toMatch(/^uploads\/\d{4}\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.pdf$/);
+    expect(path).toContain(projectId);
     expect(path).toContain(fileUuid);
+    expect(UUID_RE.test(projectId)).toBe(true);
     expect(UUID_RE.test(fileUuid)).toBe(true);
   });
 });
@@ -1025,6 +1035,7 @@ describe("P2: AI prompt metadata isolation", () => {
     // The AI prompt must not contain any auth or tenant metadata
     const forbiddenInPrompt = [
       "tenant_id", "tenantId", "tenant",
+      "project_id", "projectId",
       "uploaded_by", "uploadedBy", "userId", "user_id",
       "auth", "session", "cookie", "JWT",
       "supabase", "SUPABASE",
