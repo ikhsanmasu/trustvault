@@ -6,7 +6,6 @@
 // reply sending, and the core agent message pipeline.
 // ---------------------------------------------------------------------------
 
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/client";
 import { checkWebhookRateLimit } from "@/lib/rate-limit";
 import { parseAgent, parseAgentChannel, type AgentRow, type AgentChannelRow } from "@/lib/db-schemas";

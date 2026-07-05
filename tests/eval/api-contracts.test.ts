@@ -30,6 +30,7 @@ describe("API Contracts — Response Shapes", () => {
       file_size_bytes: 100,
       file_type: "application/pdf",
       tenant_id: "550e8400-e29b-41d4-a716-446655440001",
+      project_id: null,
       uploaded_by: "550e8400-e29b-41d4-a716-446655440002",
       created_at: "2026-07-05T00:00:00.000Z",
       description: null,
@@ -65,6 +66,7 @@ describe("API Contracts — Response Shapes", () => {
   it("SharedLink schema has all required fields", () => {
     const result = SharedLinkRowSchema.safeParse({
       id: "550e8400-e29b-41d4-a716-446655440000",
+      project_id: null,
       document_ids: ["550e8400-e29b-41d4-a716-446655440001"],
       token: "a".repeat(32),
       created_by: "550e8400-e29b-41d4-a716-446655440002",

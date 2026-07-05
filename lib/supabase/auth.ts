@@ -1,7 +1,7 @@
 import { type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
-import { setMonitoringUser, captureError } from "@/lib/monitoring";
+import { setMonitoringUser } from "@/lib/monitoring";
 import { apiError } from "@/lib/utils";
 import type { ErrorResponse, TenantRole } from "@/lib/types";
 
