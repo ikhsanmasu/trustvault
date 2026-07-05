@@ -92,6 +92,13 @@ export default function VaultPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+
+  // Deep link: /vault?upload=1 opens the upload modal directly (used by the
+  // dashboard quick action and the /upload redirect).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upload") === "1") setShowUpload(true);
+  }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
