@@ -11,10 +11,6 @@ import {
   TenantRowSchema,
   ProfileRowSchema,
   SharedLinkRowSchema,
-  AgentRowSchema,
-  AgentChannelRowSchema,
-  AgentSessionRowSchema,
-  AgentMessageRowSchema,
   InvitationRowSchema,
   ChatSessionRowSchema,
   ChatMessageRowSchema,
@@ -22,10 +18,6 @@ import {
   parseTenant,
   parseProfile,
   parseSharedLink,
-  parseAgent,
-  parseAgentChannel,
-  parseAgentSession,
-  parseAgentMessage,
   parseInvitation,
   parseChatSession,
   parseChatMessage,
@@ -202,46 +194,7 @@ describe("SharedLinkRow Schema", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// 5. AgentRow
-// ════════════════════════════════════════════════════════════════════════════
-
-describe("AgentRow Schema", () => {
-  const validAgent = {
-    id: "550e8400-e29b-41d4-a716-446655440000",
-    tenant_id: "550e8400-e29b-41d4-a716-446655440001",
-    name: "Legal Document Reviewer",
-    system_prompt: "You are a legal document review assistant.",
-    created_by: "550e8400-e29b-41d4-a716-446655440002",
-    is_active: true,
-    created_at: "2026-07-05T10:30:00.000Z",
-    updated_at: "2026-07-05T10:30:00.000Z",
-  };
-
-  it("accepts valid agent", () => {
-    expect(() => AgentRowSchema.parse(validAgent)).not.toThrow();
-  });
-
-  it("rejects empty name", () => {
-    expect(() => AgentRowSchema.parse({ ...validAgent, name: "" })).toThrow();
-  });
-
-  it("rejects name > 255 chars", () => {
-    expect(() => AgentRowSchema.parse({ ...validAgent, name: "x".repeat(256) })).toThrow();
-  });
-
-  it("rejects empty system_prompt", () => {
-    expect(() => AgentRowSchema.parse({ ...validAgent, system_prompt: "" })).toThrow();
-  });
-
-  it("parseAgent returns typed object", () => {
-    const a = parseAgent(validAgent);
-    expect(a.name).toBe("Legal Document Reviewer");
-    expect(a.is_active).toBe(true);
-  });
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 6. InvitationRow
+// 5. InvitationRow
 // ════════════════════════════════════════════════════════════════════════════
 
 describe("InvitationRow Schema", () => {
@@ -282,47 +235,7 @@ describe("InvitationRow Schema", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// 7. AgentMessageRow — channel-specific
-// ════════════════════════════════════════════════════════════════════════════
-
-describe("AgentMessageRow Schema", () => {
-  const validMsg = {
-    id: "550e8400-e29b-41d4-a716-446655440000",
-    agent_id: "550e8400-e29b-41d4-a716-446655440001",
-    session_id: "550e8400-e29b-41d4-a716-446655440002",
-    role: "user" as const,
-    content: "What does clause 7 say?",
-    channel: "whatsapp" as const,
-    external_user_id: "62812345678",
-    citations: null,
-    created_at: "2026-07-05T10:30:00.000Z",
-  };
-
-  it("accepts valid channel message", () => {
-    expect(() => AgentMessageRowSchema.parse(validMsg)).not.toThrow();
-  });
-
-  it("accepts telegram channel messages", () => {
-    expect(() =>
-      AgentMessageRowSchema.parse({ ...validMsg, channel: "telegram" }),
-    ).not.toThrow();
-  });
-
-  it("accepts null channel (playground)", () => {
-    expect(() =>
-      AgentMessageRowSchema.parse({ ...validMsg, channel: null }),
-    ).not.toThrow();
-  });
-
-  it("rejects invalid channel", () => {
-    expect(() =>
-      AgentMessageRowSchema.parse({ ...validMsg, channel: "discord" }),
-    ).toThrow();
-  });
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// 8. Round-trip: Zod parse + JSON serialize (DB → app → response pipeline)
+// 6. Round-trip: Zod parse + JSON serialize (DB → app → response pipeline)
 // ════════════════════════════════════════════════════════════════════════════
 
 describe("Schema Round-Trip", () => {

@@ -1,6 +1,6 @@
 # InTrustVault — Roadmap
 
-**Current phase: P4 (complete). P5 next.**
+**Current state: core roadmap (P1–P6) complete, plus P7–P22 platform hardening. See the log below.**
 
 ## P1 — Core integrity engine ✅
 **Built: 2026-06-21.** Single-tenant proof of concept.
@@ -63,32 +63,25 @@
 - Bulk upload expanded from PDF-only to all 14 MIME types.
 - **Tests:** 408. **Files:** 94. **Migrations:** 4.
 
-## P5 — Blockchain anchoring 🔮
-Goal: cryptographic proof anchoring to a public blockchain for tamper-evident verification.
+## P5 — Blockchain anchoring ✅
+**Built: 2026-06-22.** Merkle-fingerprint anchoring with a Solidity contract (`contracts/TrustVaultAnchor.sol`, viem client in `lib/anchor.ts`). Documents get a `fingerprint` + on-chain proof reference; a verification endpoint checks integrity. Optional via `ANCHOR_*` env vars — the app degrades gracefully without them. Local dev uses Foundry's `anvil`.
 
-- Compute a Merkle root from a batch of document binary hashes on a periodic cadence.
-- Anchor the Merkle root to a blockchain testnet (e.g., Ethereum Sepolia, Polygon Mumbai, or a
-  lightweight L2 like Base/Optimism).
-- Store the transaction hash and block number as proof references.
-- Verification endpoint: given a document ID, return the proof path (Merkle proof + on-chain
-  transaction) so anyone can independently verify the document existed with that hash at that time.
-- Mock/local proof store for development (swappable backend: file → DB → blockchain).
-- UI: proof badge on documents ("Anchored on-chain"), verification page with proof details.
-- No gas cost in dev; minimal gas in production (Merkle root batches many documents into one transaction).
+## P6 — AI Vault Assistant ✅
+**Built: 2026-07-01.** RAG assistant over vault documents: chunk + embed on upload (pgvector, OpenAI `text-embedding-3-small`), retrieval + DeepSeek chat with source citations, SSE streaming, per-tenant session history.
 
-## P6 — AI Vault Assistant 🤖
-Goal: conversational AI that answers questions about your vault documents using RAG (Retrieval-Augmented
-Generation).
+## P7–P22 — Platform log (condensed)
 
-- Ingest pipeline: chunk and embed vault documents for semantic search.
-- Chat interface: natural language queries about your documents (e.g., "What changed between v1 and v2
-  of the contract?", "Find all documents mentioning 'payment terms'", "Summarize the Q1 report").
-- RAG architecture: query → retrieve relevant chunks → prompt LLM with context → response.
-- Source citations: every answer links back to the specific documents and chunks used.
-- Streaming responses: real-time token-by-token output.
-- Session history: persist chat history per tenant.
-- Access control: only search documents the user has permission to view.
-- Degraded mode: fallback to basic search if embedding/vector store is unavailable.
+- **P7/P8** — analytics + public share links (with optional public chat over shared documents).
+- **P9–P13** — document descriptions, label organisation, removal of the legacy project hierarchy, chat-session fixes.
+- **P14** — tenant-level RBAC invitations (email via Resend, optional).
+- **P15** — share options (expiry, chat toggle).
+- **P16** — custom AI agents with WhatsApp/Telegram channels. **Removed in P22** — it sat outside the document-integrity vision and diluted the product; the AI surface is the vault assistant (P6) and shared-link chat.
+- **P17** — usage tracking + plan quotas (free/pro/enterprise).
+- **P18** — original filename preservation.
+- **P19** — DB hardening: restrictive RLS everywhere, PII fix in the signup trigger, composite indexes.
+- **P20** — dropped deprecated `chat_sessions.project_id`.
+- **P21** — atomic quota consumption (`try_consume_tenant_usage`), DB-backed fixed-window rate limiting for public endpoints, storage bucket locked to the service role, magic-byte upload validation, middleware cleanup.
+- **P22** — product refocus: agents feature dropped (tables + code), deployment consolidated on **Vercel + Supabase** (Railway/Docker configs removed), Vercel cron for monthly usage reset.
 
 ## Constraints
 - Stack: **Next.js (App Router) + TypeScript**, **Supabase** (Postgres + Storage + Auth + pgvector

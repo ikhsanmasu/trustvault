@@ -10,7 +10,7 @@ import {
   ChatMessage as ChatMessageInput,
   RetrievalResult,
 } from "@/lib/ai-assistant";
-import { checkLLMLimit, incrementUsage } from "@/lib/rate-limit";
+import { checkLLMLimit, checkRateLimit, incrementUsage } from "@/lib/rate-limit";
 import type {
   ErrorResponse,
   PublicChatRequest,
@@ -44,6 +44,25 @@ export async function POST(
     return NextResponse.json(
       { error: "Invalid share token format", code: "INVALID_TOKEN" },
       { status: 400 },
+    );
+  }
+
+  // -- 1b. Rate limit — this endpoint is public and triggers paid LLM calls,
+  // so it is metered per share token before any other work happens.
+  const rateLimit = await checkRateLimit(`share-chat:${token}`, 20, 60_000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests — try again shortly", code: "RATE_LIMITED" },
+      {
+        status: 429,
+        headers: {
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(rateLimit.resetAt),
+          "Retry-After": String(
+            Math.max(rateLimit.resetAt - Math.ceil(Date.now() / 1000), 1),
+          ),
+        },
+      },
     );
   }
 

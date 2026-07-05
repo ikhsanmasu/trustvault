@@ -39,8 +39,8 @@ export function CTA() {
             </h2>
             <p className="mt-5 text-lg text-primary-foreground/65 leading-relaxed max-w-lg mx-auto">
               Your documents deserve more than just storage. Get intelligent
-              insights, cryptographic verification, and AI agents that work
-              where your team does. Start free — no credit card required.
+              insights, cryptographic verification, and answers grounded in
+              your own vault. Start free — no credit card required.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center gap-4 justify-center">
               <Link

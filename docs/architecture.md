@@ -1,5 +1,12 @@
 # InTrustVault -- Architecture (P5)
 
+> **P22 NOTE (2026-07-05):** The custom AI agents + WhatsApp/Telegram channels
+> feature (P16) has been **removed** from the product. Any `/api/agents/*` or
+> `/api/webhook/*` endpoints, `agent_*` tables, and channel-related sections in
+> this document are historical and no longer exist in the codebase
+> (see `supabase/migrations/20260705000004_p22_drop_agents.sql`).
+> Deployment is consolidated on **Vercel + Supabase** only.
+
 ## Open Decisions
 
 None for P5. All interfaces are fully specified below.

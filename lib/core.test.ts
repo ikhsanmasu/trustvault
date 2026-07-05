@@ -9,6 +9,7 @@ import {
   parseAIResponse,
   isAllowedMimeType,
   getFileExtension,
+  validateFileSignature,
   ALLOWED_MIME_TYPES,
   MIME_TO_EXTENSION,
   computeFingerprint,
@@ -1903,5 +1904,94 @@ describe("P5: computeFingerprint", () => {
 
     expect(bh1).not.toBe(bh2);
     expect(fp1).not.toBe(fp2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P21: validateFileSignature — magic-byte validation
+// ---------------------------------------------------------------------------
+
+describe("P21: validateFileSignature", () => {
+  const PDF = Buffer.from("%PDF-1.7\n%\xE2\xE3\xCF\xD3\nrest of file", "latin1");
+  const ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
+  const OLE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0x00]);
+  const RTF = Buffer.from("{\\rtf1\\ansi Hello}", "latin1");
+  const EXE = Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00]); // MZ header
+
+  it("accepts a PDF with the header at byte 0", () => {
+    expect(validateFileSignature(PDF, "application/pdf")).toBe(true);
+  });
+
+  it("accepts a PDF whose header appears within the first 1024 bytes", () => {
+    const preamble = Buffer.concat([Buffer.from("garbage preamble\n"), PDF]);
+    expect(validateFileSignature(preamble, "application/pdf")).toBe(true);
+  });
+
+  it("rejects a PDF whose header appears only after 1024 bytes", () => {
+    const late = Buffer.concat([Buffer.alloc(2000, 0x41), PDF]);
+    expect(validateFileSignature(late, "application/pdf")).toBe(false);
+  });
+
+  it("rejects an executable declared as application/pdf", () => {
+    expect(validateFileSignature(EXE, "application/pdf")).toBe(false);
+  });
+
+  it("accepts ZIP-based formats (docx, xlsx, odt)", () => {
+    for (const mime of [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.oasis.opendocument.text",
+    ]) {
+      expect(validateFileSignature(ZIP, mime)).toBe(true);
+    }
+  });
+
+  it("rejects a non-ZIP payload declared as docx", () => {
+    expect(
+      validateFileSignature(
+        EXE,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts OLE, ZIP, and RTF payloads for legacy doc/xls MIME types", () => {
+    for (const mime of ["application/msword", "application/vnd.ms-excel"]) {
+      expect(validateFileSignature(OLE, mime)).toBe(true);
+      expect(validateFileSignature(ZIP, mime)).toBe(true);
+      expect(validateFileSignature(RTF, mime)).toBe(true);
+      expect(validateFileSignature(EXE, mime)).toBe(false);
+    }
+  });
+
+  it("accepts RTF only when it starts with {\\rtf", () => {
+    expect(validateFileSignature(RTF, "application/rtf")).toBe(true);
+    expect(validateFileSignature(PDF, "application/rtf")).toBe(false);
+  });
+
+  it("accepts plain text without NUL bytes", () => {
+    const text = Buffer.from("plain text content, no binary here");
+    for (const mime of [
+      "text/plain", "text/csv", "text/html", "text/markdown",
+      "text/xml", "application/json", "application/xml",
+    ]) {
+      expect(validateFileSignature(text, mime)).toBe(true);
+    }
+  });
+
+  it("rejects binary payloads (NUL bytes) declared as text", () => {
+    const binary = Buffer.from([0x68, 0x69, 0x00, 0x62, 0x79, 0x65]);
+    expect(validateFileSignature(binary, "text/plain")).toBe(false);
+    expect(validateFileSignature(binary, "application/json")).toBe(false);
+  });
+
+  it("rejects empty buffers for every allowed MIME type", () => {
+    for (const mime of ALLOWED_MIME_TYPES) {
+      expect(validateFileSignature(Buffer.alloc(0), mime)).toBe(false);
+    }
+  });
+
+  it("rejects unknown MIME types", () => {
+    expect(validateFileSignature(PDF, "application/x-msdownload")).toBe(false);
   });
 });

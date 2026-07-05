@@ -103,13 +103,12 @@ describe("API Contracts — Error Codes", () => {
     "AI_API_ERROR",          // 500 — AI service call failed
     "AI_PARSE_ERROR",         // 500 — AI response invalid
     "PLAN_LIMIT_REACHED",     // 403 — usage cap exceeded
-    "RATE_LIMITED",           // 429 — webhook rate limit
+    "RATE_LIMITED",           // 429 — public endpoint rate limit
     "INVALID_TOKEN",          // 400/401 — bad share/invite token
     "GONE",                   // 410 — expired/revoked
     "ALREADY_ANCHORED",      // 409 — document already on-chain
     "DOCUMENT_NOT_FOUND",     // 400 — document not in tenant
     "CONFIG_ERROR",           // 500 — missing env var
-    "PROCESSING_ERROR",       // 500 — webhook handler failed
   ];
 
   it("defines all expected error codes", () => {

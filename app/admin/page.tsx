@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface AdminData {
   counts: {
@@ -9,7 +9,6 @@ interface AdminData {
     documents: number;
     anchoredDocuments: number;
     activeShares: number;
-    activeAgents: number;
     totalChunks: number;
   };
   tenants: Array<{
@@ -44,7 +43,7 @@ export default function AdminPage() {
     setSecret(params.get("secret") ?? "");
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const url = secret
@@ -59,9 +58,9 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [secret]);
 
-  useEffect(() => { fetchData(); }, [secret]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   if (loading) return <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center text-lg animate-pulse">Loading…</div>;
   if (error) return <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center text-red-400">{error}</div>;
@@ -81,7 +80,6 @@ export default function AdminPage() {
         <Card label="Documents" value={formatNumber(data.counts.documents)} color="text-green-400" />
         <Card label="Anchored" value={formatNumber(data.counts.anchoredDocuments)} color="text-yellow-400" />
         <Card label="Shares" value={formatNumber(data.counts.activeShares)} color="text-orange-400" />
-        <Card label="Agents" value={formatNumber(data.counts.activeAgents)} color="text-purple-400" />
         <Card label="Chunks" value={formatNumber(data.counts.totalChunks)} color="text-gray-400" />
       </div>
 

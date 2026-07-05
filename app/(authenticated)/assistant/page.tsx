@@ -36,11 +36,6 @@ function loadSessionDocIds(sessionId: string): string[] {
   return value ? value.split(",").filter(Boolean) : [];
 }
 
-function clearSessionDocIds(sessionId: string) {
-  if (typeof document === "undefined") return;
-  document.cookie = `${KB_COOKIE_PREFIX}${sessionId}=;path=/;max-age=0;SameSite=Lax`;
-}
-
 // ---- Default system prompt (mirrors the backend default) ---------------------
 
 const DEFAULT_SYSTEM_PROMPT = `You are InTrustVault AI Assistant, a document-integrity and knowledge assistant.

@@ -1,5 +1,12 @@
 # InTrustVault -- Security Model (P5)
 
+> **P22 NOTE (2026-07-05):** The custom AI agents + WhatsApp/Telegram channels
+> feature (P16) has been **removed** from the product. Any `/api/agents/*` or
+> `/api/webhook/*` endpoints, `agent_*` tables, and channel-related sections in
+> this document are historical and no longer exist in the codebase
+> (see `supabase/migrations/20260705000004_p22_drop_agents.sql`).
+> Deployment is consolidated on **Vercel + Supabase** only.
+
 This document is a **contract** for the `security` audit agent and a reference for `backend` and `deployment`. It defines the accepted threat model for P5 and the controls in place. P1-P4 sections that remain valid are noted as preserved.
 
 ---

@@ -71,12 +71,26 @@ describe("Upload Service — validateUpload", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.name.length).toBeLessThanOrEqual(255);
   });
+
+  it("rejects when neither name nor filename yields a non-empty name", () => {
+    const result = validateUpload({ file: makeFile("", "text/plain", 1), name: "   " });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("MISSING_NAME");
+  });
 });
 
 describe("Upload Service — generateStoragePath", () => {
   it("includes year and UUID pattern", () => {
     const path = generateStoragePath("application/pdf");
     expect(path).toMatch(/^uploads\/\d{4}\/[0-9a-f-]+\.pdf$/);
+  });
+
+  it("prefixes the tenant ID when provided (P21)", () => {
+    const tenantId = "3f9c33aa-2e5b-4a31-9a63-0f6a5b1c2d3e";
+    const path = generateStoragePath("application/pdf", tenantId);
+    expect(path).toMatch(
+      new RegExp(`^uploads/${tenantId}/\\d{4}/[0-9a-f-]+\\.pdf$`),
+    );
   });
 
   it("uses correct extension for each MIME type", () => {

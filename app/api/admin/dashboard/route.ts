@@ -35,9 +35,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { count: shareCount } = await serviceClient
     .from("shared_links").select("*", { count: "exact", head: true }).eq("is_active", true);
 
-  const { count: agentCount } = await serviceClient
-    .from("agents").select("*", { count: "exact", head: true }).eq("is_active", true);
-
   const { count: totalChunks } = await serviceClient
     .from("document_chunks").select("*", { count: "exact", head: true });
 
@@ -58,7 +55,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       documents: docCount ?? 0,
       anchoredDocuments: anchoredCount ?? 0,
       activeShares: shareCount ?? 0,
-      activeAgents: agentCount ?? 0,
       totalChunks: totalChunks ?? 0,
     },
     tenants: (recentTenants ?? []).map(t => ({

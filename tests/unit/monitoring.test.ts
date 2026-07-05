@@ -8,7 +8,6 @@ import {
   captureMessage,
   getMetrics,
   getHealthStatus,
-  type ErrorSeverity,
 } from "@/lib/monitoring";
 
 describe("Monitoring — getHealthStatus", () => {

@@ -129,35 +129,21 @@ export async function requireTenantRole(
   userId: string,
   allowedRoles: TenantRole[],
 ): Promise<TenantRoleResult> {
-  // 1. Query the user's profile. Try with role, fall back if column missing.
+  // 1. Query the user's profile (the role column exists since the P14 migration).
   const { data: profile, error } = await supabase
     .from("profiles")
     .select("role, tenant_id")
     .eq("id", userId)
     .single();
 
-  // If query errored (likely role column missing — migration not applied),
-  // retry without role column
-  if (error && !profile) {
-    const { data: basic, error: basicErr } = await supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", userId)
-      .single();
-    if (basicErr || !basic) {
-      return { ok: false, response: NextResponse.json({ error: "You do not have access to this tenant", code: "FORBIDDEN" }, { status: 403 }) };
-    }
-    // Role column missing (migration not applied) — default to viewer (least privilege).
-    // The tenant creator should run the P14 migration so roles are properly assigned.
-    console.warn(
-      `[auth] Role column missing from profiles table — defaulting user ${userId} to "viewer". Run the P14 tenant RBAC migration.`,
-    );
-    return { ok: true, role: "viewer", tenantId: basic.tenant_id as string };
-  }
-
-  // Profile not found at all
-  if (!profile) {
-    return { ok: false, response: NextResponse.json({ error: "You do not have access to this tenant", code: "FORBIDDEN" }, { status: 403 }) };
+  if (error || !profile) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "You do not have access to this tenant", code: "FORBIDDEN" },
+        { status: 403 },
+      ),
+    };
   }
 
   // Profile found — use role, default NULL to viewer (least privilege)

@@ -136,7 +136,11 @@ export default function DashboardPage() {
     if (!stats) return 0;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return sortedRecent.filter((d) => new Date(d.created_at) >= startOfMonth).length;
+    // Count from the unsorted source list — the count is order-independent,
+    // so this memo only needs to recompute when the stats change.
+    return (stats.recent_documents ?? []).filter(
+      (d) => new Date(d.created_at) >= startOfMonth,
+    ).length;
   }, [stats]);
 
   const recentTrend: TrendIndicator | undefined = useMemo(() => {
