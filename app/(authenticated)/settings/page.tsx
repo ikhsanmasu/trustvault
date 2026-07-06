@@ -31,6 +31,7 @@ import {
   ApiClientError,
 } from "@/lib/api-client";
 import { InviteModal } from "@/components/invite-modal";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useToastState, type ToastData } from "@/hooks/use-toast-state";
 import { cn } from "@/lib/utils";
 import {
@@ -80,11 +81,11 @@ function PasswordStrengthBar({ password }: { password: string }) {
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
 
-    if (score <= 1) return { level: 1, label: "Weak", color: "bg-red-500" };
-    if (score <= 2) return { level: 2, label: "Fair", color: "bg-amber-500" };
-    if (score <= 3) return { level: 3, label: "Good", color: "bg-yellow-500" };
-    if (score <= 4) return { level: 4, label: "Strong", color: "bg-emerald-500" };
-    return { level: 5, label: "Very strong", color: "bg-emerald-600" };
+    if (score <= 1) return { level: 1, label: "Weak", color: "bg-destructive" };
+    if (score <= 2) return { level: 2, label: "Fair", color: "bg-warning" };
+    if (score <= 3) return { level: 3, label: "Good", color: "bg-warning" };
+    if (score <= 4) return { level: 4, label: "Strong", color: "bg-success" };
+    return { level: 5, label: "Very strong", color: "bg-success" };
   }, [password]);
 
   if (!password) return null;
@@ -120,12 +121,9 @@ function ToastUI({
     <div
       className={cn(
         "fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-4 py-3 shadow-elevation-3 animate-slide-up max-w-sm",
-        toast.variant === "success" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
-        toast.variant === "error" &&
-          "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200",
-        toast.variant === "info" &&
-          "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200",
+        toast.variant === "success" && "border-success/30 bg-card text-success",
+        toast.variant === "error" && "border-destructive/30 bg-card text-destructive",
+        toast.variant === "info" && "border-primary/30 bg-card text-primary",
       )}
       role="alert"
     >
@@ -236,9 +234,6 @@ function ProfileTab() {
             <p className="text-sm text-muted-foreground truncate mt-0.5">
               {user?.email ?? "Signed in"}
             </p>
-            <p className="text-[11px] text-muted-foreground/60 font-mono mt-1">
-              ID: {profile?.id?.slice(0, 8)}...
-            </p>
           </div>
         </div>
 
@@ -258,7 +253,7 @@ function ProfileTab() {
             />
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
-                This name will be shown to other members in your groups.
+                This name is shown to other members of your workspace.
               </p>
               <p className="text-xs text-muted-foreground/70 tabular-nums shrink-0 ml-4">
                 {displayName.length}/255
@@ -293,17 +288,11 @@ function ProfileTab() {
         {/* Account details */}
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
-            Account Details
+            Account details
           </h4>
           <div className="space-y-3 text-sm">
-            <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-muted/20 dark:bg-muted/10">
-              <span className="text-muted-foreground">Tenant ID</span>
-              <code className="text-xs font-mono text-foreground/80 truncate max-w-[180px]">
-                {profile?.tenant_id?.slice(0, 8)}...
-              </code>
-            </div>
-            <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-muted/20 dark:bg-muted/10">
-              <span className="text-muted-foreground">Member since</span>
+            <div className="flex items-center justify-between gap-4 py-2 px-3 rounded-xl bg-muted/20 dark:bg-muted/10">
+              <span className="text-muted-foreground shrink-0">Member since</span>
               <span className="text-xs tabular-nums font-medium">
                 {profile?.created_at
                   ? new Date(profile.created_at).toLocaleDateString("en-US", {
@@ -311,13 +300,25 @@ function ProfileTab() {
                       month: "long",
                       day: "numeric",
                     })
-                  : "â€”"}
+                  : "—"}
               </span>
             </div>
-            <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-muted/20 dark:bg-muted/10">
-              <span className="text-muted-foreground">User ID</span>
-              <code className="text-xs font-mono text-foreground/80 truncate max-w-[180px]">
-                {profile?.id?.slice(0, 12)}...
+            <div className="flex items-center justify-between gap-4 py-2 px-3 rounded-xl bg-muted/20 dark:bg-muted/10">
+              <span className="text-muted-foreground shrink-0">Workspace ID</span>
+              <code
+                className="font-hash text-xs text-foreground/80 truncate select-all"
+                title={profile?.tenant_id ?? undefined}
+              >
+                {profile?.tenant_id ?? "—"}
+              </code>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2 px-3 rounded-xl bg-muted/20 dark:bg-muted/10">
+              <span className="text-muted-foreground shrink-0">User ID</span>
+              <code
+                className="font-hash text-xs text-foreground/80 truncate select-all"
+                title={profile?.id ?? undefined}
+              >
+                {profile?.id ?? "—"}
               </code>
             </div>
           </div>
@@ -474,15 +475,13 @@ function PasswordTab() {
 // ---- Members Tab -------------------------------------------------------------
 
 function RoleBadge({ role }: { role: TenantRole }) {
+  // Visual intensity mirrors privilege: gold owner, navy admin, soft editor,
+  // muted viewer — all from design tokens.
   const variants: Record<TenantRole, string> = {
-    owner:
-      "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-700",
-    admin:
-      "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-700",
-    editor:
-      "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-700",
-    viewer:
-      "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-600",
+    owner: "border-secondary/40 bg-secondary/15 text-secondary-foreground dark:text-secondary",
+    admin: "border-primary/30 bg-primary/10 text-primary",
+    editor: "border-primary/15 bg-primary/5 text-foreground/80 dark:bg-primary/10",
+    viewer: "border-border bg-muted text-muted-foreground",
   };
 
   return (
@@ -507,6 +506,7 @@ function MembersTab() {
   const [showInvite, setShowInvite] = useState(false);
   const [changingRoleFor, setChangingRoleFor] = useState<string | null>(null);
   const [removingMember, setRemovingMember] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<TenantMember | null>(null);
   const { toast, showToast, dismissToast } = useToastState();
 
   const fetchMembers = useCallback(async () => {
@@ -561,7 +561,7 @@ function MembersTab() {
     setActionError(null);
     try {
       await removeMember(userId);
-      showToast("Member removed from tenant.", "success");
+      showToast("Member removed from the workspace.", "success");
       await fetchMembers();
     } catch (err) {
       if (err instanceof ApiClientError) {
@@ -646,9 +646,10 @@ function MembersTab() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-xl">Tenant Members</CardTitle>
+            <CardTitle className="text-xl">Workspace members</CardTitle>
             <CardDescription>
-              Manage members of your organization. {total} member{total !== 1 ? "s" : ""}.
+              {total} member{total !== 1 ? "s" : ""} — roles control what each
+              person can upload, share, and anchor.
             </CardDescription>
           </div>
           {currentUserRole && (currentUserRole === "owner" || currentUserRole === "admin") && (
@@ -735,7 +736,7 @@ function MembersTab() {
                   {canRemove(member) && (
                     <button
                       type="button"
-                      onClick={() => handleRemove(member.id)}
+                      onClick={() => setConfirmRemove(member)}
                       disabled={removingMember === member.id}
                       className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
                       title={`Remove ${member.display_name || member.email}`}
@@ -762,6 +763,23 @@ function MembersTab() {
           fetchMembers();
         }}
       />
+
+      {/* Remove-member confirmation — the most destructive action here */}
+      {confirmRemove && (
+        <ConfirmDialog
+          open={confirmRemove !== null}
+          onOpenChange={(open) => { if (!open) setConfirmRemove(null); }}
+          title="Remove member"
+          description={`Remove ${confirmRemove.display_name || confirmRemove.email} from the workspace? They will immediately lose access to all documents and shares. You can invite them again later.`}
+          confirmLabel="Remove"
+          variant="destructive"
+          onConfirm={() => {
+            const member = confirmRemove;
+            setConfirmRemove(null);
+            handleRemove(member.id);
+          }}
+        />
+      )}
 
       {toast && <ToastUI toast={toast} onDismiss={dismissToast} />}
     </Card>
@@ -804,38 +822,16 @@ export default function SettingsPage() {
   const tabs: SettingsTab[] = ["profile", "password", "members"];
 
   return (
-    <div className="space-y-6">
-      {/* Hero Header */}
-      <section className="relative overflow-hidden rounded-2xl hero-gradient mb-2">
-        {/* dot-grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-          }}
-          aria-hidden="true"
-        />
-        {/* gold blur blob */}
-        <div
-          className="absolute -top-20 right-0 w-[250px] h-[250px] rounded-full bg-secondary/5 blur-3xl"
-          aria-hidden="true"
-        />
-        <div className="relative px-6 py-10 sm:py-12">
-          <span className="text-xs font-semibold text-secondary uppercase tracking-widest">
-            Settings
-          </span>
-          <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-balance">
-            Your account
-          </h1>
-          <p className="mt-3 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-2xl text-pretty">
-            Manage your profile, security, and tenant configuration
-          </p>
-        </div>
-      </section>
-
-      <Separator />
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+          Settings
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Manage your profile, security, and workspace members.
+        </p>
+      </div>
 
       {/* Layout: sidebar + content */}
       <div className="flex flex-col lg:flex-row gap-8">
@@ -851,9 +847,6 @@ export default function SettingsPage() {
 
         {/* Desktop sidebar */}
         <nav className="hidden lg:flex flex-col w-56 shrink-0 space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60 px-3 mb-2">
-            Settings
-          </p>
           {tabs.map((tab) => (
             <button
               key={tab}
