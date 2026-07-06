@@ -3,7 +3,6 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense } from "react";
 import { useAuthContext } from "@/components/auth-provider";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import CompareResultView from "@/components/compare-result";
@@ -33,16 +32,14 @@ function ComparePageInner() {
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Compare</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Run the deterministic hash pipeline plus AI materiality assessment.
+          Did this document change — and does the change matter? Hashes answer
+          first; AI judges materiality only when the content differs.
         </p>
       </div>
 
-      <Separator className="mb-6" />
-
       {docA && docB && (
-        <div className="mb-4 rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-          Pre-filled from document selection. Documents must be in the same
-          workspace for comparison to succeed.
+        <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+          Documents pre-selected from your vault — run the comparison below.
         </div>
       )}
 
