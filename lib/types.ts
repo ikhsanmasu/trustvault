@@ -459,3 +459,46 @@ export interface UsageStats {
 export interface GetUsageResponse {
   usage: UsageStats;
 }
+
+// ---------------------------------------------------------------------------
+// P23: Stripe Payment Integration
+// ---------------------------------------------------------------------------
+
+/** Request body for POST /api/stripe/checkout. */
+export interface CreateCheckoutRequest {
+  priceId: string;
+}
+
+/** Response for POST /api/stripe/checkout. */
+export interface CreateCheckoutResponse {
+  url: string;
+}
+
+/** Response for POST /api/stripe/billing. */
+export interface CreateBillingResponse {
+  url: string;
+}
+
+/** Subscription status derived from Stripe data. */
+export type SubscriptionStatus =
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "trialing"
+  | "none";
+
+/** Billing info for the authenticated tenant. */
+export interface BillingInfo {
+  plan: PlanType;
+  subscriptionStatus: SubscriptionStatus;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  currentPeriodEnd: string | null; // ISO 8601 UTC — when the current billing period ends
+  cancelAtPeriodEnd: boolean;
+}
+
+/** Response for GET /api/stripe/billing (returns billing info for the tenant). */
+export interface GetBillingResponse {
+  billing: BillingInfo;
+}

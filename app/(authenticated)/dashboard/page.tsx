@@ -53,7 +53,7 @@ function usageBarClass(percent: number | null): string {
 
 const QUICK_ACTIONS = [
   {
-    href: "/upload",
+    href: "/vault?upload=1",
     label: "Upload document",
     icon: <IconUpload className="h-4 w-4" />,
     primary: true,

@@ -549,18 +549,32 @@ export interface SharePublicData {
 export async function createShare(
   data: CreateShareRequest | CreateShareRequestCompat,
 ): Promise<CreateShareResponse> {
-  // Normalize legacy shape to canonical shape
-  const body = false
-    ? data
-    : {
-
-        documentIds: (data as CreateShareRequestCompat).document_ids,
-        allowDownload: (data as CreateShareRequestCompat).allow_download,
-        allowChat: (data as CreateShareRequestCompat).allow_chat,
-        allowAnchor: (data as CreateShareRequestCompat).allow_anchor ?? false,
-        allowCompare: (data as CreateShareRequestCompat).allow_compare ?? false,
-        title: (data as CreateShareRequestCompat).title,
-      };
+  // Normalize to canonical camelCase shape. Reads camelCase first, falls back
+  // to snake_case for backward compatibility with legacy callers.
+  const body = {
+    documentIds:
+      (data as CreateShareRequest).documentIds ??
+      (data as CreateShareRequestCompat).document_ids,
+    allowDownload:
+      (data as CreateShareRequest).allowDownload ??
+      (data as CreateShareRequestCompat).allow_download ??
+      true,
+    allowChat:
+      (data as CreateShareRequest).allowChat ??
+      (data as CreateShareRequestCompat).allow_chat ??
+      true,
+    allowAnchor:
+      (data as CreateShareRequest).allowAnchor ??
+      (data as CreateShareRequestCompat).allow_anchor ??
+      false,
+    allowCompare:
+      (data as CreateShareRequest).allowCompare ??
+      (data as CreateShareRequestCompat).allow_compare ??
+      false,
+    title:
+      (data as CreateShareRequest).title ??
+      (data as CreateShareRequestCompat).title,
+  };
   const response = await fetch("/api/share", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -841,4 +855,71 @@ export interface GetUsageResponse {
 export async function getUsage(): Promise<GetUsageResponse> {
   const response = await fetch("/api/usage");
   return handleResponse<GetUsageResponse>(response);
+}
+
+// ===== P23: Stripe Payment Integration =====
+
+export interface CreateCheckoutRequest {
+  priceId: string;
+}
+
+export interface CreateCheckoutResponse {
+  url: string;
+}
+
+export interface CreateBillingResponse {
+  url: string;
+}
+
+export type SubscriptionStatus =
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "trialing"
+  | "none";
+
+export interface BillingInfo {
+  plan: PlanType;
+  subscriptionStatus: SubscriptionStatus;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+}
+
+export interface GetBillingResponse {
+  billing: BillingInfo;
+}
+
+/**
+ * POST /api/stripe/checkout — create a Stripe Checkout Session.
+ */
+export async function createCheckoutSession(
+  data: CreateCheckoutRequest,
+): Promise<CreateCheckoutResponse> {
+  const response = await fetch("/api/stripe/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<CreateCheckoutResponse>(response);
+}
+
+/**
+ * POST /api/stripe/billing — create a Stripe Customer Portal session.
+ */
+export async function createBillingSession(): Promise<CreateBillingResponse> {
+  const response = await fetch("/api/stripe/billing", {
+    method: "POST",
+  });
+  return handleResponse<CreateBillingResponse>(response);
+}
+
+/**
+ * GET /api/stripe/billing — get billing info for the tenant.
+ */
+export async function getBilling(): Promise<GetBillingResponse> {
+  const response = await fetch("/api/stripe/billing");
+  return handleResponse<GetBillingResponse>(response);
 }

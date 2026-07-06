@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { IconLink, IconCheck, IconTrash, IconDocument } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { SharedLink, Document } from "@/lib/api-client";
@@ -25,10 +26,71 @@ function formatShareDate(iso: string): string {
   });
 }
 
+function isExpired(share: SharedLink): boolean {
+  return !!share.expires_at && new Date(share.expires_at).getTime() < Date.now();
+}
+
+// ---- Status chip ----------------------------------------------------------------
+
+function StatusBadge({ share }: { share: SharedLink }) {
+  if (!share.is_active) {
+    return (
+      <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+        Revoked
+      </span>
+    );
+  }
+  if (isExpired(share)) {
+    return (
+      <span className="shrink-0 rounded-full bg-warning/10 px-2.5 py-0.5 text-[11px] font-semibold text-warning">
+        Expired
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 rounded-full bg-success/10 px-2.5 py-0.5 text-[11px] font-semibold text-success">
+      Active
+    </span>
+  );
+}
+
+// ---- Permission chips ------------------------------------------------------------
+
+function PermissionChips({ share }: { share: SharedLink }) {
+  const granted: string[] = [];
+  if (share.allow_download) granted.push("Download");
+  if (share.allow_chat) granted.push("Ask AI");
+  if (share.allow_compare) granted.push("Compare");
+  if (share.allow_anchor) granted.push("Anchor");
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+        Permissions
+      </span>
+      <span className="inline-flex items-center rounded-md bg-primary/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-primary dark:bg-primary/15">
+        View
+      </span>
+      {granted.map((p) => (
+        <span
+          key={p}
+          className="inline-flex items-center rounded-md bg-primary/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-primary dark:bg-primary/15"
+        >
+          {p}
+        </span>
+      ))}
+      {granted.length === 0 && (
+        <span className="text-[10px] text-muted-foreground/60">only</span>
+      )}
+    </div>
+  );
+}
+
 // ---- Component ----------------------------------------------------------------
 
 export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps) {
   const [copied, setCopied] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
   const isRevoked = !share.is_active;
 
   const shareUrl =
@@ -55,18 +117,15 @@ export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-l-4",
-        isRevoked
-          ? "border-l-neutral-400 dark:border-l-neutral-500 opacity-60"
-          : "border-l-blue-500 dark:border-l-blue-400",
-        "bg-card shadow-elevation-1",
+        "group relative overflow-hidden rounded-2xl border border-border bg-card shadow-elevation-1",
         "transition-all duration-300 ease-out",
-        !isRevoked && "hover:shadow-elevation-3 hover:-translate-y-0.5 hover:border-l-[5px]",
+        isRevoked
+          ? "opacity-60"
+          : "hover:shadow-elevation-3 hover:border-secondary/25",
       )}
     >
       {/* Hover accent line */}
       <div className="absolute top-0 left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-secondary/0 to-transparent transition-all duration-300 group-hover:via-secondary/60" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/[0.03] via-transparent to-secondary/[0.02] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       <div className="relative p-4 sm:p-5 space-y-3">
         {/* Top row: title + status */}
@@ -74,26 +133,23 @@ export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <IconLink className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <h3 className="text-sm font-semibold truncate">{share.title || "Untitled Share"}</h3>
+              <h3 className="text-sm font-semibold truncate">{share.title || "Untitled share"}</h3>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {docCount} document{docCount !== 1 ? "s" : ""}
               <span className="ml-1">· Created {formatShareDate(share.created_at)}</span>
               {share.expires_at && (
-                <span className="ml-1">· Expires {formatShareDate(share.expires_at)}</span>
+                <span className={cn("ml-1", isExpired(share) && share.is_active && "text-warning font-medium")}>
+                  · Expire{isExpired(share) ? "d" : "s"} {formatShareDate(share.expires_at)}
+                </span>
               )}
             </p>
           </div>
-          <Badge
-            variant={isRevoked ? "outline" : "default"}
-            className={cn(
-              "shrink-0 text-[10px] px-2 py-0.5 font-medium",
-              !isRevoked && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-            )}
-          >
-            {isRevoked ? "Revoked" : "Active"}
-          </Badge>
+          <StatusBadge share={share} />
         </div>
+
+        {/* What this link can do */}
+        <PermissionChips share={share} />
 
         {/* Document list preview (from full documents if provided) */}
         {docItems.length > 0 && (
@@ -102,10 +158,10 @@ export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps
               <Badge
                 key={doc.id}
                 variant="outline"
-                className="text-[10px] px-1.5 py-0 font-normal"
+                className="text-[10px] px-1.5 py-0 font-normal max-w-[200px]"
               >
-                <IconDocument className="h-3 w-3 mr-1" />
-                {doc.name}
+                <IconDocument className="h-3 w-3 mr-1 shrink-0" />
+                <span className="truncate">{doc.name}</span>
               </Badge>
             ))}
             {docItems.length > 4 && (
@@ -120,7 +176,7 @@ export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps
         <div className="flex items-center gap-2 pt-1">
           <div className="flex-1 flex items-center gap-1.5 rounded-lg border bg-muted/20 px-2.5 py-1.5 min-w-0">
             <IconLink className="h-3 w-3 shrink-0 text-muted-foreground/60" />
-            <span className="text-[11px] text-muted-foreground truncate select-all">
+            <span className="font-hash text-[11px] text-muted-foreground truncate select-all">
               {shareUrl}
             </span>
           </div>
@@ -149,7 +205,7 @@ export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps
                 Copied
               </>
             ) : (
-              "Copy Link"
+              "Copy link"
             )}
           </Button>
 
@@ -157,7 +213,7 @@ export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onRevoke(share.token)}
+              onClick={() => setConfirmRevoke(true)}
               className="h-7 shrink-0 rounded-lg text-xs px-2 text-destructive hover:text-destructive-foreground hover:bg-destructive/90 transition-colors"
               title="Revoke share link"
             >
@@ -167,6 +223,22 @@ export function ShareLinkCard({ share, documents, onRevoke }: ShareLinkCardProps
           )}
         </div>
       </div>
+
+      {/* Revoke confirmation */}
+      {confirmRevoke && (
+        <ConfirmDialog
+          open={confirmRevoke}
+          onOpenChange={setConfirmRevoke}
+          title="Revoke share link"
+          description={`Revoke "${share.title || "this share link"}"? Anyone holding the link will immediately lose access. This cannot be undone.`}
+          confirmLabel="Revoke"
+          variant="destructive"
+          onConfirm={() => {
+            setConfirmRevoke(false);
+            onRevoke(share.token);
+          }}
+        />
+      )}
     </div>
   );
 }

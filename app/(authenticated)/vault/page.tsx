@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useSort } from "@/hooks/use-sort";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
@@ -52,6 +53,30 @@ const TYPE_FILTERS: FilterChip[] = [
   { value: "image/", label: "Images" },
 ];
 
+// ---- Integrity chip -----------------------------------------------------------
+
+function IntegrityChip({ doc }: { doc: Document }) {
+  if (doc.fingerprint) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-secondary/10 px-2 py-0.5 text-[11px] font-semibold text-secondary-foreground dark:text-secondary"
+        title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}
+      >
+        <IconShield className="h-3 w-3" />
+        Anchored
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+      title="Cryptographic fingerprint computed; not yet anchored on-chain"
+    >
+      Hashed
+    </span>
+  );
+}
+
 // ---- Page -------------------------------------------------------------------
 
 type ViewMode = "table" | "grid";
@@ -83,6 +108,7 @@ export default function VaultPage() {
   const { sorted: sortedDocs, toggleSort, sortIndicator } = useSort(documents, "created_at", "desc");
   const visibleDocs = showDeleted ? sortedDocs : sortedDocs.filter((d: Document) => !d.deleted_at);
   const deletedCount = documents.filter((d: Document) => !!d.deleted_at).length;
+  const anchoredCount = documents.filter((d: Document) => !!d.fingerprint && !d.deleted_at).length;
 
   const [compareDoc, setCompareDoc] = useState<Document | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
@@ -92,10 +118,20 @@ export default function VaultPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+
+  // Deep link: /vault?upload=1 opens the upload modal directly (used by the
+  // dashboard quick action and the /upload redirect).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upload") === "1") setShowUpload(true);
+  }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
   const [actionDropdownDocId, setActionDropdownDocId] = useState<string | null>(null);
+  // Fixed-position coords for the row-actions menu. Rendered through a portal
+  // so the table's overflow container cannot clip it.
+  const [actionMenuPos, setActionMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [editDocId, setEditDocId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
@@ -139,6 +175,42 @@ export default function VaultPage() {
     return () => document.removeEventListener("click", handleClick);
   }, [typeDropdownOpen, labelDropdownOpen, actionDropdownDocId]);
 
+  // The row-actions menu is fixed-positioned: close it when the page scrolls
+  // or resizes so it never floats detached from its row.
+  useEffect(() => {
+    if (!actionDropdownDocId) return;
+    function close() { setActionDropdownDocId(null); }
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [actionDropdownDocId]);
+
+  function openActionMenu(e: React.MouseEvent<HTMLButtonElement>, docId: string) {
+    e.stopPropagation();
+    if (actionDropdownDocId === docId) {
+      setActionDropdownDocId(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuWidth = 192; // w-48
+    const estHeight = canEdit ? 320 : 132;
+    const gap = 4;
+    const top =
+      window.innerHeight - rect.bottom >= estHeight + gap
+        ? rect.bottom + gap
+        : Math.max(8, rect.top - estHeight - gap);
+    const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+    setActionMenuPos({ top, left });
+    setActionDropdownDocId(docId);
+  }
+
+  const actionMenuDoc = actionDropdownDocId
+    ? documents.find((d: Document) => d.id === actionDropdownDocId) ?? null
+    : null;
+
   // ---- Auth gate -------------------------------------------------------------
 
   if (!isAuthLoading && !user) {
@@ -160,111 +232,94 @@ export default function VaultPage() {
     search !== "" || fileType !== "" || selectedLabelId !== "";
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* ---- Hero Header ------------------------------------------------------- */}
-      <section className="relative overflow-hidden rounded-2xl hero-gradient mb-2">
-        {/* dot-grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-          }}
-          aria-hidden="true"
-        />
-        {/* gold blur blob */}
-        <div
-          className="absolute -top-20 right-0 w-[250px] h-[250px] rounded-full bg-secondary/5 blur-3xl"
-          aria-hidden="true"
-        />
-        <div className="relative px-6 py-10 sm:py-12">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div>
-              <span className="text-xs font-semibold text-secondary uppercase tracking-widest">
-                My Vault
-              </span>
-              <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground text-balance">
-                {total.toLocaleString()} document{total !== 1 ? "s" : ""}
-              </h1>
-              <p className="mt-3 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-2xl text-pretty">
-                Manage, search, and compare your document versions with confidence.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* View mode toggle */}
-              <div className="flex items-center rounded-xl border border-border bg-card p-0.5 shadow-elevation-1" role="radiogroup" aria-label="View mode">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("table")}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200",
-                    viewMode === "table"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  role="radio"
-                  aria-checked={viewMode === "table"}
-                  aria-label="List view"
-                >
-                  <IconList className="h-3.5 w-3.5" />
-                  List
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("grid")}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200",
-                    viewMode === "grid"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  role="radio"
-                  aria-checked={viewMode === "grid"}
-                  aria-label="Grid view"
-                >
-                  <IconGrid className="h-3.5 w-3.5" />
-                  Grid
-                </button>
-              </div>
+    <div className="space-y-5 animate-fade-in">
+      {/* ---- Header: title + primary actions --------------------------------- */}
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            Vault
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {total.toLocaleString()} document{total !== 1 ? "s" : ""}
+            {anchoredCount > 0 && (
+              <>
+                {" "}· {anchoredCount.toLocaleString()} anchored on-chain
+              </>
+            )}
+          </p>
+        </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refresh}
-                className="transition-all duration-200 rounded-xl"
-                aria-label="Refresh documents"
-              >
-                <IconRefresh className="h-4 w-4 mr-1.5" />
-                Refresh
-              </Button>
-            </div>
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <Button
+              size="sm"
+              onClick={() => setShowUpload(true)}
+              className="rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/90 font-semibold shadow-elevation-1"
+            >
+              <IconPlus className="mr-1.5 h-4 w-4" />
+              Upload
+            </Button>
+          )}
+
+          {/* View mode toggle */}
+          <div className="flex items-center rounded-xl border border-border bg-card p-0.5 shadow-elevation-1" role="radiogroup" aria-label="View mode">
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={cn(
+                "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
+                viewMode === "table"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              role="radio"
+              aria-checked={viewMode === "table"}
+              aria-label="List view"
+              title="List view"
+            >
+              <IconList className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
+                viewMode === "grid"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              role="radio"
+              aria-checked={viewMode === "grid"}
+              aria-label="Grid view"
+              title="Grid view"
+            >
+              <IconGrid className="h-4 w-4" />
+            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={refresh}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-elevation-1 transition-all hover:border-secondary/40 hover:text-foreground"
+            aria-label="Refresh documents"
+            title="Refresh"
+          >
+            <IconRefresh className="h-4 w-4" />
+          </button>
         </div>
       </section>
 
-      {/* ---- Action bar ------------------------------------------------------- */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        {/* Upload button - left (editor+) */}
-        {canEdit && (
-          <Button size="sm" onClick={() => setShowUpload(true)}>
-            <IconPlus className="mr-1.5 h-4 w-4" />
-            Upload
-          </Button>
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Search input - right side */}
-        <div className="relative w-48 sm:w-56">
+      {/* ---- Toolbar: search + filters (single row) --------------------------- */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px] max-w-md">
           <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
             <IconSearch className="h-3.5 w-3.5 text-muted-foreground/60" />
           </div>
           <label htmlFor="vault-search" className="sr-only">Search documents</label>
           <Input
             id="vault-search"
-            placeholder="Search..."
+            placeholder="Search documents…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-9 text-sm rounded-xl border-border/80 bg-card shadow-elevation-1 focus-visible:ring-primary/30 focus-visible:border-primary/40 transition-all duration-200 placeholder:text-muted-foreground/50"
@@ -276,13 +331,18 @@ export default function VaultPage() {
           <button
             type="button"
             onClick={() => setLabelDropdownOpen(!labelDropdownOpen)}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-xl border bg-card px-3 text-sm font-medium transition-colors whitespace-nowrap shadow-elevation-1",
+              selectedLabelId
+                ? "border-primary/40 text-primary"
+                : "border-border text-foreground hover:border-primary/30",
+            )}
           >
             {selectedLabelId ? labels.find(l => l.id === selectedLabelId)?.name ?? "Label" : "Label"}
             <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {labelDropdownOpen && (
-            <div className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1">
+            <div className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-elevation-3 py-1">
               <button
                 type="button"
                 onClick={() => { setSelectedLabelId(""); setLabelDropdownOpen(false); }}
@@ -292,7 +352,7 @@ export default function VaultPage() {
                 )}
               >
                 <span className="h-3 w-3 rounded-full border border-border shrink-0" />
-                All Labels
+                All labels
               </button>
               {labels.map((label) => (
                 <div key={label.id} className="flex items-center hover:bg-muted transition-colors">
@@ -321,18 +381,23 @@ export default function VaultPage() {
           )}
         </div>
 
-        {/* Type dropdown - right side */}
+        {/* Type dropdown */}
         <div className="relative">
           <button
             type="button"
             onClick={() => { setTypeDropdownOpen(!typeDropdownOpen); }}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:border-primary/30 transition-colors whitespace-nowrap"
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-xl border bg-card px-3 text-sm font-medium transition-colors whitespace-nowrap shadow-elevation-1",
+              fileType
+                ? "border-primary/40 text-primary"
+                : "border-border text-foreground hover:border-primary/30",
+            )}
           >
             {fileType ? TYPE_FILTERS.find(f => f.value === fileType)?.label ?? "Type" : "Type"}
             <svg className="h-3 w-3 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {typeDropdownOpen && (
-            <div className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1">
+            <div className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-elevation-3 py-1">
               {TYPE_FILTERS.map((chip) => (
                 <button
                   key={chip.value}
@@ -357,26 +422,33 @@ export default function VaultPage() {
           )}
         </div>
 
-      </div>
-
-      {/* ---- Filter: Deleted ------------------------------------------------- */}
-      {deletedCount > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-5">
-          <span className="text-xs font-semibold text-muted-foreground mr-1 shrink-0 uppercase tracking-wider">Status</span>
+        {/* Deleted toggle */}
+        {deletedCount > 0 && (
           <button
             type="button"
             onClick={() => setShowDeleted(!showDeleted)}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
+              "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm font-medium transition-all duration-200 whitespace-nowrap shadow-elevation-1",
               showDeleted
-                ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700"
-                : "bg-card text-muted-foreground border-border hover:border-primary/30 hover:text-foreground hover:shadow-sm",
+                ? "border-warning/40 bg-warning/10 text-warning"
+                : "bg-card text-muted-foreground border-border hover:border-primary/30 hover:text-foreground",
             )}
           >
-            {showDeleted ? "Hide deleted" : `Show deleted (${deletedCount})`}
+            {showDeleted ? "Hide deleted" : `Deleted (${deletedCount})`}
           </button>
-        </div>
-      )}
+        )}
+
+        {/* Clear filters */}
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={() => { setSearch(""); setFileType(""); setSelectedLabelId(""); }}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
 
       {/* ---- Error ------------------------------------------------------------ */}
       {docError && (
@@ -388,10 +460,10 @@ export default function VaultPage() {
         <Alert variant="destructive" className="animate-fade-in" role="alert"><AlertDescription>{error}</AlertDescription></Alert>
       )}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-5 py-3 text-sm font-medium shadow-lg animate-fade-in">{toast}</div>
+        <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-success/30 bg-card px-5 py-3 text-sm font-medium text-success shadow-elevation-3 animate-fade-in">{toast}</div>
       )}
       {bulkToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-primary text-primary-foreground px-5 py-3 text-sm font-medium shadow-lg animate-fade-in">{bulkToast}</div>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-primary text-primary-foreground px-5 py-3 text-sm font-medium shadow-elevation-3 animate-fade-in">{bulkToast}</div>
       )}
 
       {/* ---- Content: Loading | Empty | Grid | Table ------------------------- */}
@@ -410,7 +482,7 @@ export default function VaultPage() {
           <p className="mt-2 text-sm text-muted-foreground max-w-sm">
             {hasActiveFilters
               ? "Try adjusting your filters or search query to find what you are looking for."
-              : "Upload documents to start tracking their integrity over time."}
+              : "Upload a document to set your first verified baseline and start tracking integrity over time."}
           </p>
           {hasActiveFilters && (
             <Button
@@ -429,11 +501,11 @@ export default function VaultPage() {
           {!hasActiveFilters && canEdit && (
             <Button
               size="sm"
-              className="mt-5"
+              className="mt-5 rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/90 font-semibold"
               onClick={() => setShowUpload(true)}
             >
               <IconPlus className="mr-1.5 h-4 w-4" />
-              Upload Documents
+              Upload documents
             </Button>
           )}
         </div>
@@ -532,7 +604,7 @@ export default function VaultPage() {
         )}
 
         {/* ---- Table view ----------------------------------------------------- */}
-        <div className="rounded-2xl border bg-card shadow-elevation-1">
+        <div className="overflow-x-auto rounded-2xl border bg-card shadow-elevation-1">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
@@ -551,25 +623,19 @@ export default function VaultPage() {
                       aria-label="Select all"
                     />
                   </th>
-                  <th className="hidden xl:table-cell px-2 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase w-[90px]">
-                    ID
-                  </th>
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("name")}>
                     Name <span className="ml-0.5">{sortIndicator("name")}</span>
-                  </th>
-                  <th className="hidden lg:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
-                    Description
                   </th>
                   <th className="hidden sm:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_type")}>
                     Type <span className="ml-0.5">{sortIndicator("file_type")}</span>
                   </th>
+                  <th className="hidden md:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                    Integrity
+                  </th>
                   <th className="hidden lg:table-cell px-4 py-3.5 text-left text-xs font-semibold text-muted-foreground tracking-wide uppercase">
                     Labels
                   </th>
-                  <th className="hidden xl:table-cell px-4 py-3.5 text-center text-xs font-semibold text-muted-foreground tracking-wide uppercase" style={{ width: 100 }}>
-                    Status
-                  </th>
-                  <th className="hidden md:table-cell px-4 py-3.5 text-right text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_size_bytes")}>
+                  <th className="hidden lg:table-cell px-4 py-3.5 text-right text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("file_size_bytes")}>
                     Size <span className="ml-0.5">{sortIndicator("file_size_bytes")}</span>
                   </th>
                   <th className="hidden xl:table-cell px-4 py-3.5 text-right text-xs font-semibold text-muted-foreground tracking-wide uppercase cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("created_at")}>
@@ -604,33 +670,17 @@ export default function VaultPage() {
                           aria-label={`Select ${doc.name}`}
                         />
                       </td>
-                      <td className="hidden xl:table-cell px-2 py-3.5">
-                        <code className="text-xs font-mono text-muted-foreground/60 select-all">
-                          {doc.id.slice(0, 8)}
-                        </code>
-                      </td>
                       <td className="px-4 py-3.5">
                         <div className="flex flex-col gap-0.5">
-                          <span className={cn("text-sm font-medium truncate block max-w-[220px]", doc.deleted_at && "line-through text-muted-foreground/60")}>
+                          <span className={cn("text-sm font-medium truncate block max-w-[260px]", doc.deleted_at && "line-through text-muted-foreground/60")} title={doc.description ?? undefined}>
                             {doc.name}
                           </span>
-                          {doc.original_filename && doc.original_filename !== doc.name ? (
-                            <span className="text-[10px] text-muted-foreground/50 truncate block max-w-[220px]" title={doc.original_filename}>
+                          {doc.original_filename && doc.original_filename !== doc.name && (
+                            <span className="text-[10px] text-muted-foreground/50 truncate block max-w-[260px]" title={doc.original_filename}>
                               {doc.original_filename}
                             </span>
-                          ) : !doc.original_filename ? (
-                            <span className="text-[10px] text-muted-foreground/30 italic">—</span>
-                          ) : null}
+                          )}
                         </div>
-                      </td>
-                      <td className="hidden lg:table-cell px-4 py-3.5">
-                        {doc.description ? (
-                          <span className="text-sm text-muted-foreground truncate block max-w-[200px]" title={doc.description}>
-                            {doc.description}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/50 italic">No description</span>
-                        )}
                       </td>
                       <td className="hidden sm:table-cell px-4 py-3.5">
                         <Badge
@@ -643,9 +693,12 @@ export default function VaultPage() {
                           <Badge className="ml-1 text-[10px] px-1.5 py-0 font-medium bg-neutral-400/20 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 border-0">Deleted</Badge>
                         )}
                       </td>
+                      <td className="hidden md:table-cell px-4 py-3.5">
+                        <IntegrityChip doc={doc} />
+                      </td>
                       <td className="hidden lg:table-cell px-4 py-3.5">
                         {(docLabels.get(doc.id) ?? []).length === 0 ? (
-                          <span className="text-xs text-muted-foreground/50 italic">No label</span>
+                          <span className="text-muted-foreground/40">–</span>
                         ) : (
                           <div className="flex flex-wrap gap-1">
                             {(docLabels.get(doc.id) ?? []).map((labelId) => {
@@ -660,146 +713,30 @@ export default function VaultPage() {
                           </div>
                         )}
                       </td>
-                      <td className="hidden xl:table-cell px-4 py-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {doc.fingerprint ? (
-                            <span
-                              className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
-                              title={`Anchored on ${doc.chain ?? "blockchain"}${doc.tx_hash ? ` (${doc.tx_hash.slice(0, 10)}…)` : ""}`}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                            </span>
-                          ) : null}
-                          {doc.extracted_text ? (
-                            <span
-                              className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
-                              title="Text extracted and indexed"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            </span>
-                          ) : null}
-                          {!doc.fingerprint && !doc.extracted_text ? (
-                            <span className="text-xs text-muted-foreground/50 italic">—</span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="hidden md:table-cell px-4 py-3.5 text-right text-sm text-muted-foreground tabular-nums">
+                      <td className="hidden lg:table-cell px-4 py-3.5 text-right text-sm text-muted-foreground tabular-nums">
                         {formatBytes(doc.file_size_bytes)}
                       </td>
                       <td className="hidden xl:table-cell px-4 py-3.5 text-right text-sm text-muted-foreground tabular-nums whitespace-nowrap">
                         {formatDate(doc.created_at)}
                       </td>
                       <td className="px-4 py-3.5 text-right">
-                        <div className="relative inline-block">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActionDropdownDocId(actionDropdownDocId === doc.id ? null : doc.id);
-                            }}
-                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                            title="Actions"
-                            aria-label={`Actions for ${doc.name}`}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                              <circle cx="12" cy="5" r="2" />
-                              <circle cx="12" cy="12" r="2" />
-                              <circle cx="12" cy="19" r="2" />
-                            </svg>
-                          </button>
-                          {actionDropdownDocId === doc.id && (
-                            <div
-                              className="absolute top-full right-0 mt-1 z-30 w-48 rounded-xl border border-border bg-card shadow-lg py-1"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {/* Compare */}
-                              <button
-                                type="button"
-                                onClick={() => { setActionDropdownDocId(null); setCompareDoc(doc); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                              >
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                                Compare
-                              </button>
-                              {/* View */}
-                              <button
-                                type="button"
-                                onClick={() => { setActionDropdownDocId(null); setViewDoc(doc); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                              >
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                View
-                              </button>
-                              {/* Download */}
-                              <a
-                                href={`/api/documents/${doc.id}/file`}
-                                download
-                                onClick={() => setActionDropdownDocId(null)}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                              >
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Download
-                              </a>
-                              {/* Editor+ actions (separated by divider) */}
-                              {canEdit && (
-                                <>
-                                  <div className="my-1 border-t border-border" />
-                                  {/* Anchor / Anchor details */}
-                                  <button
-                                    type="button"
-                                    onClick={() => { setActionDropdownDocId(null); setAnchorDoc(doc); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                                  >
-                                    <IconShield className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
-                                    {doc.fingerprint ? "Anchor details" : "Anchor"}
-                                  </button>
-                                  {/* Share */}
-                                  <button
-                                    type="button"
-                                    onClick={() => { setActionDropdownDocId(null); setShareDoc(doc); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                                  >
-                                    <IconShare className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
-                                    Share
-                                  </button>
-                                  {/* Ask AI */}
-                                  <button
-                                    type="button"
-                                    onClick={() => { setActionDropdownDocId(null); router.push(`/assistant?docs=${doc.id}`); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                                  >
-                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                                    Ask AI
-                                  </button>
-                                  {/* Edit */}
-                                  <button
-                                    type="button"
-                                    onClick={() => { setActionDropdownDocId(null); setEditDocId(doc.id); setEditName(doc.name); setEditDesc(doc.description ?? ""); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
-                                  >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                    Edit
-                                  </button>
-                                  {/* Delete / Restore */}
-                                  <button
-                                    type="button"
-                                    onClick={() => { setActionDropdownDocId(null); setConfirmDelete(doc); }}
-                                    className={doc.deleted_at
-                                      ? "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-colors"
-                                      : "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-destructive hover:bg-destructive/10 transition-colors"}
-                                  >
-                                    {doc.deleted_at ? (
-                                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                                    ) : (
-                                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                    )}
-                                    {doc.deleted_at ? "Restore" : "Delete"}
-                                  </button>
-                                </>
-                              )}
-                            </div>
+                        <button
+                          type="button"
+                          onClick={(e) => openActionMenu(e, doc.id)}
+                          className={cn(
+                            "inline-flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
+                            actionDropdownDocId === doc.id && "bg-muted text-foreground",
                           )}
-                        </div>
+                          title="Actions"
+                          aria-label={`Actions for ${doc.name}`}
+                          aria-expanded={actionDropdownDocId === doc.id}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="5" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="19" r="2" />
+                          </svg>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -808,6 +745,104 @@ export default function VaultPage() {
             </table>
         </div>
         </>
+      )}
+
+      {/* ---- Row actions menu (portal — escapes the table overflow box) ------ */}
+      {actionMenuDoc && actionMenuPos && createPortal(
+        <div
+          style={{ position: "fixed", top: actionMenuPos.top, left: actionMenuPos.left }}
+          className="z-50 w-48 rounded-xl border border-border bg-card shadow-elevation-3 py-1"
+          onClick={(e) => e.stopPropagation()}
+          role="menu"
+          aria-label={`Actions for ${actionMenuDoc.name}`}
+        >
+          {/* Compare */}
+          <button
+            type="button"
+            onClick={() => { setActionDropdownDocId(null); setCompareDoc(actionMenuDoc); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            Compare
+          </button>
+          {/* View */}
+          <button
+            type="button"
+            onClick={() => { setActionDropdownDocId(null); setViewDoc(actionMenuDoc); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            View
+          </button>
+          {/* Download */}
+          <a
+            href={`/api/documents/${actionMenuDoc.id}/file`}
+            download
+            onClick={() => setActionDropdownDocId(null)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+          {/* Editor+ actions (separated by divider) */}
+          {canEdit && (
+            <>
+              <div className="my-1 border-t border-border" />
+              {/* Anchor / Anchor details */}
+              <button
+                type="button"
+                onClick={() => { setActionDropdownDocId(null); setAnchorDoc(actionMenuDoc); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+              >
+                <IconShield className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
+                {actionMenuDoc.fingerprint ? "Anchor details" : "Anchor"}
+              </button>
+              {/* Share */}
+              <button
+                type="button"
+                onClick={() => { setActionDropdownDocId(null); setShareDoc(actionMenuDoc); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+              >
+                <IconShare className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
+                Share
+              </button>
+              {/* Ask AI */}
+              <button
+                type="button"
+                onClick={() => { setActionDropdownDocId(null); router.push(`/assistant?docs=${actionMenuDoc.id}`); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Ask AI
+              </button>
+              {/* Edit */}
+              <button
+                type="button"
+                onClick={() => { setActionDropdownDocId(null); setEditDocId(actionMenuDoc.id); setEditName(actionMenuDoc.name); setEditDesc(actionMenuDoc.description ?? ""); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit
+              </button>
+              {/* Delete / Restore */}
+              <button
+                type="button"
+                onClick={() => { setActionDropdownDocId(null); setConfirmDelete(actionMenuDoc); }}
+                className={actionMenuDoc.deleted_at
+                  ? "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-success hover:bg-success/10 transition-colors"
+                  : "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-destructive hover:bg-destructive/10 transition-colors"}
+              >
+                {actionMenuDoc.deleted_at ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                )}
+                {actionMenuDoc.deleted_at ? "Restore" : "Delete"}
+              </button>
+            </>
+          )}
+        </div>,
+        document.body,
       )}
 
       {/* ---- Compare Modal --------------------------------------------------- */}
@@ -829,7 +864,7 @@ export default function VaultPage() {
         <ShareModal
           open={shareDoc !== null}
           onOpenChange={(open) => { if (!open) { setShareDoc(null); setBulkShareIds([]); } }}
-          
+
           documents={visibleDocs}
           preselectedIds={bulkShareIds.length > 0 ? bulkShareIds : [shareDoc.id]}
           onCreated={() => { setBulkShareIds([]); setSelectedIds(new Set()); refresh(); }}
@@ -903,7 +938,7 @@ function DocumentListSkeleton({ viewMode }: { viewMode: ViewMode }) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {Array.from({ length: 8 }).map((_v, i) => (
-          <div key={i} className="rounded-2xl border bg-card p-4 border-l-4 border-l-muted">
+          <div key={i} className="rounded-2xl border bg-card p-4">
             <div className="flex items-start justify-between mb-3">
               <Skeleton className="h-9 w-9 rounded-lg" />
               <Skeleton className="h-5 w-10 rounded-full" />
@@ -926,7 +961,7 @@ function DocumentListSkeleton({ viewMode }: { viewMode: ViewMode }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
+    <div className="overflow-hidden rounded-2xl border bg-card">
       <div className="border-b border-border bg-muted/30 px-4 py-3.5">
         <div className="flex gap-8">
           <Skeleton className="h-3 w-24" />
@@ -954,34 +989,29 @@ function DocumentListSkeleton({ viewMode }: { viewMode: ViewMode }) {
 
 function VaultSkeleton() {
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <Skeleton className="h-9 w-40 mb-2" />
-        <Skeleton className="h-4 w-48" />
+    <div className="space-y-5 animate-fade-in">
+      {/* Header skeleton */}
+      <div className="flex items-end justify-between">
+        <div>
+          <Skeleton className="h-8 w-28 mb-2" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <div className="hidden sm:flex gap-2">
+          <Skeleton className="h-9 w-24 rounded-xl" />
+          <Skeleton className="h-9 w-[76px] rounded-xl" />
+          <Skeleton className="h-9 w-9 rounded-xl" />
+        </div>
       </div>
 
-      {/* Search bar */}
-      <Skeleton className="h-12 w-full rounded-2xl" />
-
-      {/* Type filter chips */}
+      {/* Toolbar skeleton */}
       <div className="flex gap-2">
-        <Skeleton className="h-7 w-12 rounded-full" />
-        <Skeleton className="h-7 w-16 rounded-full" />
-        <Skeleton className="h-7 w-16 rounded-full" />
-        <Skeleton className="h-7 w-20 rounded-full" />
-        <Skeleton className="h-7 w-14 rounded-full" />
-        <Skeleton className="h-7 w-14 rounded-full" />
-      </div>
-
-      {/* Project filter chips */}
-      <div className="flex gap-2">
-        <Skeleton className="h-7 w-24 rounded-full" />
-        <Skeleton className="h-7 w-28 rounded-full" />
-        <Skeleton className="h-7 w-20 rounded-full" />
+        <Skeleton className="h-9 flex-1 max-w-md rounded-xl" />
+        <Skeleton className="h-9 w-20 rounded-xl" />
+        <Skeleton className="h-9 w-20 rounded-xl" />
       </div>
 
       {/* Table skeleton */}
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-hidden rounded-2xl border bg-card">
         <div className="border-b border-border bg-muted/30 px-4 py-3.5">
           <div className="flex gap-8">
             <Skeleton className="h-3 w-24" />
