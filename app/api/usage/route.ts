@@ -42,9 +42,8 @@ export async function GET(): Promise<
   const plan = (tenant.plan as PlanType) ?? "free";
   const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
 
-  return NextResponse.json({
-    usage: {
-      plan,
+  return NextResponse.json(
+    { usage: { plan,
       documents_used: Number(tenant.usage_documents ?? 0),
       documents_limit: isFinite(limits.maxDocs) ? limits.maxDocs : null,
       llm_calls_used: Number(tenant.usage_llm_calls ?? 0),
@@ -52,6 +51,7 @@ export async function GET(): Promise<
       storage_bytes_used: Number(tenant.usage_storage_bytes ?? 0),
       storage_bytes_limit: isFinite(limits.maxStorage) ? limits.maxStorage : null,
       usage_reset_at: tenant.usage_reset_at ?? null,
-    },
-  });
+    } },
+    { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } },
+  );
 }

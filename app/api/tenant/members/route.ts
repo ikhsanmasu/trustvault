@@ -107,63 +107,32 @@ export async function GET(
     );
   }
 
-  // If search includes email filtering, we also need to check auth.users emails.
-  // For P14, we handle email search by also searching auth.users.
+  // -- 5. Resolve emails from auth.users (single query reused for search) ---
   let filteredProfiles = profiles as Array<{
-    id: string;
-    display_name: string | null;
-    role: string;
-    created_at: string;
-    tenant_id: string;
+    id: string; display_name: string | null; role: string;
+    created_at: string; tenant_id: string;
   }>;
 
-  if (search) {
-    // Also check auth.users for email matches
-    const { data: authUsers } = await serviceClient.auth.admin.listUsers();
-    const matchingUserIds = new Set<string>();
-
-    if (authUsers?.users) {
-      for (const u of authUsers.users) {
-        if (u.email && u.email.toLowerCase().includes(search.toLowerCase())) {
-          matchingUserIds.add(u.id);
-        }
-      }
-    }
-
-    // If search matched emails but not display_names, include those profiles too
-    if (matchingUserIds.size > 0) {
-      const alreadyIncluded = new Set(
-        filteredProfiles.map((p) => p.id),
-      );
-      const missingIds = [...matchingUserIds].filter(
-        (id) => !alreadyIncluded.has(id),
-      );
-
-      if (missingIds.length > 0) {
-        const { data: extraProfiles } = await serviceClient
-          .from("profiles")
-          .select("id, display_name, role, created_at, tenant_id")
-          .eq("tenant_id", tenantId)
-          .in("id", missingIds);
-
-        if (extraProfiles) {
-          filteredProfiles = [
-            ...filteredProfiles,
-            ...(extraProfiles as typeof filteredProfiles),
-          ];
-        }
-      }
-    }
-  }
-
-  // -- 5. Resolve emails from auth.users ------------------------------------
-  const { data: authUsersData } =
-    await serviceClient.auth.admin.listUsers();
-
+  const { data: authUsersData } = await serviceClient.auth.admin.listUsers();
   const emailMap = new Map<string, string>();
   if (authUsersData?.users) {
-    for (const u of authUsersData.users) {
-      emailMap.set(u.id, u.email ?? "");
+    for (const u of authUsersData.users) emailMap.set(u.id, u.email ?? "");
+  }
+
+  if (search) {
+    const matchingUserIds = new Set<string>();
+    for (const [id, email] of emailMap) {
+      if (email.toLowerCase().includes(search.toLowerCase())) matchingUserIds.add(id);
+    }
+    if (matchingUserIds.size > 0) {
+      const alreadyIncluded = new Set(filteredProfiles.map((p) => p.id));
+      const missingIds = [...matchingUserIds].filter((id) => !alreadyIncluded.has(id));
+      if (missingIds.length > 0) {
+        const { data: extraProfiles } = await serviceClient
+          .from("profiles").select("id, display_name, role, created_at, tenant_id")
+          .eq("tenant_id", tenantId).in("id", missingIds);
+        if (extraProfiles) filteredProfiles = [...filteredProfiles, ...(extraProfiles as typeof filteredProfiles)];
+      }
     }
   }
 

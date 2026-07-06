@@ -76,12 +76,5 @@ export async function PATCH(
     );
   }
 
-  if (error) {
-    return NextResponse.json(
-      { error: String(error), code: "AUTH_ERROR" },
-      { status: 400 },
-    );
-  }
-
   return NextResponse.json({ success: true });
 }

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useSort } from "@/hooks/use-sort";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
+import { useToast } from "@/components/toast-provider";
 import { useProfile, isEditorOrAbove } from "@/hooks/use-profile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,7 +117,7 @@ export default function VaultPage() {
   const [shareDoc, setShareDoc] = useState<Document | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast } = useToast();
   const [showUpload, setShowUpload] = useState(false);
 
   // Deep link: /vault?upload=1 opens the upload modal directly (used by the
@@ -127,7 +128,6 @@ export default function VaultPage() {
   }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkShareIds, setBulkShareIds] = useState<string[]>([]);
-  const [bulkToast, setBulkToast] = useState<string | null>(null);
   const [actionDropdownDocId, setActionDropdownDocId] = useState<string | null>(null);
   // Fixed-position coords for the row-actions menu. Rendered through a portal
   // so the table's overflow container cannot clip it.
@@ -459,13 +459,6 @@ export default function VaultPage() {
       {error && (
         <Alert variant="destructive" className="animate-fade-in" role="alert"><AlertDescription>{error}</AlertDescription></Alert>
       )}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-success/30 bg-card px-5 py-3 text-sm font-medium text-success shadow-elevation-3 animate-fade-in">{toast}</div>
-      )}
-      {bulkToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-primary text-primary-foreground px-5 py-3 text-sm font-medium shadow-elevation-3 animate-fade-in">{bulkToast}</div>
-      )}
-
       {/* ---- Content: Loading | Empty | Grid | Table ------------------------- */}
       {isLoadingDocs ? (
         <DocumentListSkeleton viewMode={viewMode} />
@@ -539,12 +532,11 @@ export default function VaultPage() {
                 size="sm"
                 variant="outline"
                 onClick={async () => {
-                  setBulkToast("Anchoring…");
+                  toast.info("Anchoring…");
                   for (const id of selectedIds) {
                     try { await fetch("/api/anchor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ documentId: id }) }); } catch {}
                   }
-                  setBulkToast(`Anchored ${selectedIds.size} document(s)`);
-                  setTimeout(() => setBulkToast(null), 3000);
+                  toast.success(`Anchored ${selectedIds.size} document(s)`);
                   setSelectedIds(new Set());
                   refresh();
                 }}
@@ -579,12 +571,11 @@ export default function VaultPage() {
                 variant="outline"
                 className="text-destructive hover:bg-destructive/10"
                 onClick={async () => {
-                  setBulkToast(`Deleting ${selectedIds.size} document(s)…`);
+                  toast.info(`Deleting ${selectedIds.size} document(s)…`);
                   for (const id of selectedIds) {
                     try { await deleteDocument(id); } catch {}
                   }
-                  setBulkToast(`Deleted ${selectedIds.size} document(s)`);
-                  setTimeout(() => setBulkToast(null), 3000);
+                  toast.success(`Deleted ${selectedIds.size} document(s)`);
                   setSelectedIds(new Set());
                   refresh();
                 }}
@@ -882,7 +873,7 @@ export default function VaultPage() {
           initialName={editName}
           initialDesc={editDesc}
           onClose={() => setEditDocId(null)}
-          onSaved={() => { setEditDocId(null); setToast("Document updated"); setTimeout(() => setToast(null), 3000); refresh(); }}
+          onSaved={() => { setEditDocId(null); toast.success("Document updated"); refresh(); }}
         />
       )}
       {/* ---- Label delete confirmation --------------------------------------- */}
@@ -899,8 +890,7 @@ export default function VaultPage() {
             setDeleteLabelId(null);
             await fetch(`/api/labels?id=${id}`, { method: "DELETE" });
             setLabels(prev => prev.filter(l => l.id !== id));
-            setToast("Label deleted");
-            setTimeout(() => setToast(null), 3000);
+            toast.success("Label deleted");
           }}
         />
       )}
@@ -916,8 +906,7 @@ export default function VaultPage() {
             const d = confirmDelete;
             setConfirmDelete(null);
             try {
-              if (d.deleted_at) { await restoreDocument(d.id); setToast("Document restored. You will need to re-upload the file."); } else { await deleteDocument(d.id); setToast("File deleted. Integrity hashes preserved."); }
-              setTimeout(() => setToast(null), 3000);
+              if (d.deleted_at) { await restoreDocument(d.id); toast.warning("Document restored. You will need to re-upload the file."); } else { await deleteDocument(d.id); toast.success("File deleted. Integrity hashes preserved."); }
               refresh();
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : "Failed to update document";

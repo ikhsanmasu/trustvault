@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuthContext } from "@/components/auth-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +102,9 @@ function UsageBar({
 // ---------------------------------------------------------------------------
 
 export default function UsagePage() {
+  const router = useRouter();
+  const { user, isLoading: isAuthLoading } = useAuthContext();
+
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,10 +132,14 @@ export default function UsagePage() {
   }, [fetchUsage]);
 
   // -----------------------------------------------------------------------
-  // Loading state
-  // -----------------------------------------------------------------------
+  // Auth guard
+  if (!isAuthLoading && !user) {
+    router.push("/login");
+    return <div className="flex min-h-[50vh] items-center justify-center"><Skeleton className="h-8 w-48" /></div>;
+  }
 
-  if (isLoading) {
+  // Loading state
+  if (isAuthLoading || isLoading) {
     return (
       <div className="mx-auto max-w-2xl space-y-5">
         <div>

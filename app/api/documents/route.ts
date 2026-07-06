@@ -180,8 +180,8 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({
-    documents: (data ?? []).map(d => parseDocument(d)) as unknown as Document[],
-    total: count ?? 0,
-  });
+  return NextResponse.json(
+    { documents: (data ?? []).map(d => parseDocument(d)) as unknown as Document[], total: count ?? 0 },
+    { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } },
+  );
 }

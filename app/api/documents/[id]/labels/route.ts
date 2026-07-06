@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/supabase/auth";
+import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { isValidUUID } from '@/lib/utils';
 
 // GET /api/documents/:id/labels — list labels for a document
@@ -36,9 +36,12 @@ export async function POST(
 ) {
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
   const { id } = await params;
   if (!isValidUUID(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
+
+  const roleCheck = await requireTenantRole(supabase, user.id, ["owner", "admin", "editor"]);
+  if (!roleCheck.ok) return roleCheck.response;
 
   let body: { labelIds?: string[] };
   try { body = await request.json(); } catch {
@@ -63,13 +66,16 @@ export async function DELETE(
 ) {
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
   const { id } = await params;
   if (!isValidUUID(id)) return NextResponse.json({ error: "Invalid ID", code: "INVALID_ID" }, { status: 400 });
 
   const url = new URL(request.url);
   const labelId = url.searchParams.get("labelId");
   if (!labelId || !isValidUUID(labelId)) return NextResponse.json({ error: "labelId required", code: "INVALID_LABEL_ID" }, { status: 400 });
+
+  const roleCheck = await requireTenantRole(supabase, user.id, ["owner", "admin", "editor"]);
+  if (!roleCheck.ok) return roleCheck.response;
 
   await supabase.from("document_labels").delete().eq("document_id", id).eq("label_id", labelId);
   return NextResponse.json({ ok: true });

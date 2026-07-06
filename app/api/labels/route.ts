@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, getUserTenantId } from "@/lib/supabase/auth";
+import { requireAuth, requireTenantRole, getUserTenantId } from "@/lib/supabase/auth";
 
 // GET /api/labels — list labels for current tenant
 export async function GET() {
@@ -28,6 +28,9 @@ export async function POST(request: NextRequest) {
 
   const tenantId = await getUserTenantId(supabase, user.id);
   if (!tenantId) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+
+  const roleCheck = await requireTenantRole(supabase, user.id, ["owner", "admin", "editor"]);
+  if (!roleCheck.ok) return roleCheck.response;
 
   let body: { name?: string; color?: string };
   try { body = await request.json(); } catch {
@@ -64,6 +67,9 @@ export async function DELETE(request: NextRequest) {
 
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required", code: "INVALID_ID" }, { status: 400 });
+
+  const roleCheck = await requireTenantRole(supabase, user.id, ["owner", "admin", "editor"]);
+  if (!roleCheck.ok) return roleCheck.response;
 
   // Verify label belongs to tenant
   const { data: label } = await supabase.from("labels").select("id").eq("id", id).eq("tenant_id", tenantId).single();
