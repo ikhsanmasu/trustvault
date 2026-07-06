@@ -1,5 +1,7 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Citation, ChatMessage } from "@/lib/ai-api-client";
@@ -16,6 +18,92 @@ interface StreamingBubbleProps {
 
 interface CitationsListProps {
   citations: Citation[];
+}
+
+// ---- Markdown renderer -------------------------------------------------------
+// Assistant answers arrive as markdown (headings, lists, tables, code). Render
+// them with compact, chat-sized typography instead of dumping raw asterisks.
+
+function MessageMarkdown({ content }: { content: string }) {
+  return (
+    <div className="text-sm leading-relaxed break-words">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+          strong: ({ children }) => (
+            <strong className="font-semibold text-foreground">{children}</strong>
+          ),
+          em: ({ children }) => <em>{children}</em>,
+          h1: ({ children }) => (
+            <h1 className="mb-1.5 mt-3 first:mt-0 text-base font-bold">{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="mb-1.5 mt-3 first:mt-0 text-[15px] font-bold">{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="mb-1 mt-2.5 first:mt-0 text-sm font-semibold">{children}</h3>
+          ),
+          h4: ({ children }) => (
+            <h4 className="mb-1 mt-2.5 first:mt-0 text-sm font-semibold">{children}</h4>
+          ),
+          ul: ({ children }) => (
+            <ul className="mb-2 last:mb-0 list-disc space-y-1 pl-5">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="mb-2 last:mb-0 list-decimal space-y-1 pl-5">{children}</ol>
+          ),
+          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline underline-offset-2 hover:opacity-80"
+            >
+              {children}
+            </a>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="mb-2 border-l-2 border-secondary/50 pl-3 text-muted-foreground">
+              {children}
+            </blockquote>
+          ),
+          code: ({ children, className }) => (
+            <code
+              className={cn(
+                "rounded bg-foreground/[0.08] px-1 py-0.5 font-hash text-[12px]",
+                className,
+              )}
+            >
+              {children}
+            </code>
+          ),
+          pre: ({ children }) => (
+            <pre className="mb-2 overflow-x-auto rounded-lg bg-foreground/[0.06] p-3 text-xs [&_code]:bg-transparent [&_code]:p-0">
+              {children}
+            </pre>
+          ),
+          hr: () => <hr className="my-3 border-border" />,
+          table: ({ children }) => (
+            <div className="mb-2 overflow-x-auto">
+              <table className="w-full border-collapse text-xs">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => (
+            <th className="border border-border bg-foreground/[0.04] px-2 py-1 text-left font-semibold">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="border border-border px-2 py-1 align-top">{children}</td>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 // ---- Citation chip ----------------------------------------------------------
@@ -81,10 +169,13 @@ function StreamingBubble({ content }: StreamingBubbleProps) {
         )}
       >
         {hasContent ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-            {content}
-            <span className="inline-block w-1.5 h-4 ml-0.5 bg-current animate-pulse rounded-sm align-text-bottom" />
-          </p>
+          <>
+            <MessageMarkdown content={content} />
+            <span
+              className="mt-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-current align-text-bottom"
+              aria-hidden="true"
+            />
+          </>
         ) : (
           <div className="space-y-2 min-w-[120px]">
             <Skeleton className="h-3 w-full" />
@@ -117,10 +208,14 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           {isUser ? "You" : "Assistant"}:
         </span>
 
-        {/* Message content */}
-        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-          {message.content}
-        </p>
+        {/* Message content — user input stays literal, assistant answers are markdown */}
+        {isUser ? (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+            {message.content}
+          </p>
+        ) : (
+          <MessageMarkdown content={message.content} />
+        )}
 
         {/* Citations (assistant messages only) */}
         {!isUser && message.citations && message.citations.length > 0 && (
