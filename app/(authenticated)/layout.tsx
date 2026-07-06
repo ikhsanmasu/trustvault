@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { AuthProvider } from "@/components/auth-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ToastProvider } from "@/components/toast-provider";
+import { OnboardingProvider } from "@/components/onboarding/onboarding-provider";
 import { Sidebar } from "@/components/sidebar";
 import { MobileHeader } from "@/components/mobile-header";
 import { cn } from "@/lib/utils";
@@ -48,6 +50,8 @@ export default function AuthenticatedLayout({
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ToastProvider>
+        <OnboardingProvider>
         <div className="flex min-h-screen">
           {/* Skip-to-content link for keyboard users */}
           <a
@@ -89,6 +93,8 @@ export default function AuthenticatedLayout({
             </main>
           </div>
         </div>
+        </OnboardingProvider>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );

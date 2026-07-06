@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/client";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { isValidUUID } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,11 @@ export async function GET(
       { error: "Invalid document ID", code: "INVALID_ID" },
       { status: 400 },
     );
+  }
+
+  const rateLimit = await checkRateLimit(`share-download:${token}`, 10, 60_000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: "Too many download requests", code: "RATE_LIMITED" }, { status: 429, headers: { "Retry-After": String(Math.max(rateLimit.resetAt - Math.ceil(Date.now() / 1000), 1)) } });
   }
 
   // Validate share

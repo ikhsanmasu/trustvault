@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/components/auth-provider";
+import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
 import { useSort } from "@/hooks/use-sort";
 import { StatsCard } from "@/components/stats-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -277,6 +278,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <OnboardingDialog />
       {/* ---- Header: greeting + quick actions -------------------------------- */}
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>

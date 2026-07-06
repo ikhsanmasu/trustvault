@@ -203,8 +203,8 @@ export async function GET(): Promise<
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, count]) => ({ month, count }));
 
-  return NextResponse.json({
-    stats: {
+  return NextResponse.json(
+    { stats: {
       document_count: docCount,
       total_storage_bytes: totalStorageBytes,
       recent_documents: recentDocs,
@@ -214,6 +214,7 @@ export async function GET(): Promise<
       documents_by_type: documentsByType,
       documents_by_month: documentsByMonth,
       total_chunks: totalChunks,
-    },
-  });
+    } },
+    { headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=60" } },
+  );
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireTenantRole } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/client";
 import { parseDocument, parseSharedLink } from "@/lib/db-schemas";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type {
   PublicShareResponse,
   ErrorResponse,
@@ -89,6 +90,11 @@ export async function GET(
       { error: "Invalid share token format", code: "INVALID_TOKEN" },
       { status: 400 },
     );
+  }
+
+  const rateLimit = await checkRateLimit(`share-info:${token}`, 30, 60_000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: "Too many requests", code: "RATE_LIMITED" }, { status: 429, headers: { "Retry-After": String(Math.max(rateLimit.resetAt - Math.ceil(Date.now() / 1000), 1)) } });
   }
 
   // Look up the share

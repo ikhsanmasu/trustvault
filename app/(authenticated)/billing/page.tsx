@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useAuthContext } from "@/components/auth-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,8 @@ function formatDate(iso: string | null): string {
 // ---------------------------------------------------------------------------
 
 export default function BillingPage() {
+  const router = useRouter();
+  const { user, isLoading: isAuthLoading } = useAuthContext();
   const searchParams = useSearchParams();
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,10 +140,14 @@ export default function BillingPage() {
   const checkoutStatus = searchParams.get("checkout");
 
   // -----------------------------------------------------------------------
-  // Loading state
-  // -----------------------------------------------------------------------
+  // Auth guard
+  if (!isAuthLoading && !user) {
+    router.push("/login");
+    return <div className="flex min-h-[50vh] items-center justify-center"><Skeleton className="h-8 w-48" /></div>;
+  }
 
-  if (isLoading) {
+  // Loading state
+  if (isAuthLoading || isLoading) {
     return (
       <div className="mx-auto max-w-2xl space-y-5">
         <div>

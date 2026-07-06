@@ -32,9 +32,10 @@ export async function GET(): Promise<
     );
   }
 
-  return NextResponse.json({
-    profile: profile as unknown as Profile,
-  });
+  return NextResponse.json(
+    { profile: profile as unknown as Profile },
+    { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" } },
+  );
 }
 
 // ---------------------------------------------------------------------------
