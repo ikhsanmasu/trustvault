@@ -1057,5 +1057,28 @@ export function IconChart({ className }: IconProps) {
   );
 }
 
-// ---- P16: Agents --------------------------------------------------------------
+// ---- P23: Billing / Payment --------------------------------------------------
+
+export function IconCreditCard({ className }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("h-5 w-5 shrink-0", className)}
+      role="img"
+      aria-label="Credit card"
+    >
+      <title>Credit card</title>
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+      <line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  );
+}
+
+// ---- P16: Agents (removed in P22) --------------------------------------------
 

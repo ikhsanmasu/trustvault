@@ -17,6 +17,7 @@ import {
   IconShare,
   IconChart,
   IconSearch,
+  IconCreditCard,
 } from "@/components/icons";
 
 // ---- Nav structure --------------------------------------------------------------
@@ -51,6 +52,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: "Account",
     items: [
       { label: "Plan & usage", href: "/usage", icon: IconChart },
+      { label: "Billing", href: "/billing", icon: IconCreditCard },
       { label: "Settings", href: "/settings", icon: IconSettings },
     ],
   },

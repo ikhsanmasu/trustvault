@@ -214,7 +214,7 @@ export default function UsagePage() {
 
             {stats.plan === "free" && (
               <Link
-                href="/#pricing"
+                href="/billing"
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground shadow-elevation-1 transition-all hover:bg-secondary/90 hover:shadow-elevation-2"
               >
                 <IconSparkle className="h-3.5 w-3.5" />
@@ -222,13 +222,21 @@ export default function UsagePage() {
               </Link>
             )}
             {stats.plan === "pro" && (
-              <a
-                href="mailto:sales@trustvault.app"
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-elevation-1 transition-all hover:border-secondary/40"
-              >
-                <IconSparkle className="h-3.5 w-3.5" />
-                Talk to sales about Enterprise
-              </a>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/billing"
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-elevation-1 transition-all hover:border-secondary/40"
+                >
+                  <IconSparkle className="h-3.5 w-3.5" />
+                  Manage billing
+                </Link>
+                <a
+                  href="mailto:sales@trustvault.app"
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-elevation-1 transition-all hover:border-secondary/40"
+                >
+                  Talk to sales about Enterprise
+                </a>
+              </div>
             )}
           </div>
         </CardContent>
